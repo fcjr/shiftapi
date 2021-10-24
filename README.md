@@ -47,7 +47,8 @@ type Greeting struct {
 }
 
 // This is your http handler!
-// ShiftAPI is responsible for marshalling the request body and marshalling the return value.
+// ShiftAPI is responsible for marshalling the request body
+// and marshalling the return value.
 func greeter(p *Person) (*Greeting, *shiftapi.Error) {
 	return &Greeting{
 		Hello: p.Name,
