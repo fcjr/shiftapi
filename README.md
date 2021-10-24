@@ -18,7 +18,7 @@ This is **in no way production ready**.
 
 This project was inspired by the simplicity of [FastAPI](https://github.com/tiangolo/fastapi).
 
-Due to limitations of typing in go this library will probably not be production ready pre go 1.18 as handlers must be passed as interfaces{} and validated at _runtime_ (Scary I know! 😱).  Once generics hit I hope to rewrite the handler implementation to restore compile time type checking & safety.
+Due to limitations of typing in go this library will probably not be production ready pre go 1.18 as handlers must be passed as `interface{}`s and validated at _runtime_ (Scary I know! 😱).  Once generics hit I hope to rewrite the handler implementation to restore compile time type checking & safety.
 
 ## Installation
 
@@ -48,7 +48,7 @@ type Greeting struct {
 
 // This is your http handler!
 // ShiftAPI is responsible for marshalling the request body
-// and marshalling the return value.
+//  and marshalling the return value.
 func greeter(p *Person) (*Greeting, *shiftapi.Error) {
 	return &Greeting{
 		Hello: p.Name,
