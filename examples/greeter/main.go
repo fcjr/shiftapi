@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"log"
 	"net/http"
 
@@ -16,46 +17,24 @@ type Greeting struct {
 	Hello string `json:"hello"`
 }
 
-func BadRequestError(code, msg string) *shiftapi.Error {
-	type err struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	b, _ := json.Marshal(&err{
-		Code:    code,
-		Message: msg,
-	})
-	return &shiftapi.Error{
-		Code: http.StatusBadRequest,
-		Body: b,
-	}
-}
-
-func greeter(p *Person) (*Greeting, *shiftapi.Error) {
-	if p.Name != "frank" {
-		return nil, BadRequestError("wrong_name", "I only greet frank.")
+func greet(ctx context.Context, headers http.Header, person *Person) (*Greeting, error) {
+	if person.Name != "frank" {
+		return nil, errors.New("wrong name, I only greet frank")
 	}
 	return &Greeting{
-		Hello: p.Name,
+		Hello: person.Name,
 	}, nil
 }
 
 func main() {
+	ctx := context.Background()
+	server := shiftapi.New(ctx, shiftapi.WithInfo(shiftapi.Info{
+		Title: "Geeter Demo API",
+	}))
 
-	api := shiftapi.New(&shiftapi.Params{
-		SchemaInfo: &shiftapi.SchemaParams{
-			Title: "Greeter Demo API",
-		},
-	})
+	handleGreet := shiftapi.Post("/greet", greet)
+	server.Register(handleGreet)
 
-	err := api.POST("/greet", greeter, http.StatusOK, &shiftapi.HandlerOpts{
-		Summary:     "Greeter Method",
-		Description: "It greets anyone named 'frank'",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Fatal(api.Serve())
+	log.Fatal(server.ListenAndServe(":8080"))
 	// redoc will be served at http://localhost:8080/docs
 }

@@ -27,11 +27,11 @@ const redocTemplate string = `<!DOCTYPE html>
 `
 
 type redocData struct {
-	Title             string
-	FaviconURL        string
-	RedocURL          string
-	SpecURL           string
-	EnableGoogleFonts bool
+	Title      string
+	FaviconURL string
+	RedocURL   string
+	SpecURL    string
+	// EnableGoogleFonts bool
 }
 
 func genRedocHTML(data redocData, out io.Writer) error {
