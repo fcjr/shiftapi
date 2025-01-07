@@ -5,6 +5,8 @@
 
 # ShiftAPI
 
+***⚠️ This project is still in development, the API is not stable and is not ready for production use. ⚠️***
+
 Quickly write RESTful APIs in go with automatic openapi schema generation.
 
 Inspired by the simplicity of [FastAPI](https://github.com/tiangolo/fastapi).

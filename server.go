@@ -2,6 +2,7 @@ package shiftapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -63,11 +64,17 @@ func (s *ShiftAPI) redirectTo(path string) http.HandlerFunc {
 }
 
 func (s *ShiftAPI) serveSchema(res http.ResponseWriter, req *http.Request) {
-	b, err := s.spec.MarshalJSON()
+	x, err := s.spec.MarshalYAML()
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	b, err := json.MarshalIndent(x, "", "  ")
+	if err != nil {
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	res.Header().Set("Content-Type", "application/json")
 	_, _ = res.Write(b)
 }
