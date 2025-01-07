@@ -47,10 +47,13 @@ func New(
 // Register adds 1 or more handlers to the server.
 // The handlers are expected to be created via the shiftapi.Post, shiftapi.Get,
 // shiftapi.Put, shiftapi.Patch, and shiftapi.Delete functions.
-func (s *ShiftAPI) Register(handlers ...Handler) {
+func (s *ShiftAPI) Register(handlers ...Handler) error {
 	for _, h := range handlers {
-		h.register(s)
+		if err := h.register(s); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (s *ShiftAPI) redirectTo(path string) http.HandlerFunc {

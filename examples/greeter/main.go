@@ -33,7 +33,9 @@ func main() {
 	}))
 
 	handleGreet := shiftapi.Post("/greet", greet)
-	server.Register(handleGreet)
+	if err := server.Register(handleGreet); err != nil {
+		log.Fatal(err)
+	}
 
 	log.Fatal(server.ListenAndServe(":8080"))
 	// redoc will be served at http://localhost:8080/docs
