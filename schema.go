@@ -8,7 +8,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-func (s *ShiftAPI) updateSchema(method, path string, inType, outType reflect.Type) error {
+func (s *ShiftAPI) updateSchema(method, path string, inType, outType reflect.Type, handlerInfo *HandlerInfo) error {
 
 	inSchema, err := s.generateSchemaRef(inType)
 	if err != nil {
@@ -52,10 +52,13 @@ func (s *ShiftAPI) updateSchema(method, path string, inType, outType reflect.Typ
 	}
 
 	op := &openapi3.Operation{
-		// Summary:     opts.Summary,
 		RequestBody: requestBody,
-		// Description: opts.Description,
-		Responses: responses,
+		Responses:   responses,
+	}
+	if handlerInfo != nil {
+		op.Summary = handlerInfo.Summary
+		op.Description = handlerInfo.Description
+		op.Tags = handlerInfo.Tags
 	}
 
 	switch method {

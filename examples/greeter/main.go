@@ -28,11 +28,19 @@ func greet(ctx context.Context, headers http.Header, person *Person) (*Greeting,
 
 func main() {
 	ctx := context.Background()
-	server := shiftapi.New(ctx, shiftapi.WithInfo(shiftapi.Info{
+	server := shiftapi.New(ctx, shiftapi.WithServerInfo(shiftapi.ServerInfo{
 		Title: "Geeter Demo API",
 	}))
 
-	handleGreet := shiftapi.Post("/greet", greet)
+	handleGreet := shiftapi.Post(
+		"/greet",
+		greet,
+		shiftapi.WithHandlerInfo(&shiftapi.HandlerInfo{
+			Summary:     "Greet a person",
+			Description: "Greet a person with a friendly greeting",
+			Tags:        []string{"greet"},
+		}),
+	)
 	if err := server.Register(handleGreet); err != nil {
 		log.Fatal(err)
 	}

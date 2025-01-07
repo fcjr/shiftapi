@@ -17,12 +17,7 @@ type Handler interface {
 	unimplementable()
 }
 
-type HandlerOption interface {
-	// unimplementable is a method that should never be called.
-	// It is simply used to ensure that the HandlerOption interface can only be implemented
-	// internally by the shiftapi package.
-	unimplementable()
-}
+type HandlerOption func(Handler) Handler
 
 type ValidBody any // TODO can we type constrain to a struct?
 
@@ -37,7 +32,8 @@ type handler[RequestBody ValidBody, ResponseBody ValidBody] struct {
 	method      string
 	path        string
 	handlerFunc HandlerFunc[RequestBody, ResponseBody]
-	options     []func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody]
+
+	info *HandlerInfo
 }
 
 // ensure handler implements Handler at compile time
@@ -53,7 +49,13 @@ func (h handler[RequestBody, ResponseBody]) register(server *ShiftAPI) error {
 	var responseBody ResponseBody
 	outType := reflect.TypeOf(responseBody)
 
-	if err := server.updateSchema(h.method, h.path, inType, outType); err != nil {
+	if err := server.updateSchema(
+		h.method,
+		h.path,
+		inType,
+		outType,
+		h.info,
+	); err != nil {
 		return err
 	}
 

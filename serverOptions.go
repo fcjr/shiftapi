@@ -2,7 +2,7 @@ package shiftapi
 
 import "github.com/getkin/kin-openapi/openapi3"
 
-type Info struct {
+type ServerInfo struct {
 	Summary        string
 	Title          string
 	Description    string
@@ -24,7 +24,7 @@ type License struct {
 	Identifier string
 }
 
-func WithInfo(info Info) func(*ShiftAPI) *ShiftAPI {
+func WithServerInfo(info ServerInfo) func(*ShiftAPI) *ShiftAPI {
 	return func(api *ShiftAPI) *ShiftAPI {
 		api.spec.Info = &openapi3.Info{
 			Title:       info.Title,
