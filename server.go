@@ -98,7 +98,7 @@ func (s *ShiftAPI) serveDocs(res http.ResponseWriter, req *http.Request) {
 }
 
 func (s *ShiftAPI) ListenAndServe(ctx context.Context, addr string) error {
-	// TODO add address to schema & create server separately http server
+	// TODO add address to schema
 
 	httpServer := &http.Server{
 		Addr:         addr,
