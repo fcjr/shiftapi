@@ -17,8 +17,6 @@ type Handler interface {
 	unimplementable()
 }
 
-type HandlerOption func(Handler) Handler
-
 type ValidBody any // TODO can we type constrain to a struct?
 
 type HandlerFunc[RequestBody ValidBody, ResponseBody ValidBody] func(

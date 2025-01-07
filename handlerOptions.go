@@ -16,7 +16,7 @@ func (h *handler[RequestBody, ResponseBody]) setInfo(info *HandlerInfo) {
 
 var _ optionsApplier = (*handler[ValidBody, ValidBody])(nil)
 
-func WithHandlerInfo(info *HandlerInfo) HandlerOption {
+func WithHandlerInfo(info *HandlerInfo) func(Handler) Handler {
 	return func(h Handler) Handler {
 		if handler, ok := h.(optionsApplier); ok {
 			handler.setInfo(info)
