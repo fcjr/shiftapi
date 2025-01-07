@@ -76,6 +76,10 @@ func (s *ShiftAPI) updateSchema(method, path string, inType, outType reflect.Typ
 		pathItem.Head = op
 	case http.MethodOptions:
 		pathItem.Options = op
+	case http.MethodTrace:
+		pathItem.Trace = op
+	case http.MethodConnect:
+		pathItem.Connect = op
 	default:
 		return fmt.Errorf("method '%s' not supported", method)
 	}

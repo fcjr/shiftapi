@@ -73,3 +73,19 @@ func Options[RequestBody ValidBody, ResponseBody ValidBody](
 ) *handler[RequestBody, ResponseBody] {
 	return method(http.MethodOptions, path, handlerFunc, options...)
 }
+
+func Trace[RequestBody ValidBody, ResponseBody ValidBody](
+	path string,
+	handlerFunc HandlerFunc[RequestBody, ResponseBody],
+	options ...func(Handler) Handler,
+) *handler[RequestBody, ResponseBody] {
+	return method(http.MethodTrace, path, handlerFunc, options...)
+}
+
+func Connect[RequestBody ValidBody, ResponseBody ValidBody](
+	path string,
+	handlerFunc HandlerFunc[RequestBody, ResponseBody],
+	options ...func(Handler) Handler,
+) *handler[RequestBody, ResponseBody] {
+	return method(http.MethodConnect, path, handlerFunc, options...)
+}
