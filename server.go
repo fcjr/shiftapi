@@ -4,21 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
 )
 
+const defaultReadTimeout = 10 * time.Second
+const defaultWriteTimeout = 10 * time.Second
+const defaultShutdownGracePeriod = 10 * time.Second
+
 type ShiftAPI struct {
-	baseContext context.Context
-	spec        *openapi3.T
-	specGen     *openapi3gen.Generator
-	mux         *http.ServeMux
+	spec    *openapi3.T
+	specGen *openapi3gen.Generator
+	mux     *http.ServeMux
 }
 
 func New(
-	ctx context.Context,
 	options ...func(*ShiftAPI) *ShiftAPI,
 ) *ShiftAPI {
 	mux := http.NewServeMux()
@@ -31,10 +35,9 @@ func New(
 	}
 
 	api := &ShiftAPI{
-		baseContext: ctx,
-		spec:        spec,
-		specGen:     openapi3gen.NewGenerator(),
-		mux:         mux,
+		spec:    spec,
+		specGen: openapi3gen.NewGenerator(),
+		mux:     mux,
 	}
 	for _, option := range options {
 		api = option(api)
@@ -94,8 +97,30 @@ func (s *ShiftAPI) serveDocs(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *ShiftAPI) ListenAndServe(addr string) error {
+func (s *ShiftAPI) ListenAndServe(ctx context.Context, addr string) error {
 	// TODO add address to schema & create server separately http server
-	// maybe also pass ctx
-	return http.ListenAndServe(addr, s.mux)
+
+	httpServer := &http.Server{
+		Addr:         addr,
+		Handler:      s.mux,
+		ReadTimeout:  defaultReadTimeout,
+		WriteTimeout: defaultWriteTimeout,
+		BaseContext: func(listener net.Listener) context.Context {
+			return ctx
+		},
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		ctx, cancel := context.WithTimeout(context.Background(), defaultShutdownGracePeriod)
+		defer cancel()
+		return httpServer.Shutdown(ctx)
+	case err := <-errCh:
+		return err
+	}
 }

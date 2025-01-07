@@ -60,12 +60,12 @@ func (h handler[RequestBody, ResponseBody]) register(server *ShiftAPI) error {
 	}
 
 	pattern := fmt.Sprintf("%s %s", h.method, h.path)
-	stdHandler := h.stdHandler(server.baseContext)
+	stdHandler := h.stdHandler()
 	server.mux.HandleFunc(pattern, stdHandler)
 	return nil
 }
 
-func (h handler[RequestBody, ResponseBody]) stdHandler(ctx context.Context) http.HandlerFunc {
+func (h handler[RequestBody, ResponseBody]) stdHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// TODO: valdiate request body?
 		var requestBody RequestBody
@@ -74,7 +74,7 @@ func (h handler[RequestBody, ResponseBody]) stdHandler(ctx context.Context) http
 			return
 		}
 		responseBody, err := h.handlerFunc(
-			ctx,
+			r.Context(),
 			r.Header,
 			requestBody,
 		)

@@ -28,7 +28,8 @@ func greet(ctx context.Context, headers http.Header, person *Person) (*Greeting,
 
 func main() {
 	ctx := context.Background()
-	server := shiftapi.New(ctx, shiftapi.WithServerInfo(shiftapi.ServerInfo{
+
+	server := shiftapi.New(shiftapi.WithServerInfo(shiftapi.ServerInfo{
 		Title: "Geeter Demo API",
 	}))
 
@@ -45,6 +46,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Fatal(server.ListenAndServe(":8080"))
+	log.Fatal(server.ListenAndServe(ctx, ":8080"))
 	// redoc will be served at http://localhost:8080/docs
 }
