@@ -1,7 +1,7 @@
 package shiftapi
 
 import (
-	"github.com/pb33f/libopenapi/datamodel/high/base"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 type Info struct {
@@ -28,20 +28,20 @@ type License struct {
 
 func WithInfo(info Info) func(*ShiftAPI) *ShiftAPI {
 	return func(api *ShiftAPI) *ShiftAPI {
-		api.spec.Info = &base.Info{
+		api.spec.Info = &openapi3.Info{
 			Title:       info.Title,
 			Description: info.Description,
 			Version:     info.Version,
 		}
 		if info.Contact != nil {
-			api.spec.Info.Contact = &base.Contact{
+			api.spec.Info.Contact = &openapi3.Contact{
 				Name:  info.Contact.Name,
 				URL:   info.Contact.URL,
 				Email: info.Contact.Email,
 			}
 		}
 		if info.License != nil {
-			api.spec.Info.License = &base.License{
+			api.spec.Info.License = &openapi3.License{
 				Name: info.License.Name,
 				URL:  info.License.URL,
 			}
@@ -57,7 +57,7 @@ type ExternalDocs struct {
 
 func WithExternalDocs(externalDocs ExternalDocs) func(*ShiftAPI) *ShiftAPI {
 	return func(api *ShiftAPI) *ShiftAPI {
-		api.spec.ExternalDocs = &base.ExternalDoc{
+		api.spec.ExternalDocs = &openapi3.ExternalDocs{
 			Description: externalDocs.Description,
 			URL:         externalDocs.URL,
 		}

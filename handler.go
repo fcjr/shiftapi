@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 type Handler interface {
@@ -23,14 +26,16 @@ type HandlerOption interface {
 	unimplementable()
 }
 
-type HandlerFunc[RequestBody any, ResponseBody any] func(
+type ValidBody any // TODO can we type constrain to a struct?
+
+type HandlerFunc[RequestBody ValidBody, ResponseBody ValidBody] func(
 	ctx context.Context,
 	headers http.Header,
 	requestBody RequestBody,
 ) (responseBody ResponseBody, err error)
 
 // TODO pass status code
-type handler[RequestBody any, ResponseBody any] struct {
+type handler[RequestBody ValidBody, ResponseBody ValidBody] struct {
 	method      string
 	path        string
 	handlerFunc HandlerFunc[RequestBody, ResponseBody]
@@ -45,7 +50,7 @@ func (h handler[RequestBody, ResponseBody]) unimplementable() {
 }
 
 func (h handler[RequestBody, ResponseBody]) register(server *ShiftAPI) error {
-	if err := h.updateSpec(server); err != nil {
+	if err := h.updateSchema(server); err != nil {
 		return err
 	}
 
@@ -55,8 +60,95 @@ func (h handler[RequestBody, ResponseBody]) register(server *ShiftAPI) error {
 	return nil
 }
 
-func (h handler[RequestBody, ResponseBody]) updateSpec(server *ShiftAPI) error {
+func (h handler[RequestBody, ResponseBody]) updateSchema(server *ShiftAPI) error {
+
+	var in RequestBody
+	inType := reflect.TypeOf(in)
+	inSchema, err := server.generateSchemaRef(inType)
+	if err != nil {
+		return err
+	}
+
+	var out ResponseBody
+	outType := reflect.TypeOf(out)
+	outSchema, err := server.generateSchemaRef(outType)
+	if err != nil {
+		return err
+	}
+	responses := openapi3.NewResponses()
+	responseContent := make(map[string]*openapi3.MediaType)
+	responseContent["application/json"] = &openapi3.MediaType{
+		Schema: &openapi3.SchemaRef{
+			Ref: fmt.Sprintf("#/components/schemas/%s", outSchema.Ref),
+		},
+	}
+	responses.Set("200", &openapi3.ResponseRef{
+		Value: &openapi3.Response{
+			Description: String("Success"),
+			Content:     responseContent,
+		},
+	})
+
+	requestContent := make(map[string]*openapi3.MediaType)
+	requestContent["application/json"] = &openapi3.MediaType{
+		Schema: &openapi3.SchemaRef{
+			Ref: fmt.Sprintf("#/components/schemas/%s", inSchema.Ref),
+		},
+	}
+	requestBody := &openapi3.RequestBodyRef{
+		Value: &openapi3.RequestBody{
+			Content: requestContent,
+		},
+	}
+
+	var oPath *openapi3.PathItem
+	switch h.method {
+	case http.MethodPost:
+		oPath = &openapi3.PathItem{
+			Post: &openapi3.Operation{
+				// Summary:     opts.Summary,
+				RequestBody: requestBody,
+				// Description: opts.Description,
+				Responses: responses,
+			},
+		}
+	}
+	if oPath == nil {
+		return fmt.Errorf("method '%s' not implemented", h.method)
+	}
+	server.spec.Paths.Set(h.path, oPath)
+	// server.spec.Components.Responses.Default()
+
+	server.spec.Components.Schemas[inSchema.Ref] = &openapi3.SchemaRef{
+		Value: inSchema.Value,
+	}
+	server.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
+		Value: outSchema.Value,
+	}
 	return nil
+}
+
+func (s *ShiftAPI) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
+	schema, err := s.specGen.GenerateSchemaRef(t)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO why tf does kin set ref values for basic types
+	scrubRefs(schema)
+
+	return schema, nil
+}
+
+func scrubRefs(s *openapi3.SchemaRef) {
+	if s.Value.Properties == nil || len(s.Value.Properties) <= 0 {
+		return
+	}
+	for _, p := range s.Value.Properties {
+		if !p.Value.Type.Is("object") {
+			p.Ref = ""
+		}
+	}
 }
 
 func (h handler[RequestBody, ResponseBody]) stdHandler(ctx context.Context) http.HandlerFunc {

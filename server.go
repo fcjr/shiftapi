@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/pb33f/libopenapi/datamodel/high/base"
-	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
-	"github.com/pb33f/libopenapi/orderedmap"
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3gen"
 )
 
 type ShiftAPI struct {
 	baseContext context.Context
-	spec        *v3.Document
+	spec        *openapi3.T
+	specGen     *openapi3gen.Generator
 	mux         *http.ServeMux
 }
 
@@ -21,28 +21,18 @@ func New(
 	options ...func(*ShiftAPI) *ShiftAPI,
 ) *ShiftAPI {
 	mux := http.NewServeMux()
-	spec := &v3.Document{
-		Version: "3.1",
-		Paths: &v3.Paths{
-			PathItems: orderedmap.New[string, *v3.PathItem](),
-		},
-		Components: &v3.Components{
-			Schemas:         orderedmap.New[string, *base.SchemaProxy](),
-			Responses:       orderedmap.New[string, *v3.Response](),
-			Parameters:      orderedmap.New[string, *v3.Parameter](),
-			Examples:        orderedmap.New[string, *base.Example](),
-			RequestBodies:   orderedmap.New[string, *v3.RequestBody](),
-			Headers:         orderedmap.New[string, *v3.Header](),
-			SecuritySchemes: orderedmap.New[string, *v3.SecurityScheme](),
-			Links:           orderedmap.New[string, *v3.Link](),
-			Callbacks:       orderedmap.New[string, *v3.Callback](),
-			PathItems:       orderedmap.New[string, *v3.PathItem](),
+	spec := &openapi3.T{
+		OpenAPI: "3.1",
+		Paths:   &openapi3.Paths{},
+		Components: &openapi3.Components{
+			Schemas: make(openapi3.Schemas),
 		},
 	}
 
 	api := &ShiftAPI{
 		baseContext: ctx,
 		spec:        spec,
+		specGen:     openapi3gen.NewGenerator(),
 		mux:         mux,
 	}
 	for _, option := range options {
@@ -70,7 +60,7 @@ func (s *ShiftAPI) redirectTo(path string) http.HandlerFunc {
 }
 
 func (s *ShiftAPI) serveSchema(res http.ResponseWriter, req *http.Request) {
-	b, err := s.spec.RenderJSON("  ")
+	b, err := s.spec.MarshalJSON()
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		return

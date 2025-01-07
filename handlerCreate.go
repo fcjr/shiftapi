@@ -2,7 +2,7 @@ package shiftapi
 
 import "net/http"
 
-func Get[RequestBody any, ResponseBody any](
+func Get[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -15,7 +15,7 @@ func Get[RequestBody any, ResponseBody any](
 	}
 }
 
-func Post[RequestBody any, ResponseBody any](
+func Post[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -28,7 +28,7 @@ func Post[RequestBody any, ResponseBody any](
 	}
 }
 
-func Put[RequestBody any, ResponseBody any](
+func Put[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -39,7 +39,7 @@ func Put[RequestBody any, ResponseBody any](
 		handlerFunc: handlerFunc,
 	}
 }
-func Patch[RequestBody any, ResponseBody any](
+func Patch[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -51,7 +51,7 @@ func Patch[RequestBody any, ResponseBody any](
 	}
 }
 
-func Delete[RequestBody any, ResponseBody any](
+func Delete[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -63,7 +63,7 @@ func Delete[RequestBody any, ResponseBody any](
 	}
 }
 
-func Head[RequestBody any, ResponseBody any](
+func Head[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
@@ -75,7 +75,7 @@ func Head[RequestBody any, ResponseBody any](
 	}
 }
 
-func Options[RequestBody any, ResponseBody any](
+func Options[RequestBody ValidBody, ResponseBody ValidBody](
 	path string,
 	handlerFunc HandlerFunc[RequestBody, ResponseBody],
 	options ...func(HandlerFunc[RequestBody, ResponseBody]) HandlerFunc[RequestBody, ResponseBody],
