@@ -51,7 +51,7 @@ go get github.com/fcjr/shiftapi
 
     func main() {
         ctx := context.Background()
-        server := shiftapi.New(ctx, shiftapi.WithInfo(shiftapi.Info{
+        server := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
             Title: "Geeter Demo API",
             Description: "It greets you by name.",
         }))
@@ -59,7 +59,7 @@ go get github.com/fcjr/shiftapi
         handleGreet := shiftapi.Post("/greet", greet)
         _ = server.Register(handleGreet) // You should handle errors in production code.
 
-        log.Fatal(server.ListenAndServe(":8080"))
+        log.Fatal(server.ListenAndServe(ctx, ":8080"))
         // redoc will be served at http://localhost:8080/docs
     }
 ```
