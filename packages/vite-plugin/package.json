@@ -1,0 +1,41 @@
+{
+  "name": "@shiftapi/vite-plugin",
+  "version": "0.1.0",
+  "description": "Vite plugin for fully-typed TypeScript clients from shiftapi Go servers",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./virtual": {
+      "types": "./virtual.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "virtual.d.ts"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "openapi-fetch": "^0.12.0 || ^0.13.0",
+    "vite": "^5.0.0 || ^6.0.0"
+  },
+  "dependencies": {
+    "openapi-typescript": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "openapi-fetch": "^0.13.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.0.0"
+  }
+}
