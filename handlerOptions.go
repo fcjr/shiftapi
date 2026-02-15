@@ -1,27 +1,40 @@
 package shiftapi
 
-type HandlerInfo struct {
+import "net/http"
+
+// RouteOption configures a route.
+type RouteOption func(*routeConfig)
+
+type routeConfig struct {
+	info   *RouteInfo
+	status int
+}
+
+func applyRouteOptions(opts []RouteOption) routeConfig {
+	cfg := routeConfig{status: http.StatusOK}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+// RouteInfo provides metadata for a route in the OpenAPI spec.
+type RouteInfo struct {
 	Summary     string
 	Description string
 	Tags        []string
 }
 
-type optionsApplier interface {
-	setInfo(*HandlerInfo)
+// WithRouteInfo sets the route's OpenAPI metadata.
+func WithRouteInfo(info RouteInfo) RouteOption {
+	return func(cfg *routeConfig) {
+		cfg.info = &info
+	}
 }
 
-func (h *handler[RequestBody, ResponseBody]) setInfo(info *HandlerInfo) {
-	h.info = info
-}
-
-var _ optionsApplier = (*handler[ValidBody, ValidBody])(nil)
-
-func WithHandlerInfo(info *HandlerInfo) func(Handler) Handler {
-	return func(h Handler) Handler {
-		if handler, ok := h.(optionsApplier); ok {
-			handler.setInfo(info)
-			return h
-		}
-		panic("invalid handler type, this should never happen, please open an issue on github")
+// WithStatus sets the success HTTP status code for the route (default: 200).
+func WithStatus(status int) RouteOption {
+	return func(cfg *routeConfig) {
+		cfg.status = status
 	}
 }

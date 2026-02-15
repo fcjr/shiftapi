@@ -1,91 +1,98 @@
 package shiftapi
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+	"reflect"
+)
 
-func method[RequestBody ValidBody, ResponseBody ValidBody](
+func registerRoute[Resp any](
+	api *API,
 	method string,
 	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	h := &handler[RequestBody, ResponseBody]{
-		method:      method,
-		path:        path,
-		handlerFunc: handlerFunc,
+	fn HandlerFunc[Resp],
+	options ...RouteOption,
+) {
+	cfg := applyRouteOptions(options)
+
+	var resp Resp
+	outType := reflect.TypeOf(resp)
+
+	if err := api.updateSchema(method, path, nil, outType, cfg.info, cfg.status); err != nil {
+		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, path, err))
 	}
-	for _, option := range options {
-		option(h)
+
+	pattern := fmt.Sprintf("%s %s", method, path)
+	api.mux.HandleFunc(pattern, adapt(fn, cfg.status))
+}
+
+func registerRouteWithBody[Body, Resp any](
+	api *API,
+	method string,
+	path string,
+	fn HandlerFuncWithBody[Body, Resp],
+	options ...RouteOption,
+) {
+	cfg := applyRouteOptions(options)
+
+	var body Body
+	inType := reflect.TypeOf(body)
+	var resp Resp
+	outType := reflect.TypeOf(resp)
+
+	if err := api.updateSchema(method, path, inType, outType, cfg.info, cfg.status); err != nil {
+		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, path, err))
 	}
-	return h
+
+	pattern := fmt.Sprintf("%s %s", method, path)
+	api.mux.HandleFunc(pattern, adaptWithBody(fn, cfg.status, api.validateBody))
 }
 
-func Get[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodGet, path, handlerFunc, options...)
+// No-body methods
+
+// Get registers a GET handler.
+func Get[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodGet, path, fn, options...)
 }
 
-func Post[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodPost, path, handlerFunc, options...)
+// Delete registers a DELETE handler.
+func Delete[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodDelete, path, fn, options...)
 }
 
-func Put[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodPut, path, handlerFunc, options...)
-}
-func Patch[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodPatch, path, handlerFunc, options...)
+// Head registers a HEAD handler.
+func Head[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodHead, path, fn, options...)
 }
 
-func Delete[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodDelete, path, handlerFunc, options...)
+// Options registers an OPTIONS handler.
+func Options[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodOptions, path, fn, options...)
 }
 
-func Head[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodHead, path, handlerFunc, options...)
+// Trace registers a TRACE handler.
+func Trace[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodTrace, path, fn, options...)
 }
 
-func Options[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodOptions, path, handlerFunc, options...)
+// Body methods
+
+// Post registers a POST handler.
+func Post[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, Resp], options ...RouteOption) {
+	registerRouteWithBody(api, http.MethodPost, path, fn, options...)
 }
 
-func Trace[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodTrace, path, handlerFunc, options...)
+// Put registers a PUT handler.
+func Put[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, Resp], options ...RouteOption) {
+	registerRouteWithBody(api, http.MethodPut, path, fn, options...)
 }
 
-func Connect[RequestBody ValidBody, ResponseBody ValidBody](
-	path string,
-	handlerFunc HandlerFunc[RequestBody, ResponseBody],
-	options ...func(Handler) Handler,
-) *handler[RequestBody, ResponseBody] {
-	return method(http.MethodConnect, path, handlerFunc, options...)
+// Patch registers a PATCH handler.
+func Patch[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, Resp], options ...RouteOption) {
+	registerRouteWithBody(api, http.MethodPatch, path, fn, options...)
+}
+
+// Connect registers a CONNECT handler.
+func Connect[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, Resp], options ...RouteOption) {
+	registerRouteWithBody(api, http.MethodConnect, path, fn, options...)
 }

@@ -2,9 +2,13 @@ package shiftapi
 
 import "github.com/getkin/kin-openapi/openapi3"
 
-type ServerInfo struct {
-	Summary        string
+// Option configures an API.
+type Option func(*API)
+
+// Info describes the API.
+type Info struct {
 	Title          string
+	Summary        string
 	Description    string
 	TermsOfService string
 	Contact        *Contact
@@ -12,20 +16,29 @@ type ServerInfo struct {
 	Version        string
 }
 
+// Contact describes the API contact information.
 type Contact struct {
 	Name  string
 	URL   string
 	Email string
 }
 
+// License describes the API license.
 type License struct {
 	Name       string
 	URL        string
 	Identifier string
 }
 
-func WithServerInfo(info ServerInfo) func(*ShiftAPI) *ShiftAPI {
-	return func(api *ShiftAPI) *ShiftAPI {
+// ExternalDocs links to external documentation.
+type ExternalDocs struct {
+	Description string
+	URL         string
+}
+
+// WithInfo configures the API metadata.
+func WithInfo(info Info) Option {
+	return func(api *API) {
 		api.spec.Info = &openapi3.Info{
 			Title:       info.Title,
 			Description: info.Description,
@@ -44,21 +57,15 @@ func WithServerInfo(info ServerInfo) func(*ShiftAPI) *ShiftAPI {
 				URL:  info.License.URL,
 			}
 		}
-		return api
 	}
 }
 
-type ExternalDocs struct {
-	Description string
-	URL         string
-}
-
-func WithExternalDocs(externalDocs ExternalDocs) func(*ShiftAPI) *ShiftAPI {
-	return func(api *ShiftAPI) *ShiftAPI {
+// WithExternalDocs links to external documentation.
+func WithExternalDocs(docs ExternalDocs) Option {
+	return func(api *API) {
 		api.spec.ExternalDocs = &openapi3.ExternalDocs{
-			Description: externalDocs.Description,
-			URL:         externalDocs.URL,
+			Description: docs.Description,
+			URL:         docs.URL,
 		}
-		return api
 	}
 }

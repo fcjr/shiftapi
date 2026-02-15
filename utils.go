@@ -1,5 +1,5 @@
 package shiftapi
 
-func String(s string) *string {
+func stringPtr(s string) *string {
 	return &s
 }

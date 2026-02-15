@@ -1,126 +1,86 @@
 package shiftapi
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http"
-	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
+	"github.com/go-playground/validator/v10"
 )
 
-const defaultReadTimeout = 10 * time.Second
-const defaultWriteTimeout = 10 * time.Second
-const defaultShutdownGracePeriod = 10 * time.Second
-
-type ShiftAPI struct {
-	spec    *openapi3.T
-	specGen *openapi3gen.Generator
-	mux     *http.ServeMux
+// API collects typed handler registrations, generates an OpenAPI schema,
+// and implements http.Handler so it can be used with any standard server.
+type API struct {
+	spec     *openapi3.T
+	specGen  *openapi3gen.Generator
+	mux      *http.ServeMux
+	validate *validator.Validate
 }
 
-func New(
-	options ...func(*ShiftAPI) *ShiftAPI,
-) *ShiftAPI {
-	mux := http.NewServeMux()
-	spec := &openapi3.T{
-		OpenAPI: "3.1",
-		Paths:   &openapi3.Paths{},
-		Components: &openapi3.Components{
-			Schemas: make(openapi3.Schemas),
+// New creates a new API with the given options.
+func New(options ...Option) *API {
+	api := &API{
+		spec: &openapi3.T{
+			OpenAPI: "3.1",
+			Paths:   &openapi3.Paths{},
+			Components: &openapi3.Components{
+				Schemas: make(openapi3.Schemas),
+			},
 		},
+		specGen: openapi3gen.NewGenerator(
+			openapi3gen.SchemaCustomizer(validateSchemaCustomizer),
+		),
+		mux:      http.NewServeMux(),
+		validate: validator.New(),
 	}
-
-	api := &ShiftAPI{
-		spec:    spec,
-		specGen: openapi3gen.NewGenerator(),
-		mux:     mux,
+	for _, opt := range options {
+		opt(api)
 	}
-	for _, option := range options {
-		api = option(api)
-	}
-	mux.HandleFunc("GET /openapi.json", api.serveSchema)
-	mux.HandleFunc("GET /docs", api.serveDocs)
-	mux.HandleFunc("GET /", api.redirectTo("/docs"))
+	api.mux.HandleFunc("GET /openapi.json", api.serveSpec)
+	api.mux.HandleFunc("GET /docs", api.serveDocs)
+	api.mux.HandleFunc("GET /", api.redirectTo("/docs"))
 	return api
 }
 
-// Register adds 1 or more handlers to the server.
-// The handlers are expected to be created via the shiftapi.Post, shiftapi.Get,
-// shiftapi.Put, shiftapi.Patch, and shiftapi.Delete functions.
-func (s *ShiftAPI) Register(handlers ...Handler) error {
-	for _, h := range handlers {
-		if err := h.register(s); err != nil {
-			return err
-		}
-	}
-	return nil
+// ServeHTTP implements http.Handler.
+func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.mux.ServeHTTP(w, r)
 }
 
-func (s *ShiftAPI) redirectTo(path string) http.HandlerFunc {
-	return func(res http.ResponseWriter, req *http.Request) {
-		http.Redirect(res, req, path, http.StatusTemporaryRedirect)
+// Spec returns the OpenAPI specification.
+func (a *API) Spec() *openapi3.T {
+	return a.spec
+}
+
+func (a *API) validateBody(val any) error {
+	return validateStruct(a.validate, val)
+}
+
+func (a *API) serveSpec(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(a.spec); err != nil {
+		http.Error(w, "error encoding spec", http.StatusInternalServerError)
 	}
 }
 
-func (s *ShiftAPI) serveSchema(res http.ResponseWriter, req *http.Request) {
-	x, err := s.spec.MarshalYAML()
-	if err != nil {
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	b, err := json.MarshalIndent(x, "", "  ")
-	if err != nil {
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	res.Header().Set("Content-Type", "application/json")
-	_, _ = res.Write(b)
-}
-
-func (s *ShiftAPI) serveDocs(res http.ResponseWriter, req *http.Request) {
+func (a *API) serveDocs(w http.ResponseWriter, r *http.Request) {
 	title := ""
-	if s.spec.Info != nil {
-		title = s.spec.Info.Title
+	if a.spec.Info != nil {
+		title = a.spec.Info.Title
 	}
-	err := genRedocHTML(redocData{
+	if err := genDocsHTML(docsData{
 		Title:   title,
 		SpecURL: "/openapi.json",
-	}, res)
-	if err != nil {
-		fmt.Println(err)
-		res.WriteHeader(http.StatusInternalServerError)
+	}, w); err != nil {
+		http.Error(w, "error generating docs", http.StatusInternalServerError)
 	}
 }
 
-func (s *ShiftAPI) ListenAndServe(ctx context.Context, addr string) error {
-	// TODO add address to schema
-
-	httpServer := &http.Server{
-		Addr:         addr,
-		Handler:      s.mux,
-		ReadTimeout:  defaultReadTimeout,
-		WriteTimeout: defaultWriteTimeout,
-		BaseContext: func(listener net.Listener) context.Context {
-			return ctx
-		},
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- httpServer.ListenAndServe()
-	}()
-
-	select {
-	case <-ctx.Done():
-		ctx, cancel := context.WithTimeout(context.Background(), defaultShutdownGracePeriod)
-		defer cancel()
-		return httpServer.Shutdown(ctx)
-	case err := <-errCh:
-		return err
+func (a *API) redirectTo(path string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, path, http.StatusTemporaryRedirect)
 	}
 }
