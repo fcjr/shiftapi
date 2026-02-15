@@ -1,4 +1,4 @@
-name: go-lint
+name: ci
 on:
   pull_request:
     branches:
@@ -7,11 +7,33 @@ on:
     branches:
       - main
 jobs:
-  build:
+  go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run test
