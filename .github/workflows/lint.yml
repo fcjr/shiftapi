@@ -36,5 +36,5 @@ jobs:
         with:
           go-version-file: go.mod
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm run test
+      - run: pnpm --filter @shiftapi/vite-plugin build
+      - run: pnpm --filter @shiftapi/vite-plugin test
