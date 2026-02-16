@@ -1,0 +1,22 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Node
+node_modules/
+dist/
+.turbo/
+
+# Env
+.env
+
+# IDE
+.DS_Store
+*.log
+.vscode/
+.idea/
