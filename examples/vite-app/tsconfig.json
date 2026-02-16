@@ -7,8 +7,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "paths": {
-      "@shiftapi/client": ["./node_modules/.shiftapi/client.d.ts"]
+      "@shiftapi/client": [
+        "./node_modules/.shiftapi/client.d.ts"
+      ]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

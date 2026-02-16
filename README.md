@@ -243,17 +243,7 @@ In dev mode, the plugin also:
 | `goRoot` | `process.cwd()` | Go module root directory |
 | `url` | `"http://localhost:8080"` | Go server address for dev proxy |
 
-For IDE autocomplete, add to your `tsconfig.json`:
-
-```json
-{
-    "compilerOptions": {
-        "paths": {
-            "@shiftapi/client": ["./node_modules/.shiftapi/client.d.ts"]
-        }
-    }
-}
-```
+The plugin automatically updates your `tsconfig.json` with the required path mapping for IDE autocomplete on first run.
 
 ### Testing
 
@@ -272,6 +262,17 @@ func TestHealthEndpoint(t *testing.T) {
         t.Fatalf("expected 200, got %d", rec.Code)
     }
 }
+```
+
+### Development
+
+This is a pnpm + [Turborepo](https://turbo.build) monorepo. Turbo handles the build dependency graph — running `pnpm dev` will automatically build the Vite plugin before starting the example app.
+
+```bash
+pnpm install    # install dependencies
+pnpm build      # build all packages
+pnpm dev        # build plugin, then start example Vite + Go app
+pnpm test       # run all tests
 ```
 
 [release-img]: https://img.shields.io/github/v/release/fcjr/shiftapi

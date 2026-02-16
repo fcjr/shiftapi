@@ -1,6 +1,11 @@
 import type { Plugin, ViteDevServer } from "vite";
 import { resolve, relative } from "node:path";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+  existsSync,
+} from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { extractSpec } from "./extract.js";
 import { generateTypes } from "./generate.js";
@@ -24,6 +29,7 @@ export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
   let devServer: ViteDevServer | undefined;
   let goProcess: ChildProcess | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let projectRoot = process.cwd();
 
   function getSpec(): Record<string, unknown> {
     if (!cachedSpec) {
@@ -71,6 +77,28 @@ ${generatedDts
     writeFileSync(resolve(outDir, "client.d.ts"), dtsContent);
   }
 
+  function patchTsConfig(): void {
+    const tsconfigPath = resolve(projectRoot, "tsconfig.json");
+    if (!existsSync(tsconfigPath)) return;
+
+    const raw = readFileSync(tsconfigPath, "utf-8");
+    const tsconfig = JSON.parse(raw);
+
+    if (tsconfig?.compilerOptions?.paths?.[MODULE_ID]) return;
+
+    if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
+    if (!tsconfig.compilerOptions.paths) tsconfig.compilerOptions.paths = {};
+    tsconfig.compilerOptions.paths[MODULE_ID] = [
+      "./node_modules/.shiftapi/client.d.ts",
+    ];
+
+    const indent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
+    writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, indent) + "\n");
+    console.log(
+      "[shiftapi] Updated tsconfig.json with @shiftapi/client path mapping"
+    );
+  }
+
   function startGoServer(): void {
     goProcess = spawn("go", ["run", serverEntry], {
       cwd: resolve(goRoot),
@@ -100,6 +128,11 @@ ${generatedDts
 
   return {
     name: "@shiftapi/vite-plugin",
+
+    configResolved(config) {
+      projectRoot = config.root;
+      patchTsConfig();
+    },
 
     config() {
       // Extract spec to discover API paths, then auto-configure proxy

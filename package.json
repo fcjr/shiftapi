@@ -1,7 +1,11 @@
 {
   "private": true,
+  "devDependencies": {
+    "turbo": "^2"
+  },
   "scripts": {
-    "build": "pnpm -r run build",
-    "test": "pnpm -r run test"
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test"
   }
 }
