@@ -38,3 +38,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @shiftapi/vite-plugin build
       - run: pnpm --filter @shiftapi/vite-plugin test
+      - run: pnpm --filter create-shiftapi build
+      - run: pnpm --filter create-shiftapi test
