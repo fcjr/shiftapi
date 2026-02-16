@@ -13,7 +13,15 @@ Inspired by the simplicity of [FastAPI](https://github.com/tiangolo/fastapi).
 [![GolangCI][golangci-lint-img]][golangci-lint]
 [![Go Report Card][report-card-img]][report-card]
 
-## Installation
+## Getting Started
+
+The fastest way to get started is with `create-shiftapi`, which scaffolds a full-stack app with a Go API backend and a typed frontend (React or Svelte):
+
+```sh
+npx create-shiftapi@latest
+```
+
+You don't need a frontend to use ShiftAPI — it works great as a standalone Go API framework too. To add it to an existing Go project:
 
 ```sh
 go get github.com/fcjr/shiftapi
