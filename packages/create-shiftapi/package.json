@@ -1,6 +1,6 @@
 {
   "name": "create-shiftapi",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Scaffold a new ShiftAPI fullstack app",
   "type": "module",
   "bin": {
