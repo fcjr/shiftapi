@@ -17,11 +17,11 @@ const renameFiles: Record<string, string> = {
   _gitignore: ".gitignore",
 };
 
-const templatesDir = path.resolve(
-  fileURLToPath(import.meta.url),
-  "../..",
-  "templates",
-);
+const pkgDir = path.resolve(fileURLToPath(import.meta.url), "../..");
+const templatesDir = path.join(pkgDir, "templates");
+const pkgVersion = JSON.parse(
+  fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"),
+).version as string;
 
 function replaceplaceholders(
   content: string,
@@ -30,7 +30,8 @@ function replaceplaceholders(
   return content
     .replaceAll("{{name}}", opts.name)
     .replaceAll("{{modulePath}}", opts.modulePath)
-    .replaceAll("{{port}}", opts.port);
+    .replaceAll("{{port}}", opts.port)
+    .replaceAll("{{version}}", pkgVersion);
 }
 
 function renamePath(filePath: string, opts: ScaffoldOptions): string {
