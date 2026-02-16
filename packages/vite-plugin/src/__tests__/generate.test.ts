@@ -32,6 +32,7 @@ describe("buildVirtualModuleSource", () => {
 
     expect(source).toContain('import createClient from "openapi-fetch"');
     expect(source).toContain("export const client");
+    expect(source).toContain("import.meta.env.VITE_SHIFTAPI_BASE_URL");
     expect(source).toContain("/api");
     expect(source).toContain("export { createClient }");
     // Should NOT contain TypeScript syntax

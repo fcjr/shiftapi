@@ -9,7 +9,9 @@ export function buildVirtualModuleSource(baseUrl: string): string {
 import createClient from "openapi-fetch";
 
 /** Pre-configured, fully-typed API client. */
-export const client = createClient(${JSON.stringify({ baseUrl })});
+export const client = createClient({
+  baseUrl: import.meta.env.VITE_SHIFTAPI_BASE_URL || ${JSON.stringify(baseUrl)},
+});
 
 export { createClient };
 `;

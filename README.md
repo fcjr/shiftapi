@@ -239,9 +239,20 @@ In dev mode, the plugin also:
 | Option | Default | Description |
 |---|---|---|
 | `server` | *(required)* | Go entry point (e.g. `"./cmd/server"`) |
-| `baseUrl` | `"/"` | Runtime base URL for the API client |
+| `baseUrl` | `"/"` | Fallback base URL for the API client |
 | `goRoot` | `process.cwd()` | Go module root directory |
 | `url` | `"http://localhost:8080"` | Go server address for dev proxy |
+
+**Configuring the API base URL for production:**
+
+In dev mode, the plugin proxies all API requests through Vite's dev server so the default `baseUrl` of `"/"` works automatically. In production, where the API runs on a different host, set the `VITE_SHIFTAPI_BASE_URL` environment variable:
+
+```bash
+# .env.production
+VITE_SHIFTAPI_BASE_URL=https://api.example.com
+```
+
+This follows Vite's standard [env file](https://vite.dev/guide/env-and-mode) convention — `.env.production` is loaded during `vite build`, `.env.development` during `vite dev`, etc. The `baseUrl` plugin option serves as the fallback when the env var is not set.
 
 The plugin automatically updates your `tsconfig.json` with the required path mapping for IDE autocomplete on first run.
 
