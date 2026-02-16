@@ -60,7 +60,7 @@ func doRequest(t *testing.T, api http.Handler, method, path string, body string)
 func decodeJSON[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
 	var v T
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
@@ -69,7 +69,7 @@ func decodeJSON[T any](t *testing.T, resp *http.Response) T {
 
 func readBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("failed to read response body: %v", err)
@@ -190,7 +190,7 @@ func TestServeOpenAPISpec(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&spec); err != nil {
 		t.Fatalf("failed to decode spec: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if spec["openapi"] != "3.1" {
 		t.Errorf("expected openapi 3.1, got %v", spec["openapi"])
@@ -225,7 +225,7 @@ func TestRootRedirectsToDocs(t *testing.T) {
 	rec := httptest.NewRecorder()
 	api.ServeHTTP(rec, req)
 	resp := rec.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusTemporaryRedirect {
 		t.Fatalf("expected 307, got %d", resp.StatusCode)
@@ -887,7 +887,7 @@ func TestHTTPTestServerCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -1127,8 +1127,10 @@ func TestValidationRequiredFieldMissing(t *testing.T) {
 	}
 
 	var result map[string]any
-	json.NewDecoder(resp.Body).Decode(&result)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	_ = resp.Body.Close()
 
 	if result["message"] != "validation failed" {
 		t.Errorf("expected message 'validation failed', got %v", result["message"])
@@ -1158,8 +1160,10 @@ func TestValidationEmailInvalid(t *testing.T) {
 	}
 
 	var result map[string]any
-	json.NewDecoder(resp.Body).Decode(&result)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	_ = resp.Body.Close()
 
 	errs := result["errors"].([]any)
 	found := false

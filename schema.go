@@ -211,7 +211,7 @@ func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
 }
 
 func scrubRefs(s *openapi3.SchemaRef) {
-	if s.Value.Properties == nil || len(s.Value.Properties) <= 0 {
+	if len(s.Value.Properties) == 0 {
 		return
 	}
 	for _, p := range s.Value.Properties {

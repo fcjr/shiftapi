@@ -31,12 +31,12 @@ func exportSpec(api *API, path string) error {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(api.Spec()); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 
