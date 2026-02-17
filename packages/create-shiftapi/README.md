@@ -9,20 +9,20 @@ Scaffold a new [ShiftAPI](https://github.com/fcjr/shiftapi) fullstack app — Go
 ## Usage
 
 ```bash
-npm create shiftapi
+npm create shiftapi@latest
 ```
 
 Or with pnpm / yarn:
 
 ```bash
-pnpm create shiftapi
-yarn create shiftapi
+pnpm create shiftapi@latest
+yarn create shiftapi@latest
 ```
 
 You can also pass the project name directly:
 
 ```bash
-npm create shiftapi my-app
+npm create shiftapi@latest my-app
 ```
 
 ## What You Get
