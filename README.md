@@ -3,25 +3,33 @@
 	<img src="assets/logo.svg" alt="ShiftAPI Logo">
 </p>
 
-# ShiftAPI
+<h3 align="center">End-to-end type safety from Go structs to TypeScript frontend.</h3>
 
-Quickly write RESTful APIs in Go with automatic OpenAPI 3.1 schema generation.
+<p align="center">
+  ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler types at runtime, then uses a Vite plugin to turn that spec into a fully-typed TypeScript client — so your frontend stays in sync with your API automatically.
+</p>
 
-Inspired by the simplicity of [FastAPI](https://github.com/tiangolo/fastapi).
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/fcjr/shiftapi"><img src="https://pkg.go.dev/badge/github.com/fcjr/shiftapi.svg" alt="Go Reference"></a>
+  <a href="https://github.com/fcjr/shiftapi/actions?query=workflow%3Ago-lint"><img src="https://github.com/fcjr/shiftapi/workflows/go-lint/badge.svg" alt="GolangCI"></a>
+  <a href="https://goreportcard.com/report/github.com/fcjr/shiftapi"><img src="https://goreportcard.com/badge/github.com/fcjr/shiftapi" alt="Go Report Card"></a>
+  <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm"></a>
+</p>
 
-<!-- [![GitHub release (latest by date)][release-img]][release] -->
-[![GolangCI][golangci-lint-img]][golangci-lint]
-[![Go Report Card][report-card-img]][report-card]
+```
+Go structs ──→ OpenAPI 3.1 spec ──→ TypeScript types ──→ Typed fetch client
+   (compile time)     (runtime)         (build time)        (your frontend)
+```
 
 ## Getting Started
 
-The fastest way to get started is with `create-shiftapi`, which scaffolds a full-stack app with a Go API backend and a typed frontend (React or Svelte):
+Scaffold a full-stack app (Go + React or Svelte):
 
 ```sh
 npx create-shiftapi@latest
 ```
 
-You don't need a frontend to use ShiftAPI — it works great as a standalone Go API framework too. To add it to an existing Go project:
+Or add ShiftAPI to an existing Go project:
 
 ```sh
 go get github.com/fcjr/shiftapi
@@ -53,56 +61,41 @@ func greet(r *http.Request, body *Person) (*Greeting, error) {
 
 func main() {
     api := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
-        Title:       "Greeter API",
-        Description: "It greets you by name.",
-        Version:     "1.0.0",
+        Title:   "Greeter API",
+        Version: "1.0.0",
     }))
 
     shiftapi.Post(api, "/greet", greet)
 
     log.Println("listening on :8080")
     log.Fatal(shiftapi.ListenAndServe(":8080", api))
-    // docs at http://localhost:8080/docs
+    // interactive docs at http://localhost:8080/docs
 }
 ```
 
-## How It Works
+That's it. ShiftAPI reflects your Go types into an OpenAPI 3.1 spec at `/openapi.json` and serves interactive docs at `/docs` — no code generation step, no annotations.
 
-ShiftAPI is a thin layer on top of `net/http`. The `API` type implements `http.Handler`, so it works with the standard library server, middleware, and testing tools.
+## Features
 
-Generic free functions (`Get`, `Post`, `Put`, etc.) capture your request/response types at compile time for two purposes:
+### Generic type-safe handlers
 
-1. **Type-safe request handling** — request bodies are automatically decoded from JSON and passed to your handler as typed values.
-2. **Automatic OpenAPI generation** — the types are reflected into an OpenAPI 3.1 spec served at `/openapi.json`, with interactive docs at `/docs`.
-
-## Usage
-
-### Handlers with a request body (POST, PUT, PATCH)
+Generic free functions capture your request and response types at compile time. Handlers with a body (`Post`, `Put`, `Patch`) receive the decoded request as a typed value. Handlers without a body (`Get`, `Delete`, `Head`) just receive the request.
 
 ```go
+// POST — body is decoded and passed as *CreateUser
 shiftapi.Post(api, "/users", func(r *http.Request, body *CreateUser) (*User, error) {
-    user, err := db.CreateUser(r.Context(), body)
-    if err != nil {
-        return nil, err
-    }
-    return user, nil
+    return db.CreateUser(r.Context(), body)
 }, shiftapi.WithStatus(http.StatusCreated))
-```
 
-### Handlers without a request body (GET, DELETE, HEAD)
-
-```go
+// GET — standard *http.Request, use PathValue for path params
 shiftapi.Get(api, "/users/{id}", func(r *http.Request) (*User, error) {
-    id := r.PathValue("id")  // standard Go 1.22+ path params
-    return db.GetUser(r.Context(), id)
+    return db.GetUser(r.Context(), r.PathValue("id"))
 })
 ```
 
-Since the handler receives a standard `*http.Request`, you have full access to path params, query params, headers, cookies, context — everything you'd have in a regular `http.HandlerFunc`.
-
 ### Validation
 
-ShiftAPI has built-in validation powered by [go-playground/validator](https://github.com/go-playground/validator). Add `validate` struct tags to your request types — they are enforced at runtime and automatically reflected in the OpenAPI schema.
+Built-in validation via [go-playground/validator](https://github.com/go-playground/validator). Struct tags are enforced at runtime *and* reflected into the OpenAPI schema.
 
 ```go
 type CreateUser struct {
@@ -113,7 +106,7 @@ type CreateUser struct {
 }
 ```
 
-Invalid requests return a `422 Unprocessable Entity` with per-field errors:
+Invalid requests return `422` with per-field errors:
 
 ```json
 {
@@ -125,82 +118,51 @@ Invalid requests return a `422 Unprocessable Entity` with per-field errors:
 }
 ```
 
-Supported tags: `required`, `email`, `url`/`uri`, `uuid`, `datetime`, `min`, `max`, `gte`, `lte`, `gt`, `lt`, `len`, `oneof`. All are mapped to the corresponding OpenAPI schema properties (`format`, `minimum`, `maxLength`, `enum`, etc.).
+Supported tags: `required`, `email`, `url`/`uri`, `uuid`, `datetime`, `min`, `max`, `gte`, `lte`, `gt`, `lt`, `len`, `oneof` — all mapped to their OpenAPI equivalents (`format`, `minimum`, `maxLength`, `enum`, etc.). Use `WithValidator()` to supply a custom validator instance.
 
-To use a custom validator instance:
+### Error handling
 
-```go
-api := shiftapi.New(shiftapi.WithValidator(myValidator))
-```
-
-### Error Handling
-
-Return `shiftapi.Error` to control the HTTP status code and message:
+Return `shiftapi.Error` to control the status code:
 
 ```go
-shiftapi.Get(api, "/users/{id}", func(r *http.Request) (*User, error) {
-    user, err := db.GetUser(r.Context(), r.PathValue("id"))
-    if err != nil {
-        return nil, shiftapi.Error(http.StatusNotFound, "user not found")
-    }
-    return user, nil
-})
+return nil, shiftapi.Error(http.StatusNotFound, "user not found")
 ```
 
-Any non-`APIError` returns a `500 Internal Server Error`. `APIError` responses are returned as JSON:
+Any non-`APIError` returns `500 Internal Server Error`.
 
-```json
-{"message": "user not found"}
-```
+### Route metadata
 
-### Route Metadata
-
-Add OpenAPI metadata with `WithRouteInfo`:
+Add OpenAPI summaries, descriptions, and tags per route:
 
 ```go
 shiftapi.Post(api, "/greet", greet,
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary:     "Greet a person",
-        Description: "Greet a person with a friendly greeting",
+        Description: "Returns a personalized greeting.",
         Tags:        []string{"greetings"},
     }),
 )
 ```
 
-### Middleware
+### Standard `http.Handler`
 
-Since `API` implements `http.Handler`, any standard middleware works:
+`API` implements `http.Handler`, so it works with any middleware, `httptest`, and `ServeMux` mounting:
 
 ```go
-api := shiftapi.New()
-shiftapi.Get(api, "/health", healthHandler)
-
+// middleware
 wrapped := loggingMiddleware(corsMiddleware(api))
 http.ListenAndServe(":8080", wrapped)
-```
 
-### Mounting Under a Prefix
-
-```go
-api := shiftapi.New()
-shiftapi.Get(api, "/health", healthHandler)
-
+// mount under a prefix
 mux := http.NewServeMux()
 mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
-http.ListenAndServe(":8080", mux)
 ```
 
-### TypeScript Type Safety
+## TypeScript Integration
 
-ShiftAPI can generate fully-typed TypeScript clients from your Go types using the `@shiftapi/vite-plugin`. One line change on the Go side, full autocomplete on the frontend.
+The `@shiftapi/vite-plugin` extracts your OpenAPI spec at build time, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and serves a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client as a virtual module.
 
-**Go** — use `shiftapi.ListenAndServe` instead of `http.ListenAndServe`:
-
-```go
-log.Fatal(shiftapi.ListenAndServe(":8080", api))
-```
-
-**Install the Vite plugin:**
+**Install:**
 
 ```sh
 npm install @shiftapi/vite-plugin
@@ -215,13 +177,13 @@ import { defineConfig } from "vite";
 export default defineConfig({
     plugins: [
         shiftapi({
-            server: "./cmd/server",  // Go entry point
+            server: "./cmd/server", // Go entry point
         }),
     ],
 });
 ```
 
-**Frontend** — import the typed client:
+**Use the typed client:**
 
 ```typescript
 import { client } from "@shiftapi/client";
@@ -235,12 +197,7 @@ const { data: greeting } = await client.POST("/greet", {
 // body and response are fully typed from your Go structs
 ```
 
-The plugin extracts your OpenAPI spec at build time (no running server required), generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and serves a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client as a virtual module.
-
-In dev mode, the plugin also:
-- Starts the Go server automatically (`go run`)
-- Auto-configures Vite's proxy to forward API requests
-- Watches `.go` files — on change, restarts the server, regenerates types, and reloads the browser
+In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.
 
 **Plugin options:**
 
@@ -251,52 +208,21 @@ In dev mode, the plugin also:
 | `goRoot` | `process.cwd()` | Go module root directory |
 | `url` | `"http://localhost:8080"` | Go server address for dev proxy |
 
-**Configuring the API base URL for production:**
+For production, set `VITE_SHIFTAPI_BASE_URL` in a `.env.production` file to point at your API host. The plugin automatically updates `tsconfig.json` with the required path mapping for IDE autocomplete.
 
-In dev mode, the plugin proxies all API requests through Vite's dev server so the default `baseUrl` of `"/"` works automatically. In production, where the API runs on a different host, set the `VITE_SHIFTAPI_BASE_URL` environment variable:
+## Development
 
-```bash
-# .env.production
-VITE_SHIFTAPI_BASE_URL=https://api.example.com
-```
-
-This follows Vite's standard [env file](https://vite.dev/guide/env-and-mode) convention — `.env.production` is loaded during `vite build`, `.env.development` during `vite dev`, etc. The `baseUrl` plugin option serves as the fallback when the env var is not set.
-
-The plugin automatically updates your `tsconfig.json` with the required path mapping for IDE autocomplete on first run.
-
-### Testing
-
-Use `httptest` directly:
-
-```go
-func TestHealthEndpoint(t *testing.T) {
-    api := shiftapi.New()
-    shiftapi.Get(api, "/health", healthHandler)
-
-    req := httptest.NewRequest(http.MethodGet, "/health", nil)
-    rec := httptest.NewRecorder()
-    api.ServeHTTP(rec, req)
-
-    if rec.Code != http.StatusOK {
-        t.Fatalf("expected 200, got %d", rec.Code)
-    }
-}
-```
-
-### Development
-
-This is a pnpm + [Turborepo](https://turbo.build) monorepo. Turbo handles the build dependency graph — running `pnpm dev` will automatically build the Vite plugin before starting the example app.
+This is a pnpm + [Turborepo](https://turbo.build) monorepo.
 
 ```bash
 pnpm install    # install dependencies
 pnpm build      # build all packages
-pnpm dev        # build plugin, then start example Vite + Go app
+pnpm dev        # start example Vite + Go app
 pnpm test       # run all tests
 ```
 
-[release-img]: https://img.shields.io/github/v/release/fcjr/shiftapi
-[release]: https://github.com/fcjr/shiftapi/releases
-[golangci-lint-img]: https://github.com/fcjr/shiftapi/workflows/go-lint/badge.svg
-[golangci-lint]: https://github.com/fcjr/shiftapi/actions?query=workflow%3Ago-lint
-[report-card-img]: https://goreportcard.com/badge/github.com/fcjr/shiftapi
-[report-card]: https://goreportcard.com/report/github.com/fcjr/shiftapi
+Go tests can also be run directly:
+
+```bash
+go test -count=1 ./...
+```
