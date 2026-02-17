@@ -26,7 +26,7 @@ Go structs ──→ OpenAPI 3.1 spec ──→ TypeScript types ──→ Typed
 Scaffold a full-stack app (Go + React or Svelte):
 
 ```sh
-npx create-shiftapi@latest
+npm create shiftapi@latest
 ```
 
 Or add ShiftAPI to an existing Go project:
