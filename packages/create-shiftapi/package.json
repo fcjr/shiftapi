@@ -2,6 +2,17 @@
   "name": "create-shiftapi",
   "version": "0.0.2",
   "description": "Scaffold a new ShiftAPI fullstack app",
+  "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/fcjr/shiftapi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fcjr/shiftapi",
+    "directory": "packages/create-shiftapi"
+  },
+  "bugs": {
+    "url": "https://github.com/fcjr/shiftapi/issues"
+  },
   "type": "module",
   "bin": {
     "create-shiftapi": "dist/index.js"

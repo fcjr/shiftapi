@@ -2,6 +2,17 @@
   "name": "@shiftapi/vite-plugin",
   "version": "0.0.2",
   "description": "Vite plugin for fully-typed TypeScript clients from shiftapi Go servers",
+  "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/fcjr/shiftapi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fcjr/shiftapi",
+    "directory": "packages/vite-plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/fcjr/shiftapi/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
