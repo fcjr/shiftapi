@@ -1,6 +1,6 @@
 {
   "name": "@shiftapi/vite-plugin",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Vite plugin for fully-typed TypeScript clients from shiftapi Go servers",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
   "license": "MIT",
