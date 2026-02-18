@@ -1,6 +1,9 @@
 
 <p align="center">
-	<img src="assets/logo.svg" alt="ShiftAPI Logo">
+	<picture>
+		<source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+		<img src="assets/logo.svg" alt="ShiftAPI Logo">
+	</picture>
 </p>
 
 <h3 align="center">End-to-end type safety from Go structs to TypeScript frontend.</h3>
