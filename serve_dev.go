@@ -43,7 +43,7 @@ func exportSpec(api *API, path string) error {
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(api.Spec()); err != nil {
+	if err := enc.Encode(api.spec); err != nil {
 		_ = f.Close()
 		return err
 	}

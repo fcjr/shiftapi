@@ -48,11 +48,6 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// Spec returns the OpenAPI specification.
-func (a *API) Spec() *openapi3.T {
-	return a.spec
-}
-
 func (a *API) validateBody(val any) error {
 	return validateStruct(a.validate, val)
 }
