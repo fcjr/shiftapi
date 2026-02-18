@@ -13,7 +13,7 @@ export function extractSpec(serverEntry: string, goRoot: string): object {
   const specPath = join(tempDir, "openapi.json");
 
   try {
-    execFileSync("go", ["run", serverEntry], {
+    execFileSync("go", ["run", "-tags", "shiftapidev", serverEntry], {
       cwd: goRoot,
       env: {
         ...process.env,

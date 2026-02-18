@@ -1,3 +1,5 @@
+//go:build shiftapidev
+
 package shiftapi
 
 import (

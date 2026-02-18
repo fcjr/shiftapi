@@ -7,6 +7,7 @@ import {
   existsSync,
 } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer as createTcpServer } from "node:net";
 import { extractSpec } from "./extract.js";
 import { generateTypes } from "./generate.js";
 import { buildVirtualModuleSource } from "./virtualModule.js";
@@ -15,6 +16,24 @@ import type { ShiftAPIPluginOptions } from "./types.js";
 const MODULE_ID = "@shiftapi/client";
 const RESOLVED_MODULE_ID = "\0" + MODULE_ID;
 
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createTcpServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port);
+  });
+}
+
+async function findFreePort(startPort: number): Promise<number> {
+  for (let port = startPort; port < startPort + 20; port++) {
+    if (await isPortFree(port)) return port;
+  }
+  return startPort;
+}
+
 export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
   const {
     server: serverEntry,
@@ -22,6 +41,10 @@ export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
     goRoot = process.cwd(),
     url = "http://localhost:8080",
   } = options;
+
+  const parsedUrl = new URL(url);
+  const basePort = parseInt(parsedUrl.port || "8080");
+  let goPort = basePort;
 
   let virtualModuleSource = "";
   let generatedDts = "";
@@ -100,10 +123,14 @@ ${generatedDts
   }
 
   function startGoServer(): void {
-    goProcess = spawn("go", ["run", serverEntry], {
+    goProcess = spawn("go", ["run", "-tags", "shiftapidev", serverEntry], {
       cwd: resolve(goRoot),
       stdio: ["ignore", "inherit", "inherit"],
       detached: true,
+      env: {
+        ...process.env,
+        SHIFTAPI_PORT: String(goPort),
+      },
     });
 
     goProcess.on("error", (err) => {
@@ -117,7 +144,9 @@ ${generatedDts
       goProcess = null;
     });
 
-    console.log(`[shiftapi] Go server starting: go run ${serverEntry}`);
+    console.log(
+      `[shiftapi] Go server starting on port ${goPort}: go run ${serverEntry}`
+    );
   }
 
   function stopGoServer(): Promise<void> {
@@ -149,15 +178,25 @@ ${generatedDts
       patchTsConfig();
     },
 
-    config() {
+    async config(_, env) {
+      if (env.command === "serve") {
+        goPort = await findFreePort(basePort);
+        if (goPort !== basePort) {
+          console.log(
+            `[shiftapi] Port ${basePort} is in use, using ${goPort}`
+          );
+        }
+      }
+
       // Extract spec to discover API paths, then auto-configure proxy
       const spec = getSpec();
       const paths = spec.paths as Record<string, unknown> | undefined;
       if (!paths) return;
 
+      const targetUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}:${goPort}`;
       const proxy: Record<string, string> = {};
       for (const path of Object.keys(paths)) {
-        proxy[path] = url;
+        proxy[path] = targetUrl;
       }
 
       return {
