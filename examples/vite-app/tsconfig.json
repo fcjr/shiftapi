@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "paths": {
       "@shiftapi/client": [
-        "./node_modules/.shiftapi/client.d.ts"
+        "./.shiftapi/client.d.ts"
       ]
     }
   },

@@ -56,7 +56,7 @@ export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
   }
 
   function writeDtsFile(): void {
-    const outDir = resolve("node_modules", ".shiftapi");
+    const outDir = resolve(projectRoot, ".shiftapi");
     if (!existsSync(outDir)) {
       mkdirSync(outDir, { recursive: true });
     }
@@ -89,7 +89,7 @@ ${generatedDts
     if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
     if (!tsconfig.compilerOptions.paths) tsconfig.compilerOptions.paths = {};
     tsconfig.compilerOptions.paths[MODULE_ID] = [
-      "./node_modules/.shiftapi/client.d.ts",
+      "./.shiftapi/client.d.ts",
     ];
 
     const indent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
@@ -103,6 +103,7 @@ ${generatedDts
     goProcess = spawn("go", ["run", serverEntry], {
       cwd: resolve(goRoot),
       stdio: ["ignore", "inherit", "inherit"],
+      detached: true,
     });
 
     goProcess.on("error", (err) => {
@@ -119,11 +120,25 @@ ${generatedDts
     console.log(`[shiftapi] Go server starting: go run ${serverEntry}`);
   }
 
-  function stopGoServer(): void {
-    if (goProcess) {
-      goProcess.kill();
-      goProcess = null;
-    }
+  function stopGoServer(): Promise<void> {
+    const proc = goProcess;
+    if (!proc || !proc.pid) return Promise.resolve();
+
+    const pid = proc.pid;
+    goProcess = null;
+
+    return new Promise((resolve) => {
+      proc.on("exit", () => resolve());
+
+      // Kill the entire process group so the `go run` child process
+      // (the compiled server binary) is also terminated.
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        // Process group may already be gone
+        resolve();
+      }
+    });
   }
 
   return {
@@ -157,6 +172,15 @@ ${generatedDts
       startGoServer();
 
       server.httpServer?.on("close", stopGoServer);
+      process.on("exit", stopGoServer);
+      process.on("SIGINT", () => {
+        stopGoServer();
+        process.exit();
+      });
+      process.on("SIGTERM", () => {
+        stopGoServer();
+        process.exit();
+      });
     },
 
     async buildStart() {
@@ -190,7 +214,7 @@ ${generatedDts
       debounceTimer = setTimeout(async () => {
         try {
           // Restart Go server with new code
-          stopGoServer();
+          await stopGoServer();
           startGoServer();
 
           const changed = await regenerate();
