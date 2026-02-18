@@ -416,11 +416,11 @@ func TestTraceHandler(t *testing.T) {
 
 func TestConnectHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Connect(api, "/tunnel", func(r *http.Request, body *Empty) (*Empty, error) {
+	shiftapi.Connect(api, "/tunnel", func(r *http.Request) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
-	resp := doRequest(t, api, http.MethodConnect, "/tunnel", `{}`)
+	resp := doRequest(t, api, http.MethodConnect, "/tunnel", "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}

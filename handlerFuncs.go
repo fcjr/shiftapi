@@ -93,6 +93,6 @@ func Patch[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, R
 }
 
 // Connect registers a CONNECT handler.
-func Connect[Body, Resp any](api *API, path string, fn HandlerFuncWithBody[Body, Resp], options ...RouteOption) {
-	registerRouteWithBody(api, http.MethodConnect, path, fn, options...)
+func Connect[Resp any](api *API, path string, fn HandlerFunc[Resp], options ...RouteOption) {
+	registerRoute(api, http.MethodConnect, path, fn, options...)
 }
