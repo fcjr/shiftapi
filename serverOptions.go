@@ -40,9 +40,10 @@ type ExternalDocs struct {
 func WithInfo(info Info) Option {
 	return func(api *API) {
 		api.spec.Info = &openapi3.Info{
-			Title:       info.Title,
-			Description: info.Description,
-			Version:     info.Version,
+			Title:          info.Title,
+			Description:    info.Description,
+			TermsOfService: info.TermsOfService,
+			Version:        info.Version,
 		}
 		if info.Contact != nil {
 			api.spec.Info.Contact = &openapi3.Contact{
