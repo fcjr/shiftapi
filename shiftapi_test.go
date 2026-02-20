@@ -1397,6 +1397,490 @@ func TestValidationNestedStructMissingFields(t *testing.T) {
 	}
 }
 
+// --- Query parameter test types ---
+
+type SearchQuery struct {
+	Q     string `query:"q" validate:"required"`
+	Page  int    `query:"page" validate:"min=1"`
+	Limit int    `query:"limit" validate:"min=1,max=100"`
+}
+
+type SearchResult struct {
+	Query string `json:"query"`
+	Page  int    `json:"page"`
+	Limit int    `json:"limit"`
+}
+
+type TagQuery struct {
+	Tags []string `query:"tag"`
+}
+
+type TagResult struct {
+	Tags []string `json:"tags"`
+}
+
+type OptionalQuery struct {
+	Name  string  `query:"name"`
+	Debug *bool   `query:"debug"`
+	Limit *int    `query:"limit"`
+}
+
+type OptionalResult struct {
+	Name     string `json:"name"`
+	HasDebug bool   `json:"has_debug"`
+	Debug    bool   `json:"debug"`
+	HasLimit bool   `json:"has_limit"`
+	Limit    int    `json:"limit"`
+}
+
+type FilterQuery struct {
+	Status string `query:"status" validate:"oneof=active inactive pending"`
+}
+
+// --- Query parameter runtime tests ---
+
+func TestGetWithQueryBasic(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{Query: query.Q, Page: query.Page, Limit: query.Limit}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/search?q=hello&page=2&limit=10", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[SearchResult](t, resp)
+	if result.Query != "hello" {
+		t.Errorf("expected Query=hello, got %q", result.Query)
+	}
+	if result.Page != 2 {
+		t.Errorf("expected Page=2, got %d", result.Page)
+	}
+	if result.Limit != 10 {
+		t.Errorf("expected Limit=10, got %d", result.Limit)
+	}
+}
+
+func TestGetWithQueryMissingRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	// Missing required "q" param
+	resp := doRequest(t, api, http.MethodGet, "/search?page=1&limit=10", "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryInvalidType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	// "page" should be an int, not "abc"
+	resp := doRequest(t, api, http.MethodGet, "/search?q=test&page=abc&limit=10", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQuerySliceParams(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/tags", func(r *http.Request, query TagQuery) (*TagResult, error) {
+		return &TagResult{Tags: query.Tags}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/tags?tag=a&tag=b&tag=c", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[TagResult](t, resp)
+	if len(result.Tags) != 3 {
+		t.Fatalf("expected 3 tags, got %d", len(result.Tags))
+	}
+	expected := []string{"a", "b", "c"}
+	for i, tag := range result.Tags {
+		if tag != expected[i] {
+			t.Errorf("expected tag[%d]=%q, got %q", i, expected[i], tag)
+		}
+	}
+}
+
+func TestGetWithQueryOptionalPointer(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/optional", func(r *http.Request, query OptionalQuery) (*OptionalResult, error) {
+		result := &OptionalResult{Name: query.Name}
+		if query.Debug != nil {
+			result.HasDebug = true
+			result.Debug = *query.Debug
+		}
+		if query.Limit != nil {
+			result.HasLimit = true
+			result.Limit = *query.Limit
+		}
+		return result, nil
+	})
+
+	// With optional params
+	resp := doRequest(t, api, http.MethodGet, "/optional?name=test&debug=true&limit=50", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[OptionalResult](t, resp)
+	if !result.HasDebug || !result.Debug {
+		t.Error("expected debug=true")
+	}
+	if !result.HasLimit || result.Limit != 50 {
+		t.Error("expected limit=50")
+	}
+
+	// Without optional params
+	resp2 := doRequest(t, api, http.MethodGet, "/optional?name=test", "")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+	result2 := decodeJSON[OptionalResult](t, resp2)
+	if result2.HasDebug {
+		t.Error("expected debug to be absent")
+	}
+	if result2.HasLimit {
+		t.Error("expected limit to be absent")
+	}
+}
+
+func TestPostWithQueryAndBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type CreateQuery struct {
+		DryRun bool `query:"dry_run"`
+	}
+	type CreateBody struct {
+		Name string `json:"name"`
+	}
+	type CreateResult struct {
+		Name   string `json:"name"`
+		DryRun bool   `json:"dry_run"`
+	}
+
+	shiftapi.PostWithQuery[CreateQuery, CreateBody, *CreateResult](api, "/items", func(r *http.Request, query CreateQuery, body CreateBody) (*CreateResult, error) {
+		return &CreateResult{Name: body.Name, DryRun: query.DryRun}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPost, "/items?dry_run=true", `{"name":"widget"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[CreateResult](t, resp)
+	if result.Name != "widget" {
+		t.Errorf("expected Name=widget, got %q", result.Name)
+	}
+	if !result.DryRun {
+		t.Error("expected DryRun=true")
+	}
+}
+
+func TestGetWithQueryAndPathParams(t *testing.T) {
+	api := newTestAPI(t)
+
+	type ItemQuery struct {
+		Fields string `query:"fields"`
+	}
+
+	shiftapi.GetWithQuery(api, "/items/{id}", func(r *http.Request, query ItemQuery) (*map[string]string, error) {
+		return &map[string]string{
+			"id":     r.PathValue("id"),
+			"fields": query.Fields,
+		}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/items/abc123?fields=name,price", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	if result["id"] != "abc123" {
+		t.Errorf("expected id=abc123, got %q", result["id"])
+	}
+	if result["fields"] != "name,price" {
+		t.Errorf("expected fields=name,price, got %q", result["fields"])
+	}
+}
+
+func TestDeleteWithQuery(t *testing.T) {
+	api := newTestAPI(t)
+
+	type DeleteQuery struct {
+		Force bool `query:"force"`
+	}
+
+	shiftapi.DeleteWithQuery(api, "/items/{id}", func(r *http.Request, query DeleteQuery) (*map[string]any, error) {
+		return &map[string]any{
+			"id":    r.PathValue("id"),
+			"force": query.Force,
+		}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodDelete, "/items/42?force=true", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryValidationConstraint(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/filter", func(r *http.Request, query FilterQuery) (*map[string]string, error) {
+		return &map[string]string{"status": query.Status}, nil
+	})
+
+	// Valid value
+	resp := doRequest(t, api, http.MethodGet, "/filter?status=active", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Invalid value → 422
+	resp2 := doRequest(t, api, http.MethodGet, "/filter?status=unknown", "")
+	if resp2.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp2.StatusCode)
+	}
+}
+
+// --- Query parameter spec tests ---
+
+func TestSpecQueryParamsDocumented(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+	if op == nil {
+		t.Fatal("expected GET operation on /search")
+	}
+
+	// Should have 3 query params: q, page, limit
+	queryParams := 0
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			queryParams++
+		}
+	}
+	if queryParams != 3 {
+		t.Fatalf("expected 3 query parameters, got %d", queryParams)
+	}
+}
+
+func TestSpecQueryParamTypes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// q is a string
+	if q, ok := paramByName["q"]; !ok {
+		t.Fatal("expected 'q' query parameter")
+	} else if !q.Schema.Value.Type.Is("string") {
+		t.Errorf("expected q type 'string', got %v", q.Schema.Value.Type)
+	}
+
+	// page is an integer
+	if page, ok := paramByName["page"]; !ok {
+		t.Fatal("expected 'page' query parameter")
+	} else if !page.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected page type 'integer', got %v", page.Schema.Value.Type)
+	}
+
+	// limit is an integer
+	if limit, ok := paramByName["limit"]; !ok {
+		t.Fatal("expected 'limit' query parameter")
+	} else if !limit.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected limit type 'integer', got %v", limit.Schema.Value.Type)
+	}
+}
+
+func TestSpecQueryParamRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// q has validate:"required" so it should be required
+	if !paramByName["q"].Required {
+		t.Error("expected 'q' to be required")
+	}
+	// page does not have required tag
+	if paramByName["page"].Required {
+		t.Error("expected 'page' to not be required")
+	}
+}
+
+func TestSpecQueryParamValidationConstraints(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// page has min=1
+	pageSchema := paramByName["page"].Schema.Value
+	if pageSchema.Min == nil || *pageSchema.Min != 1 {
+		t.Errorf("expected page minimum 1, got %v", pageSchema.Min)
+	}
+
+	// limit has min=1,max=100
+	limitSchema := paramByName["limit"].Schema.Value
+	if limitSchema.Min == nil || *limitSchema.Min != 1 {
+		t.Errorf("expected limit minimum 1, got %v", limitSchema.Min)
+	}
+	if limitSchema.Max == nil || *limitSchema.Max != 100 {
+		t.Errorf("expected limit maximum 100, got %v", limitSchema.Max)
+	}
+}
+
+func TestSpecQueryParamEnum(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/filter", func(r *http.Request, query FilterQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/filter").Get
+
+	var statusParam *openapi3.Parameter
+	for _, p := range op.Parameters {
+		if p.Value.Name == "status" {
+			statusParam = p.Value
+			break
+		}
+	}
+	if statusParam == nil {
+		t.Fatal("expected 'status' query parameter")
+	}
+	if len(statusParam.Schema.Value.Enum) != 3 {
+		t.Fatalf("expected 3 enum values, got %d", len(statusParam.Schema.Value.Enum))
+	}
+}
+
+func TestSpecQueryParamSliceType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.GetWithQuery(api, "/tags", func(r *http.Request, query TagQuery) (*TagResult, error) {
+		return &TagResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/tags").Get
+
+	var tagParam *openapi3.Parameter
+	for _, p := range op.Parameters {
+		if p.Value.Name == "tag" {
+			tagParam = p.Value
+			break
+		}
+	}
+	if tagParam == nil {
+		t.Fatal("expected 'tag' query parameter")
+	}
+	if !tagParam.Schema.Value.Type.Is("array") {
+		t.Errorf("expected tag type 'array', got %v", tagParam.Schema.Value.Type)
+	}
+	if tagParam.Schema.Value.Items == nil || !tagParam.Schema.Value.Items.Value.Type.Is("string") {
+		t.Error("expected tag items type 'string'")
+	}
+}
+
+func TestSpecQueryParamsCombinedWithPathParams(t *testing.T) {
+	api := newTestAPI(t)
+
+	type ItemQuery struct {
+		Fields string `query:"fields"`
+	}
+
+	shiftapi.GetWithQuery(api, "/items/{id}", func(r *http.Request, query ItemQuery) (*Item, error) {
+		return &Item{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items/{id}").Get
+
+	pathParams := 0
+	queryParams := 0
+	for _, p := range op.Parameters {
+		switch p.Value.In {
+		case "path":
+			pathParams++
+		case "query":
+			queryParams++
+		}
+	}
+	if pathParams != 1 {
+		t.Errorf("expected 1 path parameter, got %d", pathParams)
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query parameter, got %d", queryParams)
+	}
+}
+
+func TestSpecPostWithQueryHasQueryParamsAndBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type CreateQuery struct {
+		DryRun bool `query:"dry_run"`
+	}
+
+	shiftapi.PostWithQuery[CreateQuery, Item, *Item](api, "/items", func(r *http.Request, query CreateQuery, body Item) (*Item, error) {
+		return &body, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items").Post
+	if op == nil {
+		t.Fatal("expected POST operation on /items")
+	}
+
+	// Should have query params
+	queryParams := 0
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			queryParams++
+		}
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query parameter, got %d", queryParams)
+	}
+
+	// Should also have a request body
+	if op.RequestBody == nil {
+		t.Error("expected request body on POST with query and body")
+	}
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {

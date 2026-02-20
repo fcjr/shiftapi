@@ -82,7 +82,7 @@ That's it. ShiftAPI reflects your Go types into an OpenAPI 3.1 spec at `/openapi
 
 ### Generic type-safe handlers
 
-Generic free functions capture your request and response types at compile time. Handlers with a body (`Post`, `Put`, `Patch`) receive the decoded request as a typed value. Handlers without a body (`Get`, `Delete`, `Head`) just receive the request.
+Generic free functions capture your request and response types at compile time. Handlers with a body (`Post`, `Put`, `Patch`) receive the decoded request as a typed value. Handlers without a body (`Get`, `Delete`, `Head`) just receive the request. Query-param variants (`GetWithQuery`, `PostWithQuery`, etc.) add a typed query struct as well.
 
 ```go
 // POST — body is decoded and passed as *CreateUser
@@ -94,6 +94,30 @@ shiftapi.Post(api, "/users", func(r *http.Request, body *CreateUser) (*User, err
 shiftapi.Get(api, "/users/{id}", func(r *http.Request) (*User, error) {
     return db.GetUser(r.Context(), r.PathValue("id"))
 })
+```
+
+### Typed query parameters
+
+Define a struct with `query` tags and use `GetWithQuery`, `DeleteWithQuery`, `PostWithQuery`, etc. Query params are parsed, validated, and documented in the OpenAPI spec automatically.
+
+```go
+type SearchQuery struct {
+    Q     string `query:"q"     validate:"required"`
+    Page  int    `query:"page"  validate:"min=1"`
+    Limit int    `query:"limit" validate:"min=1,max=100"`
+}
+
+shiftapi.GetWithQuery(api, "/search", func(r *http.Request, query SearchQuery) (*Results, error) {
+    return doSearch(query.Q, query.Page, query.Limit), nil
+})
+```
+
+Supports `string`, `bool`, `int*`, `uint*`, `float*` scalars, `*T` pointers for optional params, and `[]T` slices for repeated params (e.g. `?tag=a&tag=b`). Use `query:"-"` to skip a field. Parse errors return `400`; validation failures return `422`.
+
+For handlers that need both query parameters and a request body, use `PostWithQuery`, `PutWithQuery`, or `PatchWithQuery`:
+
+```go
+shiftapi.PostWithQuery[CreateQuery, CreateBody, *Result](api, "/items", handler)
 ```
 
 ### Validation
@@ -198,6 +222,11 @@ const { data: greeting } = await client.POST("/greet", {
     body: { name: "frank" },
 });
 // body and response are fully typed from your Go structs
+
+const { data: results } = await client.GET("/search", {
+    params: { query: { q: "hello", page: 1, limit: 10 } },
+});
+// query params are fully typed too — { q: string, page?: number, limit?: number }
 ```
 
 In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.
