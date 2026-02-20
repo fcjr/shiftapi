@@ -72,7 +72,20 @@ function gitInit(cwd: string): Promise<void> {
   });
 }
 
+function checkCommand(cmd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, ["version"], (err) => {
+      if (err) {
+        reject(new Error(`"${cmd}" is not installed or not on PATH. Please install it and try again.`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 export async function installDeps(cwd: string): Promise<void> {
+  await checkCommand("go");
   await new Promise<void>((resolve, reject) => {
     execFile("go", ["mod", "tidy"], { cwd }, (err) => {
       if (err) {
@@ -82,6 +95,7 @@ export async function installDeps(cwd: string): Promise<void> {
       resolve();
     });
   });
+  await checkCommand("npm");
   await new Promise<void>((resolve, reject) => {
     execFile("npm", ["install"], { cwd }, (err) => {
       if (err) {
