@@ -3,6 +3,7 @@ package shiftapi
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 )
 
@@ -46,7 +47,9 @@ func adaptWithBody[Body, Resp any](fn HandlerFuncWithBody[Body, Resp], status in
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("shiftapi: error encoding response: %v", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, err error) {
