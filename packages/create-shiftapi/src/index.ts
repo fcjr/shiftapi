@@ -44,6 +44,11 @@ async function main() {
               message: "Project name",
               placeholder: "my-app",
               defaultValue: "my-app",
+              validate: (value) => {
+                if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+                  return "Project name must only contain letters, numbers, hyphens, and underscores";
+                }
+              },
             }),
       framework: () =>
         p.select({
@@ -75,6 +80,12 @@ async function main() {
           message: "Server port",
           placeholder: "8080",
           defaultValue: "8080",
+          validate: (value) => {
+            const n = parseInt(value, 10);
+            if (isNaN(n) || n < 1 || n > 65535) {
+              return "Port must be a number between 1 and 65535";
+            }
+          },
         }),
     },
     {
