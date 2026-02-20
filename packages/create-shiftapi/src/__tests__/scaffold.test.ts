@@ -26,10 +26,11 @@ describe("getFiles", () => {
     expect(files).toContain("apps/web/vite.config.ts");
     expect(files).toContain("apps/web/tsconfig.json");
     expect(files).toContain("apps/web/index.html");
+    expect(files).toContain("apps/web/src/api.ts");
     expect(files).toContain("apps/web/src/main.tsx");
     expect(files).toContain("apps/web/src/App.tsx");
     expect(files).toContain("README.md");
-    expect(files).toHaveLength(13);
+    expect(files).toHaveLength(14);
   });
 
   it("returns all expected files for svelte", () => {

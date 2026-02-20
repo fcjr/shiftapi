@@ -1,42 +1,27 @@
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import { client } from "@shiftapi/client";
+import { useState } from "react";
+import { $api } from "./api";
 
 export default function App() {
-  const [output, setOutput] = useState("");
+  const [message, setMessage] = useState("");
+  const health = $api.useQuery("get", "/health");
+  const echo = $api.useMutation("post", "/echo");
 
-  useEffect(() => {
-    client.GET("/health").then(({ error }) => {
-      if (error) {
-        setOutput(`Health check failed: ${error.message}`);
-      } else {
-        setOutput("Health check passed. Try sending a message.");
-      }
-    });
-  }, []);
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const message = (formData.get("message") as string).trim();
-    if (!message) return;
-    setOutput("Loading...");
-    const { data, error } = await client.POST("/echo", { body: { message } });
-    if (error) {
-      setOutput(`Error: ${error.message}`);
-    } else {
-      setOutput(`Echo: ${data.message}`);
-    }
-  }
+  if (health.isLoading) return <p>Loading...</p>;
+  if (health.error) return <p>Health check failed: {health.error.message}</p>;
 
   return (
     <div>
       <h1>{{name}}</h1>
-      <form onSubmit={handleSubmit}>
-        <input type="text" name="message" placeholder="Enter a message" />
-        <button type="submit">Send</button>
-      </form>
-      <pre>{output}</pre>
+      <input
+        type="text"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Enter a message"
+      />
+      <button onClick={() => echo.mutate({ body: { message } })}>Send</button>
+      {echo.isPending && <p>Loading...</p>}
+      {echo.error && <p>Error: {echo.error.message}</p>}
+      {echo.data && <pre>Echo: {echo.data.message}</pre>}
     </div>
   );
 }
