@@ -81,6 +81,7 @@ async function main() {
           placeholder: "8080",
           defaultValue: "8080",
           validate: (value) => {
+            if (!value) return;
             const n = parseInt(value, 10);
             if (isNaN(n) || n < 1 || n > 65535) {
               return "Port must be a number between 1 and 65535";
