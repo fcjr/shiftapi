@@ -1,6 +1,7 @@
 package shiftapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 
@@ -53,12 +54,16 @@ func (a *API) validateBody(val any) error {
 }
 
 func (a *API) serveSpec(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(a.spec); err != nil {
 		http.Error(w, "error encoding spec", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = buf.WriteTo(w)
 }
 
 func (a *API) serveDocs(w http.ResponseWriter, r *http.Request) {
