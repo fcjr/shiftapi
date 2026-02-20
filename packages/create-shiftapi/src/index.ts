@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import * as p from "@clack/prompts";
 import path from "node:path";
-import { scaffold, type Framework } from "./scaffold.js";
+import { scaffold, installDeps, type Framework } from "./scaffold.js";
 
 function expandHome(filepath: string): string {
   if (filepath === "~" || filepath.startsWith("~/")) {
@@ -105,11 +105,26 @@ async function main() {
 
   s.stop("Project scaffolded");
 
+  const shouldInstallDeps = await p.confirm({
+    message: "Install dependencies? (go mod tidy & npm install)",
+    initialValue: true,
+  });
+  if (p.isCancel(shouldInstallDeps)) {
+    p.cancel("Cancelled.");
+    process.exit(1);
+  }
+
+  if (shouldInstallDeps) {
+    s.start("Installing dependencies");
+    await installDeps(targetDir);
+    s.stop("Dependencies installed");
+  }
+
   const relDir = path.relative(process.cwd(), targetDir) || ".";
-  p.note(
-    [`cd ${relDir}`, "go mod tidy", "npm install", "npm run dev"].join("\n"),
-    "Next steps",
-  );
+  const steps = shouldInstallDeps
+    ? [`cd ${relDir}`, "npm run dev"]
+    : [`cd ${relDir}`, "go mod tidy", "npm install", "npm run dev"];
+  p.note(steps.join("\n"), "Next steps");
 
   p.outro("Happy hacking!");
 }

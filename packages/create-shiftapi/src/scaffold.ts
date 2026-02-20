@@ -67,6 +67,27 @@ function gitInit(cwd: string): Promise<void> {
   });
 }
 
+export async function installDeps(cwd: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    execFile("go", ["mod", "tidy"], { cwd }, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    execFile("npm", ["install"], { cwd }, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   copyDir(path.join(templatesDir, "base"), opts.targetDir, opts);
   copyDir(path.join(templatesDir, opts.framework), opts.targetDir, opts);
