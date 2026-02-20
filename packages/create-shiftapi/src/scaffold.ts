@@ -23,7 +23,7 @@ const pkgVersion = JSON.parse(
   fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"),
 ).version as string;
 
-function replaceplaceholders(
+function replacePlaceholders(
   content: string,
   opts: ScaffoldOptions,
 ): string {
@@ -50,7 +50,7 @@ function copyDir(srcDir: string, destDir: string, opts: ScaffoldOptions) {
     } else {
       const content = fs.readFileSync(srcPath, "utf-8");
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, replaceplaceholders(content, opts));
+      fs.writeFileSync(destPath, replacePlaceholders(content, opts));
     }
   }
 }
