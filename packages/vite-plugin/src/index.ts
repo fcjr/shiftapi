@@ -31,6 +31,9 @@ async function findFreePort(startPort: number): Promise<number> {
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortFree(port)) return port;
   }
+  console.warn(
+    `[shiftapi] No free port found in range ${startPort}-${startPort + 19}, falling back to ${startPort}`
+  );
   return startPort;
 }
 
