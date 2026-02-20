@@ -224,14 +224,27 @@ ${generatedDts
 
       startGoServer();
 
-      server.httpServer?.on("close", stopGoServer);
-      process.on("exit", stopGoServer);
-      process.on("SIGINT", () => {
-        stopGoServer();
+      server.httpServer?.on("close", () => {
+        stopGoServer().catch((err) => {
+          console.error("[shiftapi] Failed to stop Go server on close:", err);
+        });
+      });
+      process.on("exit", () => {
+        // exit handler is synchronous; best-effort kill
+        if (goProcess?.pid) {
+          try {
+            process.kill(-goProcess.pid, "SIGTERM");
+          } catch {
+            // already gone
+          }
+        }
+      });
+      process.on("SIGINT", async () => {
+        await stopGoServer();
         process.exit();
       });
-      process.on("SIGTERM", () => {
-        stopGoServer();
+      process.on("SIGTERM", async () => {
+        await stopGoServer();
         process.exit();
       });
     },
