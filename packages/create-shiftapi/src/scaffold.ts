@@ -19,9 +19,14 @@ const renameFiles: Record<string, string> = {
 
 const pkgDir = path.resolve(fileURLToPath(import.meta.url), "../..");
 const templatesDir = path.join(pkgDir, "templates");
-const pkgVersion = JSON.parse(
-  fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"),
-).version as string;
+let pkgVersion = "0.0.0";
+try {
+  pkgVersion = JSON.parse(
+    fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"),
+  ).version as string;
+} catch {
+  // Fall back to default version if package.json can't be read
+}
 
 function replacePlaceholders(
   content: string,
