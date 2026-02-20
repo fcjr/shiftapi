@@ -211,10 +211,13 @@ func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
 }
 
 func scrubRefs(s *openapi3.SchemaRef) {
-	if len(s.Value.Properties) == 0 {
+	if s == nil || s.Value == nil || len(s.Value.Properties) == 0 {
 		return
 	}
 	for _, p := range s.Value.Properties {
+		if p == nil || p.Value == nil {
+			continue
+		}
 		if !p.Value.Type.Is("object") {
 			p.Ref = ""
 		}
