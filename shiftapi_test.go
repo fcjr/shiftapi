@@ -182,8 +182,8 @@ func TestServeOpenAPISpec(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-		t.Errorf("expected Content-Type application/json, got %q", ct)
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("expected Content-Type application/json; charset=utf-8, got %q", ct)
 	}
 
 	var spec map[string]any
@@ -454,8 +454,8 @@ func TestAPIErrorReturnsJSON(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d", resp.StatusCode)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-		t.Errorf("expected Content-Type application/json, got %q", ct)
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("expected Content-Type application/json; charset=utf-8, got %q", ct)
 	}
 }
 
@@ -1015,8 +1015,8 @@ func TestSuccessResponseHasJSONContentType(t *testing.T) {
 	})
 
 	resp := doRequest(t, api, http.MethodGet, "/test", "")
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-		t.Errorf("expected Content-Type application/json, got %q", ct)
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("expected Content-Type application/json; charset=utf-8, got %q", ct)
 	}
 }
 
@@ -1027,8 +1027,8 @@ func TestErrorResponseFromAPIErrorHasJSONContentType(t *testing.T) {
 	})
 
 	resp := doRequest(t, api, http.MethodGet, "/fail", "")
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-		t.Errorf("expected Content-Type application/json, got %q", ct)
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("expected Content-Type application/json; charset=utf-8, got %q", ct)
 	}
 }
 
