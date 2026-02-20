@@ -15,6 +15,7 @@ import type { ShiftAPIPluginOptions } from "./types.js";
 
 const MODULE_ID = "@shiftapi/client";
 const RESOLVED_MODULE_ID = "\0" + MODULE_ID;
+const DEV_API_PREFIX = "/__shiftapi";
 
 function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -56,6 +57,7 @@ export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
   let goProcess: ChildProcess | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let projectRoot = process.cwd();
+  let isDev = false;
 
   function getSpec(): Record<string, unknown> {
     if (!cachedSpec) {
@@ -77,7 +79,10 @@ export default function shiftapiPlugin(options: ShiftAPIPluginOptions): Plugin {
     }
 
     generatedDts = types;
-    virtualModuleSource = buildVirtualModuleSource(baseUrl);
+    virtualModuleSource = buildVirtualModuleSource(
+      baseUrl,
+      isDev ? DEV_API_PREFIX : undefined
+    );
     return true;
   }
 
@@ -223,31 +228,27 @@ ${generatedDts
 
     async config(_, env) {
       if (env.command === "serve") {
+        isDev = true;
         goPort = await findFreePort(basePort);
         if (goPort !== basePort) {
           console.log(
             `[shiftapi] Port ${basePort} is in use, using ${goPort}`
           );
         }
-      }
 
-      // Extract spec to discover API paths, then auto-configure proxy
-      const spec = getSpec();
-      const paths = spec.paths as Record<string, unknown> | undefined;
-      if (!paths) {
-        console.warn("[shiftapi] No paths found in OpenAPI spec. Proxy will not be configured.");
-        return;
+        const targetUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}:${goPort}`;
+        return {
+          server: {
+            proxy: {
+              [DEV_API_PREFIX]: {
+                target: targetUrl,
+                rewrite: (path: string) =>
+                  path.replace(new RegExp(`^${DEV_API_PREFIX}`), "") || "/",
+              },
+            },
+          },
+        };
       }
-
-      const targetUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}:${goPort}`;
-      const proxy: Record<string, string> = {};
-      for (const path of Object.keys(paths)) {
-        proxy[path] = targetUrl;
-      }
-
-      return {
-        server: { proxy },
-      };
     },
 
     configureServer(server) {
