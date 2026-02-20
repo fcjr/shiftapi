@@ -255,12 +255,21 @@ ${generatedDts
         console.error("[shiftapi] Go server failed to start:", err);
       });
 
+      function clearDebounce() {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+      }
+
       server.httpServer?.on("close", () => {
+        clearDebounce();
         stopGoServer().catch((err) => {
           console.error("[shiftapi] Failed to stop Go server on close:", err);
         });
       });
       process.on("exit", () => {
+        clearDebounce();
         // exit handler is synchronous; best-effort kill
         if (goProcess?.pid) {
           try {
@@ -271,10 +280,12 @@ ${generatedDts
         }
       });
       process.on("SIGINT", async () => {
+        clearDebounce();
         await stopGoServer();
         process.exit();
       });
       process.on("SIGTERM", async () => {
+        clearDebounce();
         await stopGoServer();
         process.exit();
       });
