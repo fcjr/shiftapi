@@ -46,7 +46,7 @@ importers:
   packages/vite-plugin:
     dependencies:
       openapi-fetch:
-        specifier: ^0.12.0 || ^0.13.0
+        specifier: ^0.13.0
         version: 0.13.8
       openapi-typescript:
         specifier: ^7.0.0
