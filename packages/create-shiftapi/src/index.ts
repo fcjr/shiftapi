@@ -30,16 +30,16 @@ function getGitHubUser(): string | null {
 }
 
 async function main() {
-  const positionalName = process.argv[2];
+  const positionalArg = process.argv[2];
   const ghUser = getGitHubUser();
 
   p.intro("create-shiftapi");
 
   const project = await p.group(
     {
-      name: () =>
-        positionalName
-          ? Promise.resolve(positionalName)
+      rawName: () =>
+        positionalArg
+          ? Promise.resolve(positionalArg)
           : p.text({
               message: "Project name",
               placeholder: "my-app",
@@ -56,19 +56,20 @@ async function main() {
       directory: ({ results }) =>
         p.text({
           message: "Directory",
-          placeholder: `./${results.name}`,
-          defaultValue: `./${results.name}`,
+          placeholder: `./${results.rawName}`,
+          defaultValue: `./${results.rawName}`,
         }),
-      module: ({ results }) =>
-        p.text({
+      module: ({ results }) => {
+        const name = path.basename(results.rawName as string);
+        const defaultModule = ghUser
+          ? `github.com/${ghUser}/${name}`
+          : name;
+        return p.text({
           message: "Go module path",
-          placeholder: ghUser
-            ? `github.com/${ghUser}/${results.name}`
-            : results.name!,
-          defaultValue: ghUser
-            ? `github.com/${ghUser}/${results.name}`
-            : results.name!,
-        }),
+          placeholder: defaultModule,
+          defaultValue: defaultModule,
+        });
+      },
       port: () =>
         p.text({
           message: "Server port",
@@ -95,7 +96,7 @@ async function main() {
   s.start("Scaffolding project");
 
   await scaffold({
-    name: project.name as string,
+    name: path.basename(project.rawName as string),
     modulePath: project.module as string,
     port: project.port as string,
     framework: project.framework as Framework,
