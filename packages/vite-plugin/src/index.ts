@@ -134,31 +134,48 @@ ${generatedDts
     );
   }
 
-  function startGoServer(): void {
-    goProcess = spawn("go", ["run", "-tags", "shiftapidev", serverEntry], {
-      cwd: resolve(goRoot),
-      stdio: ["ignore", "inherit", "inherit"],
-      detached: true,
-      env: {
-        ...process.env,
-        SHIFTAPI_PORT: String(goPort),
-      },
-    });
+  function startGoServer(): Promise<void> {
+    return new Promise((resolveStart, rejectStart) => {
+      const proc = spawn("go", ["run", "-tags", "shiftapidev", serverEntry], {
+        cwd: resolve(goRoot),
+        stdio: ["ignore", "inherit", "inherit"],
+        detached: true,
+        env: {
+          ...process.env,
+          SHIFTAPI_PORT: String(goPort),
+        },
+      });
+      goProcess = proc;
 
-    goProcess.on("error", (err) => {
-      console.error("[shiftapi] Failed to start Go server:", err.message);
-    });
+      let settled = false;
 
-    goProcess.on("exit", (code) => {
-      if (code !== null && code !== 0) {
-        console.error(`[shiftapi] Go server exited with code ${code}`);
-      }
-      goProcess = null;
-    });
+      proc.on("error", (err) => {
+        console.error("[shiftapi] Failed to start Go server:", err.message);
+        if (!settled) {
+          settled = true;
+          rejectStart(err);
+        }
+      });
 
-    console.log(
-      `[shiftapi] Go server starting on port ${goPort}: go run ${serverEntry}`
-    );
+      proc.on("exit", (code) => {
+        if (code !== null && code !== 0) {
+          console.error(`[shiftapi] Go server exited with code ${code}`);
+        }
+        goProcess = null;
+      });
+
+      // Consider started once the process has been spawned (has a pid)
+      proc.on("spawn", () => {
+        if (!settled) {
+          settled = true;
+          resolveStart();
+        }
+      });
+
+      console.log(
+        `[shiftapi] Go server starting on port ${goPort}: go run ${serverEntry}`
+      );
+    });
   }
 
   function stopGoServer(): Promise<void> {
@@ -234,7 +251,9 @@ ${generatedDts
       devServer = server;
       server.watcher.add(resolve(goRoot));
 
-      startGoServer();
+      startGoServer().catch((err) => {
+        console.error("[shiftapi] Go server failed to start:", err);
+      });
 
       server.httpServer?.on("close", () => {
         stopGoServer().catch((err) => {
@@ -293,7 +312,7 @@ ${generatedDts
         try {
           // Restart Go server with new code
           await stopGoServer();
-          startGoServer();
+          await startGoServer();
 
           const changed = await regenerate();
           if (changed && devServer) {
