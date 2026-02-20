@@ -1361,6 +1361,42 @@ func TestSpecEnumOnOneOf(t *testing.T) {
 	}
 }
 
+// --- Nested struct validation tests ---
+
+type Address struct {
+	Street string `json:"street" validate:"required"`
+	City   string `json:"city" validate:"required"`
+}
+
+type PersonWithAddress struct {
+	Name    string  `json:"name" validate:"required"`
+	Address Address `json:"address" validate:"required"`
+}
+
+func TestValidationNestedStructValid(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/person-addr", func(r *http.Request, body *PersonWithAddress) (*PersonWithAddress, error) {
+		return body, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPost, "/person-addr", `{"name":"alice","address":{"street":"123 Main St","city":"Springfield"}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestValidationNestedStructMissingFields(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/person-addr", func(r *http.Request, body *PersonWithAddress) (*PersonWithAddress, error) {
+		return body, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPost, "/person-addr", `{"name":"alice","address":{}}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
