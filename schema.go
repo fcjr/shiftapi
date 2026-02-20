@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, inType, outType reflect.Type, info *RouteInfo, status int) error {
+func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, info *RouteInfo, status int) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -32,6 +32,15 @@ func (a *API) updateSchema(method, path string, inType, outType reflect.Type, in
 				},
 			},
 		})
+	}
+
+	// Query parameters
+	if queryType != nil {
+		queryParams, err := a.generateQueryParams(queryType)
+		if err != nil {
+			return err
+		}
+		op.Parameters = append(op.Parameters, queryParams...)
 	}
 
 	// Response schema
@@ -208,6 +217,88 @@ func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
 	scrubRefs(schema)
 	applyRequired(t, schema.Value)
 	return schema, nil
+}
+
+// generateQueryParams produces OpenAPI parameter definitions for a query struct type.
+func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, error) {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("query type must be a struct, got %s", t.Kind())
+	}
+
+	var params []*openapi3.ParameterRef
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		name := queryFieldName(field)
+		if name == "-" {
+			continue
+		}
+
+		schema := fieldToOpenAPISchema(field.Type)
+
+		// Apply validation constraints
+		if err := validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
+			return nil, err
+		}
+
+		required := hasRule(field.Tag.Get("validate"), "required")
+
+		params = append(params, &openapi3.ParameterRef{
+			Value: &openapi3.Parameter{
+				Name:     name,
+				In:       "query",
+				Required: required,
+				Schema:   schema,
+			},
+		})
+	}
+	return params, nil
+}
+
+// fieldToOpenAPISchema maps a Go type to an OpenAPI schema.
+func fieldToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
+	// Unwrap pointer
+	if t.Kind() == reflect.Ptr {
+		return fieldToOpenAPISchema(t.Elem())
+	}
+
+	// Handle slices
+	if t.Kind() == reflect.Slice {
+		items := scalarToOpenAPISchema(t.Elem())
+		return &openapi3.SchemaRef{
+			Value: &openapi3.Schema{
+				Type:  &openapi3.Types{"array"},
+				Items: items,
+			},
+		}
+	}
+
+	return scalarToOpenAPISchema(t)
+}
+
+// scalarToOpenAPISchema maps a scalar Go type to an OpenAPI schema.
+func scalarToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+	case reflect.Bool:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"boolean"}}}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"integer"}}}
+	case reflect.Float32, reflect.Float64:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"number"}}}
+	default:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+	}
 }
 
 func scrubRefs(s *openapi3.SchemaRef) {

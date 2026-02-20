@@ -13,6 +13,12 @@ type HandlerFunc[Resp any] func(r *http.Request) (Resp, error)
 // HandlerFuncWithBody is a typed handler for methods with a request body (POST, PUT, PATCH, etc.).
 type HandlerFuncWithBody[Body, Resp any] func(r *http.Request, body Body) (Resp, error)
 
+// HandlerFuncWithQuery is a typed handler for methods with typed query parameters.
+type HandlerFuncWithQuery[Query, Resp any] func(r *http.Request, query Query) (Resp, error)
+
+// HandlerFuncWithQueryAndBody is a typed handler for methods with both typed query parameters and a request body.
+type HandlerFuncWithQueryAndBody[Query, Body, Resp any] func(r *http.Request, query Query, body Body) (Resp, error)
+
 func adapt[Resp any](fn HandlerFunc[Resp], status int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		resp, err := fn(r)
@@ -36,6 +42,55 @@ func adaptWithBody[Body, Resp any](fn HandlerFuncWithBody[Body, Resp], status in
 			return
 		}
 		resp, err := fn(r, body)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, status, resp)
+	}
+}
+
+func adaptWithQuery[Query, Resp any](fn HandlerFuncWithQuery[Query, Resp], status int, validate func(any) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query, err := parseQuery[Query](r.URL.Query())
+		if err != nil {
+			writeError(w, Error(http.StatusBadRequest, err.Error()))
+			return
+		}
+		if err := validate(query); err != nil {
+			writeError(w, err)
+			return
+		}
+		resp, err := fn(r, query)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, status, resp)
+	}
+}
+
+func adaptWithQueryAndBody[Query, Body, Resp any](fn HandlerFuncWithQueryAndBody[Query, Body, Resp], status int, validate func(any) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query, err := parseQuery[Query](r.URL.Query())
+		if err != nil {
+			writeError(w, Error(http.StatusBadRequest, err.Error()))
+			return
+		}
+		if err := validate(query); err != nil {
+			writeError(w, err)
+			return
+		}
+		var body Body
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, Error(http.StatusBadRequest, "invalid request body"))
+			return
+		}
+		if err := validate(body); err != nil {
+			writeError(w, err)
+			return
+		}
+		resp, err := fn(r, query, body)
 		if err != nil {
 			writeError(w, err)
 			return
