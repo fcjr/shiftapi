@@ -234,7 +234,10 @@ ${generatedDts
       // Extract spec to discover API paths, then auto-configure proxy
       const spec = getSpec();
       const paths = spec.paths as Record<string, unknown> | undefined;
-      if (!paths) return;
+      if (!paths) {
+        console.warn("[shiftapi] No paths found in OpenAPI spec. Proxy will not be configured.");
+        return;
+      }
 
       const targetUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}:${goPort}`;
       const proxy: Record<string, string> = {};
