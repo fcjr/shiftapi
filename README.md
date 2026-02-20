@@ -227,5 +227,5 @@ pnpm test       # run all tests
 Go tests can also be run directly:
 
 ```bash
-go test -count=1 ./...
+go test -count=1 -tags shiftapidev ./...
 ```
