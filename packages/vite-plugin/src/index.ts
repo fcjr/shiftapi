@@ -105,7 +105,16 @@ ${generatedDts
     if (!existsSync(tsconfigPath)) return;
 
     const raw = readFileSync(tsconfigPath, "utf-8");
-    const tsconfig = JSON.parse(raw);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tsconfig: any;
+    try {
+      tsconfig = JSON.parse(raw);
+    } catch (err) {
+      console.warn(
+        `[shiftapi] Failed to parse tsconfig.json: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return;
+    }
 
     if (tsconfig?.compilerOptions?.paths?.[MODULE_ID]) return;
 
