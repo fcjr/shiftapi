@@ -254,9 +254,15 @@ ${generatedDts
       devServer = server;
       server.watcher.add(resolve(goRoot));
 
-      startGoServer().catch((err) => {
-        console.error("[shiftapi] Go server failed to start:", err);
-      });
+      startGoServer()
+        .then(() => {
+          console.log(
+            `[shiftapi] API docs available at http://localhost:${goPort}/docs`
+          );
+        })
+        .catch((err) => {
+          console.error("[shiftapi] Go server failed to start:", err);
+        });
 
       function clearDebounce() {
         if (debounceTimer) {
