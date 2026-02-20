@@ -6,12 +6,15 @@ import {
   mkdirSync,
   existsSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createTcpServer } from "node:net";
 import { extractSpec } from "./extract.js";
 import { generateTypes } from "./generate.js";
 import { buildVirtualModuleSource } from "./virtualModule.js";
 import type { ShiftAPIPluginOptions } from "./types.js";
+
+const pluginRequire = createRequire(import.meta.url);
 
 const MODULE_ID = "@shiftapi/client";
 const RESOLVED_MODULE_ID = "\0" + MODULE_ID;
@@ -306,9 +309,14 @@ ${generatedDts
       writeDtsFile();
     },
 
-    resolveId(id) {
+    resolveId(id, importer) {
       if (id === MODULE_ID) {
         return RESOLVED_MODULE_ID;
+      }
+      // Resolve openapi-fetch from the plugin's own node_modules so
+      // consuming projects don't need to install it directly.
+      if (id === "openapi-fetch" && importer === RESOLVED_MODULE_ID) {
+        return pluginRequire.resolve("openapi-fetch");
       }
     },
 
