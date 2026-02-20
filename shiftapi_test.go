@@ -278,6 +278,18 @@ func TestPostHandlerEmptyBody(t *testing.T) {
 	}
 }
 
+func TestPostHandlerEmptyJSONObject(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
+		return body, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPost, "/person", `{}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+}
+
 // --- GET handler tests ---
 
 func TestGetHandler(t *testing.T) {
