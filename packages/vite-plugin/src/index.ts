@@ -157,7 +157,20 @@ ${generatedDts
     goProcess = null;
 
     return new Promise((resolve) => {
-      proc.on("exit", () => resolve());
+      const timeout = setTimeout(() => {
+        // Escalate to SIGKILL if SIGTERM didn't work
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+        resolve();
+      }, 5000);
+
+      proc.on("exit", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
 
       // Kill the entire process group so the `go run` child process
       // (the compiled server binary) is also terminated.
@@ -165,6 +178,7 @@ ${generatedDts
         process.kill(-pid, "SIGTERM");
       } catch {
         // Process group may already be gone
+        clearTimeout(timeout);
         resolve();
       }
     });
