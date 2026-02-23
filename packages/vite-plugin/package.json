@@ -38,6 +38,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "comment-json": "^4.5.1",
     "openapi-fetch": "^0.13.0",
     "openapi-typescript": "^7.0.0"
   },

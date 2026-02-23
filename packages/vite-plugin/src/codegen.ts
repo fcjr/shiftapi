@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { parse, stringify } from "comment-json";
 import { extractSpec } from "./extract";
 import { generateTypes } from "./generate";
 import { MODULE_ID, DEV_API_PREFIX } from "./constants";
@@ -43,7 +44,7 @@ export function patchTsConfig(projectRoot: string): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tsconfig: any;
   try {
-    tsconfig = JSON.parse(raw);
+    tsconfig = parse(raw);
   } catch (err) {
     console.warn(
       `[shiftapi] Failed to parse tsconfig.json: ${err instanceof Error ? err.message : String(err)}`,
@@ -58,7 +59,7 @@ export function patchTsConfig(projectRoot: string): void {
   tsconfig.compilerOptions.paths[MODULE_ID] = ["./.shiftapi/client.d.ts"];
 
   const detectedIndent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
-  writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, detectedIndent) + "\n");
+  writeFileSync(tsconfigPath, stringify(tsconfig, null, detectedIndent) + "\n");
   console.log(
     "[shiftapi] Updated tsconfig.json with @shiftapi/client path mapping",
   );
