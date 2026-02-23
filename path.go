@@ -109,3 +109,5 @@ type pathParseError struct {
 func (e *pathParseError) Error() string {
 	return fmt.Sprintf("invalid path parameter %q: %v", e.Field, e.Err)
 }
+
+func (e *pathParseError) Unwrap() error { return e.Err }

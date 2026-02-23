@@ -154,3 +154,5 @@ func (e *formParseError) Error() string {
 	}
 	return fmt.Sprintf("invalid form field %q: %v", e.Field, e.Err)
 }
+
+func (e *formParseError) Unwrap() error { return e.Err }

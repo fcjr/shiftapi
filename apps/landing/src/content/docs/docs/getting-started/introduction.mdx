@@ -19,6 +19,7 @@ ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler 
 - **Type-safe errors** — declare custom error types at the API, group, or route level with `WithError[T](status)` — schemas appear in the OpenAPI spec and errors are matched at runtime via `errors.As`
 - **Middleware** — apply standard `func(http.Handler) http.Handler` middleware at the API, group, or route level with `WithMiddleware` — middleware resolves from API (outermost) → Group → Route (innermost)
 - **Composable options** — bundle middleware, errors, and other options into reusable `Option` values with `ComposeOptions`
+- **Typed HTTP headers** — parse, validate, and document HTTP headers with `header` struct tags
 - **File uploads** — declare uploads with `form` tags, get correct `multipart/form-data` types
 - **Interactive docs** — Scalar API reference at `/docs` and OpenAPI spec at `/openapi.json`
 - **Just `net/http`** — implements `http.Handler`, works with any middleware or router

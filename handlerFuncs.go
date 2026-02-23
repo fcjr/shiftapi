@@ -28,7 +28,7 @@ func registerRoute[In, Resp any](
 		rawInType = rawInType.Elem()
 	}
 
-	hasPath, hasQuery, hasBody, hasForm := partitionFields(rawInType)
+	hasPath, hasQuery, hasHeader, hasBody, hasForm := partitionFields(rawInType)
 
 	// Validate path-tagged fields match the route pattern.
 	if hasPath {
@@ -43,6 +43,10 @@ func registerRoute[In, Resp any](
 	var queryType reflect.Type
 	if hasQuery {
 		queryType = rawInType
+	}
+	var headerType reflect.Type
+	if hasHeader {
+		headerType = rawInType
 	}
 	// POST/PUT/PATCH conventionally carry a request body, so always attempt
 	// body decode for these methods — even when the input is struct{}.
@@ -71,14 +75,14 @@ func registerRoute[In, Resp any](
 		pathType = rawInType
 	}
 
-	if err := api.updateSchema(method, fullPath, pathType, queryType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
+	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
 	}
 
 	errLookup := buildErrorLookup(allErrors)
 
 	pattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
+	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
 	// Apply route-level middleware (innermost), then group-level (outermost).
 	// Reverse order so the first middleware in the slice wraps outermost.
 	for i := len(cfg.middleware) - 1; i >= 0; i-- {

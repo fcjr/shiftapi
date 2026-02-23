@@ -74,6 +74,18 @@ type UserResponse struct {
 }
 ```
 
+## Validation on query and header fields
+
+Validation rules work on all input sources — `json`, `query`, `header`, and `form` fields. For example, `validate:"required"` on a `header`-tagged field returns `422` if the header is present but empty, and `validate:"oneof=json xml"` constrains accepted values. Parse errors (e.g. sending `"abc"` for an `int` header) return `400`; validation failures return `422`.
+
+```go
+type AuthSearch struct {
+    Token  string `header:"Authorization" validate:"required"`
+    Format string `header:"Accept" validate:"oneof=json xml"`
+    Q      string `query:"q" validate:"required"`
+}
+```
+
 ## Custom validator
 
 You can provide your own validator instance with custom rules:
