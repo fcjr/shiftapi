@@ -90,8 +90,8 @@ jobs:
           git push --no-verify
           git push --no-verify origin "v${{ steps.bump.outputs.new_version }}"
 
-  publish-shiftapi:
-    name: Publish shiftapi
+  publish-core:
+    name: Publish @shiftapi/core
     needs: bump
     runs-on: ubuntu-latest
     environment: npm
@@ -123,10 +123,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm --filter shiftapi build
+        run: pnpm --filter @shiftapi/core build
 
       - name: Test
-        run: pnpm --filter shiftapi test
+        run: pnpm --filter @shiftapi/core test
 
       - name: Publish
         working-directory: packages/shiftapi
@@ -137,7 +137,7 @@ jobs:
 
   publish:
     name: Publish ${{ matrix.package }}
-    needs: [bump, publish-shiftapi]
+    needs: [bump, publish-core]
     runs-on: ubuntu-latest
     environment: npm
     permissions:

@@ -9,7 +9,7 @@ import {
   writeGeneratedFiles,
   patchTsConfig,
   loadConfig,
-} from "shiftapi/internal";
+} from "@shiftapi/core/internal";
 import { findFreePort } from "./ports";
 import { GoServerManager } from "./goServer";
 import type { ShiftAPIPluginOptions } from "./types";
@@ -189,6 +189,6 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
   };
 }
 
-export { defineConfig } from "shiftapi";
-export type { ShiftAPIConfig } from "shiftapi";
+export { defineConfig } from "@shiftapi/core";
+export type { ShiftAPIConfig } from "@shiftapi/core";
 export type { ShiftAPIPluginOptions };

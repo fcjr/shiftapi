@@ -70,12 +70,12 @@ importers:
 
   packages/vite-plugin:
     dependencies:
+      '@shiftapi/core':
+        specifier: workspace:*
+        version: link:../shiftapi
       openapi-fetch:
         specifier: ^0.13.0
         version: 0.13.8
-      shiftapi:
-        specifier: workspace:*
-        version: link:../shiftapi
     devDependencies:
       '@types/node':
         specifier: ^25.2.3

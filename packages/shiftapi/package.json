@@ -1,5 +1,5 @@
 {
-  "name": "shiftapi",
+  "name": "@shiftapi/core",
   "version": "0.0.11",
   "description": "CLI and codegen for shiftapi – fully-typed TypeScript clients from Go servers",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",

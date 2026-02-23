@@ -50,7 +50,7 @@ export async function loadConfig(
     if (!resolvedPath) {
       throw new Error(
         `[shiftapi] Could not find shiftapi.config.ts (searched upward from ${startDir}). ` +
-          `Create one with: import { defineConfig } from "shiftapi"`,
+          `Create one with: import { defineConfig } from "@shiftapi/core"`,
       );
     }
   }
