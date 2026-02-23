@@ -8,7 +8,6 @@ type Option func(*API)
 // Info describes the API.
 type Info struct {
 	Title          string
-	Summary        string
 	Description    string
 	TermsOfService string
 	Contact        *Contact
@@ -25,9 +24,8 @@ type Contact struct {
 
 // License describes the API license.
 type License struct {
-	Name       string
-	URL        string
-	Identifier string
+	Name string
+	URL  string
 }
 
 // ExternalDocs links to external documentation.
