@@ -14,7 +14,7 @@ const docsTemplate string = `<!DOCTYPE html>
 </head>
 <body>
 <div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/scalar-api-reference/1.36.2/standalone.min.js" integrity="sha512-1eGM3+sAmNpB7cn/i3KOVszLEAph0LC96/Qk1T0hf/eK8p0MSU7og2mx0P0bv5R4R8U7LWJnA9cDCxp7RRdF/Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 Scalar.createApiReference('#app', {
   url: '{{.SpecURL}}',
