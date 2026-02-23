@@ -33,7 +33,7 @@ export function extractSpec(serverEntry: string, goRoot: string): object {
       `@shiftapi/vite-plugin: Failed to extract OpenAPI spec.\n` +
         `  Command: go run ${serverEntry}\n` +
         `  CWD: ${goRoot}\n` +
-        `  Error: ${stderr || String(err)}`
+        `  Error: ${stderr || String(err)}`,
     );
   }
 
@@ -43,7 +43,7 @@ export function extractSpec(serverEntry: string, goRoot: string): object {
   } catch {
     throw new Error(
       `@shiftapi/vite-plugin: Spec file was not created at ${specPath}.\n` +
-        `  Make sure your Go server calls shiftapi.ListenAndServe().`
+        `  Make sure your Go server calls shiftapi.ListenAndServe().`,
     );
   }
 

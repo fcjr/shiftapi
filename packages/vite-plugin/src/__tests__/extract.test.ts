@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
-import { extractSpec } from "../extract.js";
+import { extractSpec } from "../extract";
 
 const REPO_ROOT = resolve(__dirname, "../../../..");
 const GREETER_ENTRY = "./examples/greeter";

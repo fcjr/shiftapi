@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
-import { extractSpec } from "../extract.js";
-import { generateTypes } from "../generate.js";
-import { buildVirtualModuleSource } from "../virtualModule.js";
+import { extractSpec } from "../extract";
+import { generateTypes } from "../generate";
+import { virtualModuleTemplate } from "../templates";
 
 const REPO_ROOT = resolve(__dirname, "../../../..");
 const GREETER_ENTRY = "./examples/greeter";
@@ -26,9 +26,9 @@ describe("generateTypes", () => {
   });
 });
 
-describe("buildVirtualModuleSource", () => {
+describe("virtualModuleTemplate", () => {
   it("produces a runtime JS module with client export", () => {
-    const source = buildVirtualModuleSource("/api");
+    const source = virtualModuleTemplate("/api");
 
     expect(source).toContain('import createClient from "openapi-fetch"');
     expect(source).toContain("export const client");
