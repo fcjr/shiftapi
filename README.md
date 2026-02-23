@@ -58,8 +58,8 @@ type Greeting struct {
     Hello string `json:"hello"`
 }
 
-func greet(r *http.Request, body *Person) (*Greeting, error) {
-    return &Greeting{Hello: body.Name}, nil
+func greet(r *http.Request, in *Person) (*Greeting, error) {
+    return &Greeting{Hello: in.Name}, nil
 }
 
 func main() {
@@ -82,17 +82,48 @@ That's it. ShiftAPI reflects your Go types into an OpenAPI 3.1 spec at `/openapi
 
 ### Generic type-safe handlers
 
-Generic free functions capture your request and response types at compile time. Handlers with a body (`Post`, `Put`, `Patch`) receive the decoded request as a typed value. Handlers without a body (`Get`, `Delete`, `Head`) just receive the request.
+Generic free functions capture your request and response types at compile time. Every method uses a single function — struct tags discriminate query params (`query:"..."`) from body fields (`json:"..."`). For routes without input, use `_ struct{}`.
 
 ```go
-// POST — body is decoded and passed as *CreateUser
-shiftapi.Post(api, "/users", func(r *http.Request, body *CreateUser) (*User, error) {
-    return db.CreateUser(r.Context(), body)
+// POST with body — input is decoded and passed as *CreateUser
+shiftapi.Post(api, "/users", func(r *http.Request, in *CreateUser) (*User, error) {
+    return db.CreateUser(r.Context(), in)
 }, shiftapi.WithStatus(http.StatusCreated))
 
-// GET — standard *http.Request, use PathValue for path params
-shiftapi.Get(api, "/users/{id}", func(r *http.Request) (*User, error) {
+// GET without input — use _ struct{}
+shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
     return db.GetUser(r.Context(), r.PathValue("id"))
+})
+```
+
+### Typed query parameters
+
+Define a struct with `query` tags. Query params are parsed, validated, and documented in the OpenAPI spec automatically.
+
+```go
+type SearchQuery struct {
+    Q     string `query:"q"     validate:"required"`
+    Page  int    `query:"page"  validate:"min=1"`
+    Limit int    `query:"limit" validate:"min=1,max=100"`
+}
+
+shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*Results, error) {
+    return doSearch(in.Q, in.Page, in.Limit), nil
+})
+```
+
+Supports `string`, `bool`, `int*`, `uint*`, `float*` scalars, `*T` pointers for optional params, and `[]T` slices for repeated params (e.g. `?tag=a&tag=b`). Parse errors return `400`; validation failures return `422`.
+
+For handlers that need both query parameters and a request body, combine them in a single struct — fields with `query` tags become query params, fields with `json` tags become the body:
+
+```go
+type CreateInput struct {
+    DryRun bool   `query:"dry_run"`
+    Name   string `json:"name"`
+}
+
+shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*Result, error) {
+    return createItem(in.Name, in.DryRun), nil
 })
 ```
 
@@ -198,6 +229,11 @@ const { data: greeting } = await client.POST("/greet", {
     body: { name: "frank" },
 });
 // body and response are fully typed from your Go structs
+
+const { data: results } = await client.GET("/search", {
+    params: { query: { q: "hello", page: 1, limit: 10 } },
+});
+// query params are fully typed too — { q: string, page?: number, limit?: number }
 ```
 
 In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.

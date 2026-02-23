@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, inType, outType reflect.Type, info *RouteInfo, status int) error {
+func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, info *RouteInfo, status int) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -32,6 +32,15 @@ func (a *API) updateSchema(method, path string, inType, outType reflect.Type, in
 				},
 			},
 		})
+	}
+
+	// Query parameters
+	if queryType != nil {
+		queryParams, err := a.generateQueryParams(queryType)
+		if err != nil {
+			return err
+		}
+		op.Parameters = append(op.Parameters, queryParams...)
 	}
 
 	// Response schema
@@ -112,20 +121,44 @@ func (a *API) updateSchema(method, path string, inType, outType reflect.Type, in
 			return err
 		}
 		if inSchema != nil {
-			content := make(map[string]*openapi3.MediaType)
-			content["application/json"] = &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{
-					Ref: fmt.Sprintf("#/components/schemas/%s", inSchema.Ref),
-				},
-			}
-			op.RequestBody = &openapi3.RequestBodyRef{
-				Value: &openapi3.RequestBody{
-					Required: true,
-					Content:  content,
-				},
-			}
-			a.spec.Components.Schemas[inSchema.Ref] = &openapi3.SchemaRef{
-				Value: inSchema.Value,
+			// Strip query-tagged fields from the body schema
+			stripQueryFields(inType, inSchema.Value)
+
+			if len(inSchema.Value.Properties) > 0 {
+				// Named body schema with properties
+				content := make(map[string]*openapi3.MediaType)
+				content["application/json"] = &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{
+						Ref: fmt.Sprintf("#/components/schemas/%s", inSchema.Ref),
+					},
+				}
+				op.RequestBody = &openapi3.RequestBodyRef{
+					Value: &openapi3.RequestBody{
+						Required: true,
+						Content:  content,
+					},
+				}
+				a.spec.Components.Schemas[inSchema.Ref] = &openapi3.SchemaRef{
+					Value: inSchema.Value,
+				}
+			} else {
+				// No body fields (e.g. struct{}) — inline empty object schema.
+				// This happens for POST/PUT/PATCH where a body is required
+				// even when the input struct has no body fields.
+				op.RequestBody = &openapi3.RequestBodyRef{
+					Value: &openapi3.RequestBody{
+						Required: true,
+						Content: map[string]*openapi3.MediaType{
+							"application/json": {
+								Schema: &openapi3.SchemaRef{
+									Value: &openapi3.Schema{
+										Type: &openapi3.Types{"object"},
+									},
+								},
+							},
+						},
+					},
+				}
 			}
 		}
 	}
@@ -208,6 +241,116 @@ func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
 	scrubRefs(schema)
 	applyRequired(t, schema.Value)
 	return schema, nil
+}
+
+// generateQueryParams produces OpenAPI parameter definitions for a query struct type.
+// Only fields with `query` tags are included.
+func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, error) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("query type must be a struct, got %s", t.Kind())
+	}
+
+	var params []*openapi3.ParameterRef
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		if !hasQueryTag(field) {
+			continue
+		}
+		name := queryFieldName(field)
+		schema := fieldToOpenAPISchema(field.Type)
+
+		// Apply validation constraints
+		if err := validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
+			return nil, err
+		}
+
+		required := hasRule(field.Tag.Get("validate"), "required")
+
+		params = append(params, &openapi3.ParameterRef{
+			Value: &openapi3.Parameter{
+				Name:     name,
+				In:       "query",
+				Required: required,
+				Schema:   schema,
+			},
+		})
+	}
+	return params, nil
+}
+
+// fieldToOpenAPISchema maps a Go type to an OpenAPI schema.
+func fieldToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
+	// Unwrap pointer
+	if t.Kind() == reflect.Pointer {
+		return fieldToOpenAPISchema(t.Elem())
+	}
+
+	// Handle slices
+	if t.Kind() == reflect.Slice {
+		items := scalarToOpenAPISchema(t.Elem())
+		return &openapi3.SchemaRef{
+			Value: &openapi3.Schema{
+				Type:  &openapi3.Types{"array"},
+				Items: items,
+			},
+		}
+	}
+
+	return scalarToOpenAPISchema(t)
+}
+
+// scalarToOpenAPISchema maps a scalar Go type to an OpenAPI schema.
+func scalarToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+	case reflect.Bool:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"boolean"}}}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"integer"}}}
+	case reflect.Float32, reflect.Float64:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"number"}}}
+	default:
+		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+	}
+}
+
+// stripQueryFields removes query-tagged fields from a body schema's Properties and Required.
+func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || schema == nil {
+		return
+	}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() || !hasQueryTag(f) {
+			continue
+		}
+		jname := jsonFieldName(f)
+		if jname == "" || jname == "-" {
+			continue
+		}
+		delete(schema.Properties, jname)
+		// Remove from Required slice
+		for j, req := range schema.Required {
+			if req == jname {
+				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)
+				break
+			}
+		}
+	}
 }
 
 func scrubRefs(s *openapi3.SchemaRef) {

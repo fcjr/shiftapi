@@ -15,7 +15,7 @@ func TestExportSpec(t *testing.T) {
 		Title:   "Export Test",
 		Version: "1.0.0",
 	}))
-	Get(api, "/health", func(r *http.Request) (*struct {
+	Get(api, "/health", func(r *http.Request, _ struct{}) (*struct {
 		OK bool `json:"ok"`
 	}, error) {
 		return &struct {

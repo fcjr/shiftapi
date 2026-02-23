@@ -15,18 +15,38 @@ type Greeting struct {
 	Hello string `json:"hello"`
 }
 
-func greet(r *http.Request, body *Person) (*Greeting, error) {
-	if body.Name != "frank" {
+func greet(r *http.Request, in *Person) (*Greeting, error) {
+	if in.Name != "frank" {
 		return nil, shiftapi.Error(http.StatusBadRequest, "wrong name, I only greet frank")
 	}
-	return &Greeting{Hello: body.Name}, nil
+	return &Greeting{Hello: in.Name}, nil
+}
+
+type SearchQuery struct {
+	Q     string `query:"q"     validate:"required"`
+	Page  int    `query:"page"  validate:"min=1"`
+	Limit int    `query:"limit" validate:"min=1,max=100"`
+}
+
+type SearchResult struct {
+	Query string `json:"query"`
+	Page  int    `json:"page"`
+	Limit int    `json:"limit"`
+}
+
+func search(r *http.Request, in SearchQuery) (*SearchResult, error) {
+	return &SearchResult{
+		Query: in.Q,
+		Page:  in.Page,
+		Limit: in.Limit,
+	}, nil
 }
 
 type Status struct {
 	OK bool `json:"ok"`
 }
 
-func health(r *http.Request) (*Status, error) {
+func health(r *http.Request, _ struct{}) (*Status, error) {
 	return &Status{OK: true}, nil
 }
 
@@ -40,6 +60,14 @@ func main() {
 			Summary:     "Greet a person",
 			Description: "Greet a person with a friendly greeting",
 			Tags:        []string{"greet"},
+		}),
+	)
+
+	shiftapi.Get(api, "/search", search,
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary:     "Search for things",
+			Description: "Search with typed query parameters",
+			Tags:        []string{"search"},
 		}),
 	)
 

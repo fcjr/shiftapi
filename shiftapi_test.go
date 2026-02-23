@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -174,7 +175,7 @@ func TestServeOpenAPISpec(t *testing.T) {
 		Title:   "Spec Test",
 		Version: "2.0",
 	}))
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -240,8 +241,8 @@ func TestRootRedirectsToDocs(t *testing.T) {
 
 func TestPostHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/greet", `{"name":"alice"}`)
@@ -256,8 +257,8 @@ func TestPostHandler(t *testing.T) {
 
 func TestPostHandlerInvalidBody(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/greet", `not json`)
@@ -268,8 +269,8 @@ func TestPostHandlerInvalidBody(t *testing.T) {
 
 func TestPostHandlerEmptyBody(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/greet", "")
@@ -280,8 +281,8 @@ func TestPostHandlerEmptyBody(t *testing.T) {
 
 func TestPostHandlerEmptyJSONObject(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person", `{}`)
@@ -294,7 +295,7 @@ func TestPostHandlerEmptyJSONObject(t *testing.T) {
 
 func TestGetHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -310,7 +311,7 @@ func TestGetHandler(t *testing.T) {
 
 func TestGetHandlerWithPathParam(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/items/{id}", func(r *http.Request) (*Item, error) {
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
 		return &Item{ID: r.PathValue("id"), Name: "widget"}, nil
 	})
 
@@ -331,9 +332,9 @@ func TestGetHandlerWithPathParam(t *testing.T) {
 
 func TestPutHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Put(api, "/items/{id}", func(r *http.Request, body *Item) (*Item, error) {
-		body.ID = r.PathValue("id")
-		return body, nil
+	shiftapi.Put(api, "/items/{id}", func(r *http.Request, in *Item) (*Item, error) {
+		in.ID = r.PathValue("id")
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPut, "/items/42", `{"name":"updated"}`)
@@ -353,9 +354,9 @@ func TestPutHandler(t *testing.T) {
 
 func TestPatchHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Patch(api, "/items/{id}", func(r *http.Request, body *Item) (*Item, error) {
-		body.ID = r.PathValue("id")
-		return body, nil
+	shiftapi.Patch(api, "/items/{id}", func(r *http.Request, in *Item) (*Item, error) {
+		in.ID = r.PathValue("id")
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPatch, "/items/99", `{"name":"patched"}`)
@@ -372,7 +373,7 @@ func TestPatchHandler(t *testing.T) {
 
 func TestDeleteHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Delete(api, "/items/{id}", func(r *http.Request) (*Empty, error) {
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -386,7 +387,7 @@ func TestDeleteHandler(t *testing.T) {
 
 func TestHeadHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Head(api, "/ping", func(r *http.Request) (*Empty, error) {
+	shiftapi.Head(api, "/ping", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -400,7 +401,7 @@ func TestHeadHandler(t *testing.T) {
 
 func TestOptionsHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Options(api, "/items", func(r *http.Request) (*Empty, error) {
+	shiftapi.Options(api, "/items", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -414,7 +415,7 @@ func TestOptionsHandler(t *testing.T) {
 
 func TestTraceHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Trace(api, "/debug", func(r *http.Request) (*Empty, error) {
+	shiftapi.Trace(api, "/debug", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -428,7 +429,7 @@ func TestTraceHandler(t *testing.T) {
 
 func TestConnectHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Connect(api, "/tunnel", func(r *http.Request) (*Empty, error) {
+	shiftapi.Connect(api, "/tunnel", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -442,7 +443,7 @@ func TestConnectHandler(t *testing.T) {
 
 func TestAPIErrorReturnsCorrectStatusCode(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/fail", func(r *http.Request) (*Empty, error) {
+	shiftapi.Get(api, "/fail", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return nil, shiftapi.Error(http.StatusNotFound, "not found")
 	})
 
@@ -458,7 +459,7 @@ func TestAPIErrorReturnsCorrectStatusCode(t *testing.T) {
 
 func TestAPIErrorReturnsJSON(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/fail", func(r *http.Request, body *Person) (*Greeting, error) {
+	shiftapi.Post(api, "/fail", func(r *http.Request, in *Person) (*Greeting, error) {
 		return nil, shiftapi.Error(http.StatusUnprocessableEntity, "invalid data")
 	})
 
@@ -473,7 +474,7 @@ func TestAPIErrorReturnsJSON(t *testing.T) {
 
 func TestGenericErrorReturns500(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/boom", func(r *http.Request) (*Empty, error) {
+	shiftapi.Get(api, "/boom", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return nil, errors.New("something broke")
 	})
 
@@ -506,9 +507,9 @@ func TestAPIErrorMessage(t *testing.T) {
 
 func TestWithStatusCustomCode(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/items", func(r *http.Request, body *Item) (*Item, error) {
-		body.ID = "new-id"
-		return body, nil
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		in.ID = "new-id"
+		return in, nil
 	}, shiftapi.WithStatus(http.StatusCreated))
 
 	resp := doRequest(t, api, http.MethodPost, "/items", `{"name":"widget"}`)
@@ -519,7 +520,7 @@ func TestWithStatusCustomCode(t *testing.T) {
 
 func TestWithStatusOnGetHandler(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Delete(api, "/items/{id}", func(r *http.Request) (*Empty, error) {
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	}, shiftapi.WithStatus(http.StatusNoContent))
 
@@ -533,8 +534,8 @@ func TestWithStatusOnGetHandler(t *testing.T) {
 
 func TestWithRouteInfoInSpec(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	}, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 		Summary:     "Greet someone",
 		Description: "Greets a person by name",
@@ -564,7 +565,7 @@ func TestWithRouteInfoInSpec(t *testing.T) {
 
 func TestSpecHasPath(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -576,7 +577,7 @@ func TestSpecHasPath(t *testing.T) {
 
 func TestSpecGetHasNoRequestBody(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -592,8 +593,8 @@ func TestSpecGetHasNoRequestBody(t *testing.T) {
 
 func TestSpecPostHasRequestBody(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	spec := api.Spec()
@@ -608,8 +609,8 @@ func TestSpecPostHasRequestBody(t *testing.T) {
 
 func TestSpecRequestBodyIsRequired(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	spec := api.Spec()
@@ -623,9 +624,144 @@ func TestSpecRequestBodyIsRequired(t *testing.T) {
 	}
 }
 
+// --- Empty body behavior for body-carrying methods ---
+
+func TestPostNoInputRequiresBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/trigger", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	// Empty body should be rejected
+	resp := doRequest(t, api, http.MethodPost, "/trigger", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for POST without body, got %d", resp.StatusCode)
+	}
+
+	// Empty JSON object should be accepted
+	resp2 := doRequest(t, api, http.MethodPost, "/trigger", `{}`)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for POST with {}, got %d", resp2.StatusCode)
+	}
+}
+
+func TestPutNoInputRequiresBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Put(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPut, "/items/1", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for PUT without body, got %d", resp.StatusCode)
+	}
+
+	resp2 := doRequest(t, api, http.MethodPut, "/items/1", `{}`)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for PUT with {}, got %d", resp2.StatusCode)
+	}
+}
+
+func TestPatchNoInputRequiresBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Patch(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPatch, "/items/1", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for PATCH without body, got %d", resp.StatusCode)
+	}
+
+	resp2 := doRequest(t, api, http.MethodPatch, "/items/1", `{}`)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for PATCH with {}, got %d", resp2.StatusCode)
+	}
+}
+
+func TestGetNoInputDoesNotRequireBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	// GET without body should succeed
+	resp := doRequest(t, api, http.MethodGet, "/health", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for GET without body, got %d", resp.StatusCode)
+	}
+}
+
+func TestDeleteNoInputDoesNotRequireBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	// DELETE without body should succeed
+	resp := doRequest(t, api, http.MethodDelete, "/items/1", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for DELETE without body, got %d", resp.StatusCode)
+	}
+}
+
+// --- Spec: empty body on body-carrying methods ---
+
+func TestSpecPostNoInputHasEmptyRequestBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/trigger", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/trigger").Post
+	if op.RequestBody == nil {
+		t.Fatal("POST with no input should still have a request body in the spec")
+	}
+	if !op.RequestBody.Value.Required {
+		t.Error("request body should be required")
+	}
+	content := op.RequestBody.Value.Content["application/json"]
+	if content == nil {
+		t.Fatal("expected application/json content")
+	}
+	if !content.Schema.Value.Type.Is("object") {
+		t.Errorf("expected empty object schema, got %v", content.Schema.Value.Type)
+	}
+	if len(content.Schema.Value.Properties) != 0 {
+		t.Errorf("expected 0 properties, got %d", len(content.Schema.Value.Properties))
+	}
+}
+
+func TestSpecPutNoInputHasEmptyRequestBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Put(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items/{id}").Put
+	if op.RequestBody == nil {
+		t.Fatal("PUT with no input should still have a request body in the spec")
+	}
+}
+
+func TestSpecGetNoInputHasNoRequestBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/health").Get
+	if op.RequestBody != nil {
+		t.Error("GET with no input should not have a request body in the spec")
+	}
+}
+
 func TestSpecDeleteHasNoRequestBody(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Delete(api, "/items/{id}", func(r *http.Request) (*Empty, error) {
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -641,7 +777,7 @@ func TestSpecDeleteHasNoRequestBody(t *testing.T) {
 
 func TestSpecHasResponseSchema(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -658,7 +794,7 @@ func TestSpecHasResponseSchema(t *testing.T) {
 
 func TestSpecResponseDescriptionUsesStatusText(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -671,8 +807,8 @@ func TestSpecResponseDescriptionUsesStatusText(t *testing.T) {
 
 func TestSpecWithStatusUsesCorrectCodeInSpec(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/items", func(r *http.Request, body *Item) (*Item, error) {
-		return body, nil
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		return in, nil
 	}, shiftapi.WithStatus(http.StatusCreated))
 
 	spec := api.Spec()
@@ -687,8 +823,8 @@ func TestSpecWithStatusUsesCorrectCodeInSpec(t *testing.T) {
 
 func TestSpecComponentSchemasPopulated(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/greet", func(r *http.Request, body *Person) (*Greeting, error) {
-		return &Greeting{Hello: body.Name}, nil
+	shiftapi.Post(api, "/greet", func(r *http.Request, in *Person) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
 	})
 
 	spec := api.Spec()
@@ -699,11 +835,11 @@ func TestSpecComponentSchemasPopulated(t *testing.T) {
 
 func TestSpecMultipleMethodsOnSamePath(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/items", func(r *http.Request) (*[]Item, error) {
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) (*[]Item, error) {
 		return &[]Item{}, nil
 	})
-	shiftapi.Post(api, "/items", func(r *http.Request, body *Item) (*Item, error) {
-		return body, nil
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -730,7 +866,7 @@ func TestSpecOpenAPIVersion(t *testing.T) {
 
 func TestSpecPathParametersDocumented(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/users/{id}", func(r *http.Request) (*Item, error) {
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
 		return &Item{ID: r.PathValue("id")}, nil
 	})
 
@@ -753,7 +889,7 @@ func TestSpecPathParametersDocumented(t *testing.T) {
 
 func TestSpecMultiplePathParameters(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/orgs/{orgId}/users/{userId}", func(r *http.Request) (*Item, error) {
+	shiftapi.Get(api, "/orgs/{orgId}/users/{userId}", func(r *http.Request, _ struct{}) (*Item, error) {
 		return &Item{}, nil
 	})
 
@@ -772,7 +908,7 @@ func TestSpecMultiplePathParameters(t *testing.T) {
 
 func TestSpecNoPathParametersWhenNoneInPath(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -803,19 +939,19 @@ func TestSpecOperationID(t *testing.T) {
 			api := newTestAPI(t)
 			switch tc.method {
 			case "GET":
-				shiftapi.Get(api, tc.path, func(r *http.Request) (*Empty, error) {
+				shiftapi.Get(api, tc.path, func(r *http.Request, _ struct{}) (*Empty, error) {
 					return &Empty{}, nil
 				})
 			case "POST":
-				shiftapi.Post(api, tc.path, func(r *http.Request, body *Empty) (*Empty, error) {
+				shiftapi.Post(api, tc.path, func(r *http.Request, in *Empty) (*Empty, error) {
 					return &Empty{}, nil
 				})
 			case "PUT":
-				shiftapi.Put(api, tc.path, func(r *http.Request, body *Empty) (*Empty, error) {
+				shiftapi.Put(api, tc.path, func(r *http.Request, in *Empty) (*Empty, error) {
 					return &Empty{}, nil
 				})
 			case "DELETE":
-				shiftapi.Delete(api, tc.path, func(r *http.Request) (*Empty, error) {
+				shiftapi.Delete(api, tc.path, func(r *http.Request, _ struct{}) (*Empty, error) {
 					return &Empty{}, nil
 				})
 			}
@@ -844,7 +980,7 @@ func TestSpecOperationID(t *testing.T) {
 
 func TestSpecHasDefaultErrorResponse(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -869,8 +1005,8 @@ func TestSpecHasDefaultErrorResponse(t *testing.T) {
 
 func TestSpecDefaultErrorResponseOnPost(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/items", func(r *http.Request, body *Item) (*Item, error) {
-		return body, nil
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -888,7 +1024,7 @@ func TestAPIImplementsHTTPHandler(t *testing.T) {
 
 func TestHTTPTestServerCompatibility(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/ping", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/ping", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -914,7 +1050,7 @@ func TestHTTPTestServerCompatibility(t *testing.T) {
 
 func TestMiddlewareCompatibility(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -943,7 +1079,7 @@ func addHeaderMiddleware(key, value string) func(http.Handler) http.Handler {
 
 func TestMountUnderPrefix(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/health", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -964,7 +1100,7 @@ func TestMountUnderPrefix(t *testing.T) {
 
 func TestHandlerAccessesHeaders(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/echo-header", func(r *http.Request) (*map[string]string, error) {
+	shiftapi.Get(api, "/echo-header", func(r *http.Request, _ struct{}) (*map[string]string, error) {
 		return &map[string]string{
 			"value": r.Header.Get("X-Test"),
 		}, nil
@@ -987,7 +1123,7 @@ func TestHandlerAccessesHeaders(t *testing.T) {
 
 func TestHandlerAccessesQueryParams(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/search", func(r *http.Request) (*map[string]string, error) {
+	shiftapi.Get(api, "/search", func(r *http.Request, _ struct{}) (*map[string]string, error) {
 		return &map[string]string{
 			"q": r.URL.Query().Get("q"),
 		}, nil
@@ -1005,7 +1141,7 @@ func TestHandlerAccessesQueryParams(t *testing.T) {
 
 func TestHandlerAccessesContext(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/ctx", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/ctx", func(r *http.Request, _ struct{}) (*Status, error) {
 		if r.Context() == nil {
 			return nil, errors.New("context is nil")
 		}
@@ -1022,7 +1158,7 @@ func TestHandlerAccessesContext(t *testing.T) {
 
 func TestSuccessResponseHasJSONContentType(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/test", func(r *http.Request) (*Status, error) {
+	shiftapi.Get(api, "/test", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
 	})
 
@@ -1034,7 +1170,7 @@ func TestSuccessResponseHasJSONContentType(t *testing.T) {
 
 func TestErrorResponseFromAPIErrorHasJSONContentType(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Get(api, "/fail", func(r *http.Request) (*Empty, error) {
+	shiftapi.Get(api, "/fail", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return nil, shiftapi.Error(http.StatusBadRequest, "bad")
 	})
 
@@ -1049,13 +1185,13 @@ func TestErrorResponseFromAPIErrorHasJSONContentType(t *testing.T) {
 func TestMultipleRoutes(t *testing.T) {
 	api := newTestAPI(t)
 
-	shiftapi.Get(api, "/a", func(r *http.Request) (*map[string]string, error) {
+	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*map[string]string, error) {
 		return &map[string]string{"route": "a"}, nil
 	})
-	shiftapi.Get(api, "/b", func(r *http.Request) (*map[string]string, error) {
+	shiftapi.Get(api, "/b", func(r *http.Request, _ struct{}) (*map[string]string, error) {
 		return &map[string]string{"route": "b"}, nil
 	})
-	shiftapi.Post(api, "/c", func(r *http.Request, body *Empty) (*map[string]string, error) {
+	shiftapi.Post(api, "/c", func(r *http.Request, in *Empty) (*map[string]string, error) {
 		return &map[string]string{"route": "c"}, nil
 	})
 
@@ -1095,7 +1231,7 @@ func TestSpecReturnsLiveObject(t *testing.T) {
 	api := newTestAPI(t)
 	before := len(api.Spec().Paths.InMatchingOrder())
 
-	shiftapi.Get(api, "/new-route", func(r *http.Request) (*Empty, error) {
+	shiftapi.Get(api, "/new-route", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return &Empty{}, nil
 	})
 
@@ -1129,8 +1265,8 @@ type NoValidateBody struct {
 
 func TestValidationRequiredFieldMissing(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person", `{"email":"test@example.com"}`)
@@ -1162,8 +1298,8 @@ func TestValidationRequiredFieldMissing(t *testing.T) {
 
 func TestValidationEmailInvalid(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person", `{"name":"alice","email":"not-an-email"}`)
@@ -1192,8 +1328,8 @@ func TestValidationEmailInvalid(t *testing.T) {
 
 func TestValidationMinMaxViolated(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/minmax", func(r *http.Request, body *MinMaxBody) (*MinMaxBody, error) {
-		return body, nil
+	shiftapi.Post(api, "/minmax", func(r *http.Request, in *MinMaxBody) (*MinMaxBody, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/minmax", `{"age":0,"name":"a"}`)
@@ -1204,8 +1340,8 @@ func TestValidationMinMaxViolated(t *testing.T) {
 
 func TestValidationValidPayloadPassesThrough(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person", `{"name":"alice","email":"alice@example.com"}`)
@@ -1220,8 +1356,8 @@ func TestValidationValidPayloadPassesThrough(t *testing.T) {
 
 func TestValidationNoTagsPassThrough(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/noval", func(r *http.Request, body *NoValidateBody) (*NoValidateBody, error) {
-		return body, nil
+	shiftapi.Post(api, "/noval", func(r *http.Request, in *NoValidateBody) (*NoValidateBody, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/noval", `{"foo":"bar"}`)
@@ -1233,8 +1369,8 @@ func TestValidationNoTagsPassThrough(t *testing.T) {
 func TestWithValidatorCustomInstance(t *testing.T) {
 	v := validator.New()
 	api := shiftapi.New(shiftapi.WithValidator(v))
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	// Missing required fields should still fail
@@ -1262,8 +1398,8 @@ func TestValidationErrorSatisfiesErrorsAs(t *testing.T) {
 
 func TestSpecRequiredFieldInParentSchema(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -1273,18 +1409,18 @@ func TestSpecRequiredFieldInParentSchema(t *testing.T) {
 		t.Fatal("expected ValidatedPerson in component schemas")
 	}
 	schema := schemaRef.Value
-	if !contains(schema.Required, "name") {
+	if !slices.Contains(schema.Required, "name") {
 		t.Errorf("expected 'name' in required, got %v", schema.Required)
 	}
-	if !contains(schema.Required, "email") {
+	if !slices.Contains(schema.Required, "email") {
 		t.Errorf("expected 'email' in required, got %v", schema.Required)
 	}
 }
 
 func TestSpecEmailFormatSet(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person", func(r *http.Request, body *ValidatedPerson) (*ValidatedPerson, error) {
-		return body, nil
+	shiftapi.Post(api, "/person", func(r *http.Request, in *ValidatedPerson) (*ValidatedPerson, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -1300,8 +1436,8 @@ func TestSpecEmailFormatSet(t *testing.T) {
 
 func TestSpecMinMaxOnNumber(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/minmax", func(r *http.Request, body *MinMaxBody) (*MinMaxBody, error) {
-		return body, nil
+	shiftapi.Post(api, "/minmax", func(r *http.Request, in *MinMaxBody) (*MinMaxBody, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -1320,8 +1456,8 @@ func TestSpecMinMaxOnNumber(t *testing.T) {
 
 func TestSpecMinMaxOnString(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/minmax", func(r *http.Request, body *MinMaxBody) (*MinMaxBody, error) {
-		return body, nil
+	shiftapi.Post(api, "/minmax", func(r *http.Request, in *MinMaxBody) (*MinMaxBody, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -1340,8 +1476,8 @@ func TestSpecMinMaxOnString(t *testing.T) {
 
 func TestSpecEnumOnOneOf(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/oneof", func(r *http.Request, body *OneOfBody) (*OneOfBody, error) {
-		return body, nil
+	shiftapi.Post(api, "/oneof", func(r *http.Request, in *OneOfBody) (*OneOfBody, error) {
+		return in, nil
 	})
 
 	spec := api.Spec()
@@ -1375,8 +1511,8 @@ type PersonWithAddress struct {
 
 func TestValidationNestedStructValid(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person-addr", func(r *http.Request, body *PersonWithAddress) (*PersonWithAddress, error) {
-		return body, nil
+	shiftapi.Post(api, "/person-addr", func(r *http.Request, in *PersonWithAddress) (*PersonWithAddress, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person-addr", `{"name":"alice","address":{"street":"123 Main St","city":"Springfield"}}`)
@@ -1387,8 +1523,8 @@ func TestValidationNestedStructValid(t *testing.T) {
 
 func TestValidationNestedStructMissingFields(t *testing.T) {
 	api := newTestAPI(t)
-	shiftapi.Post(api, "/person-addr", func(r *http.Request, body *PersonWithAddress) (*PersonWithAddress, error) {
-		return body, nil
+	shiftapi.Post(api, "/person-addr", func(r *http.Request, in *PersonWithAddress) (*PersonWithAddress, error) {
+		return in, nil
 	})
 
 	resp := doRequest(t, api, http.MethodPost, "/person-addr", `{"name":"alice","address":{}}`)
@@ -1397,11 +1533,963 @@ func TestValidationNestedStructMissingFields(t *testing.T) {
 	}
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
+// --- Query parameter test types ---
+
+type SearchQuery struct {
+	Q     string `query:"q" validate:"required"`
+	Page  int    `query:"page" validate:"min=1"`
+	Limit int    `query:"limit" validate:"min=1,max=100"`
+}
+
+type SearchResult struct {
+	Query string `json:"query"`
+	Page  int    `json:"page"`
+	Limit int    `json:"limit"`
+}
+
+type TagQuery struct {
+	Tags []string `query:"tag"`
+}
+
+type TagResult struct {
+	Tags []string `json:"tags"`
+}
+
+type OptionalQuery struct {
+	Name  string `query:"name"`
+	Debug *bool  `query:"debug"`
+	Limit *int   `query:"limit"`
+}
+
+type OptionalResult struct {
+	Name     string `json:"name"`
+	HasDebug bool   `json:"has_debug"`
+	Debug    bool   `json:"debug"`
+	HasLimit bool   `json:"has_limit"`
+	Limit    int    `json:"limit"`
+}
+
+type FilterQuery struct {
+	Status string `query:"status" validate:"oneof=active inactive pending"`
+}
+
+// --- Query parameter runtime tests ---
+
+func TestGetWithQueryBasic(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{Query: in.Q, Page: in.Page, Limit: in.Limit}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/search?q=hello&page=2&limit=10", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[SearchResult](t, resp)
+	if result.Query != "hello" {
+		t.Errorf("expected Query=hello, got %q", result.Query)
+	}
+	if result.Page != 2 {
+		t.Errorf("expected Page=2, got %d", result.Page)
+	}
+	if result.Limit != 10 {
+		t.Errorf("expected Limit=10, got %d", result.Limit)
+	}
+}
+
+func TestGetWithQueryMissingRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	// Missing required "q" param
+	resp := doRequest(t, api, http.MethodGet, "/search?page=1&limit=10", "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryInvalidType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	// "page" should be an int, not "abc"
+	resp := doRequest(t, api, http.MethodGet, "/search?q=test&page=abc&limit=10", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQuerySliceParams(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/tags", func(r *http.Request, in TagQuery) (*TagResult, error) {
+		return &TagResult{Tags: in.Tags}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/tags?tag=a&tag=b&tag=c", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[TagResult](t, resp)
+	if len(result.Tags) != 3 {
+		t.Fatalf("expected 3 tags, got %d", len(result.Tags))
+	}
+	expected := []string{"a", "b", "c"}
+	for i, tag := range result.Tags {
+		if tag != expected[i] {
+			t.Errorf("expected tag[%d]=%q, got %q", i, expected[i], tag)
 		}
 	}
-	return false
+}
+
+func TestGetWithQueryOptionalPointer(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/optional", func(r *http.Request, in OptionalQuery) (*OptionalResult, error) {
+		result := &OptionalResult{Name: in.Name}
+		if in.Debug != nil {
+			result.HasDebug = true
+			result.Debug = *in.Debug
+		}
+		if in.Limit != nil {
+			result.HasLimit = true
+			result.Limit = *in.Limit
+		}
+		return result, nil
+	})
+
+	// With optional params
+	resp := doRequest(t, api, http.MethodGet, "/optional?name=test&debug=true&limit=50", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[OptionalResult](t, resp)
+	if !result.HasDebug || !result.Debug {
+		t.Error("expected debug=true")
+	}
+	if !result.HasLimit || result.Limit != 50 {
+		t.Error("expected limit=50")
+	}
+
+	// Without optional params
+	resp2 := doRequest(t, api, http.MethodGet, "/optional?name=test", "")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+	result2 := decodeJSON[OptionalResult](t, resp2)
+	if result2.HasDebug {
+		t.Error("expected debug to be absent")
+	}
+	if result2.HasLimit {
+		t.Error("expected limit to be absent")
+	}
+}
+
+func TestPostWithQueryAndBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type CreateInput struct {
+		DryRun bool   `query:"dry_run"`
+		Name   string `json:"name"`
+	}
+	type CreateResult struct {
+		Name   string `json:"name"`
+		DryRun bool   `json:"dry_run"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*CreateResult, error) {
+		return &CreateResult{Name: in.Name, DryRun: in.DryRun}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPost, "/items?dry_run=true", `{"name":"widget"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[CreateResult](t, resp)
+	if result.Name != "widget" {
+		t.Errorf("expected Name=widget, got %q", result.Name)
+	}
+	if !result.DryRun {
+		t.Error("expected DryRun=true")
+	}
+}
+
+// --- Query/JSON tag interop tests ---
+
+func TestQueryFieldInBodyIsIgnored(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Input struct {
+		DryRun bool   `query:"dry_run"`
+		Name   string `json:"name"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in Input) (*map[string]any, error) {
+		return &map[string]any{"name": in.Name, "dry_run": in.DryRun}, nil
+	})
+
+	// Use the Go field name "DryRun" which json.Decode would match
+	// case-insensitively — resetQueryFields must clear it.
+	resp := doRequest(t, api, http.MethodPost, "/items", `{"name":"widget","DryRun":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]any](t, resp)
+	if result["name"] != "widget" {
+		t.Errorf("expected name=widget, got %v", result["name"])
+	}
+	if result["dry_run"] != false {
+		t.Errorf("expected dry_run=false (query field must not be set from body), got %v", result["dry_run"])
+	}
+}
+
+func TestBodyFieldInQueryIsIgnored(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Input struct {
+		DryRun bool   `query:"dry_run"`
+		Name   string `json:"name"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in Input) (*map[string]any, error) {
+		return &map[string]any{"name": in.Name, "dry_run": in.DryRun}, nil
+	})
+
+	// Send name in query but NOT in body — should remain empty
+	resp := doRequest(t, api, http.MethodPost, "/items?name=sneaky&dry_run=true", `{"name":"widget"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]any](t, resp)
+	if result["name"] != "widget" {
+		t.Errorf("expected name from body (widget), got %v", result["name"])
+	}
+	if result["dry_run"] != true {
+		t.Errorf("expected dry_run=true from query, got %v", result["dry_run"])
+	}
+}
+
+func TestFieldWithBothJsonAndQueryTagsUsesQuery(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Input struct {
+		Mode string `query:"mode" json:"mode"`
+		Name string `json:"name"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in Input) (*map[string]string, error) {
+		return &map[string]string{"mode": in.Mode, "name": in.Name}, nil
+	})
+
+	// Send conflicting values: "body_mode" in body, "query_mode" in query
+	resp := doRequest(t, api, http.MethodPost, "/items?mode=query_mode", `{"name":"widget","mode":"body_mode"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	// Query parsing runs after body decode, so query value should win
+	if result["mode"] != "query_mode" {
+		t.Errorf("expected mode=query_mode (query overrides body), got %q", result["mode"])
+	}
+	if result["name"] != "widget" {
+		t.Errorf("expected name=widget, got %q", result["name"])
+	}
+}
+
+func TestSpecMixedStructBodyExcludesQueryFields(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Input struct {
+		DryRun bool   `query:"dry_run"`
+		Name   string `json:"name"`
+		ID     string `json:"id"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in Input) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items").Post
+
+	// Query params should include dry_run only
+	queryParams := 0
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			queryParams++
+			if p.Value.Name != "dry_run" {
+				t.Errorf("unexpected query param %q", p.Value.Name)
+			}
+		}
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query parameter, got %d", queryParams)
+	}
+
+	// Body schema should include name and id but NOT dry_run
+	if op.RequestBody == nil {
+		t.Fatal("expected request body")
+	}
+	bodyRef := op.RequestBody.Value.Content["application/json"].Schema.Ref
+	schemaName := bodyRef[len("#/components/schemas/"):]
+	bodySchema := spec.Components.Schemas[schemaName].Value
+	if bodySchema.Properties["name"] == nil {
+		t.Error("expected 'name' in body schema")
+	}
+	if bodySchema.Properties["id"] == nil {
+		t.Error("expected 'id' in body schema")
+	}
+	if bodySchema.Properties["dry_run"] != nil {
+		t.Error("'dry_run' should NOT be in body schema (it's a query param)")
+	}
+}
+
+func TestSpecMixedStructQueryExcludesBodyFields(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Input struct {
+		Filter string `query:"filter"`
+		Sort   string `query:"sort"`
+		Name   string `json:"name"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in Input) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items").Post
+
+	// Query params should only be filter and sort, not name
+	paramNames := map[string]bool{}
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			paramNames[p.Value.Name] = true
+		}
+	}
+	if !paramNames["filter"] {
+		t.Error("expected 'filter' query param")
+	}
+	if !paramNames["sort"] {
+		t.Error("expected 'sort' query param")
+	}
+	if paramNames["name"] {
+		t.Error("'name' should NOT be a query param (it's a body field)")
+	}
+}
+
+func TestGetWithQueryAndPathParams(t *testing.T) {
+	api := newTestAPI(t)
+
+	type ItemQuery struct {
+		Fields string `query:"fields"`
+	}
+
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, in ItemQuery) (*map[string]string, error) {
+		return &map[string]string{
+			"id":     r.PathValue("id"),
+			"fields": in.Fields,
+		}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/items/abc123?fields=name,price", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	if result["id"] != "abc123" {
+		t.Errorf("expected id=abc123, got %q", result["id"])
+	}
+	if result["fields"] != "name,price" {
+		t.Errorf("expected fields=name,price, got %q", result["fields"])
+	}
+}
+
+func TestDeleteWithQuery(t *testing.T) {
+	api := newTestAPI(t)
+
+	type DeleteQuery struct {
+		Force bool `query:"force"`
+	}
+
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, in DeleteQuery) (*map[string]any, error) {
+		return &map[string]any{
+			"id":    r.PathValue("id"),
+			"force": in.Force,
+		}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodDelete, "/items/42?force=true", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryValidationConstraint(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/filter", func(r *http.Request, in FilterQuery) (*map[string]string, error) {
+		return &map[string]string{"status": in.Status}, nil
+	})
+
+	// Valid value
+	resp := doRequest(t, api, http.MethodGet, "/filter?status=active", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Invalid value -> 422
+	resp2 := doRequest(t, api, http.MethodGet, "/filter?status=unknown", "")
+	if resp2.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp2.StatusCode)
+	}
+}
+
+// --- Query parameter: scalar type parsing ---
+
+func TestGetWithQueryBoolScalar(t *testing.T) {
+	api := newTestAPI(t)
+
+	type BoolQuery struct {
+		Verbose bool `query:"verbose"`
+	}
+
+	shiftapi.Get(api, "/logs", func(r *http.Request, in BoolQuery) (*map[string]bool, error) {
+		return &map[string]bool{"verbose": in.Verbose}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/logs?verbose=true", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]bool](t, resp)
+	if !result["verbose"] {
+		t.Error("expected verbose=true")
+	}
+
+	// false value
+	resp2 := doRequest(t, api, http.MethodGet, "/logs?verbose=false", "")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+	result2 := decodeJSON[map[string]bool](t, resp2)
+	if result2["verbose"] {
+		t.Error("expected verbose=false")
+	}
+}
+
+func TestGetWithQueryUint(t *testing.T) {
+	api := newTestAPI(t)
+
+	type PageQuery struct {
+		Offset uint   `query:"offset"`
+		Limit  uint64 `query:"limit"`
+	}
+
+	shiftapi.Get(api, "/pages", func(r *http.Request, in PageQuery) (*map[string]uint64, error) {
+		return &map[string]uint64{"offset": uint64(in.Offset), "limit": in.Limit}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/pages?offset=10&limit=100", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]float64](t, resp)
+	if result["offset"] != 10 {
+		t.Errorf("expected offset=10, got %v", result["offset"])
+	}
+	if result["limit"] != 100 {
+		t.Errorf("expected limit=100, got %v", result["limit"])
+	}
+}
+
+func TestGetWithQueryFloat(t *testing.T) {
+	api := newTestAPI(t)
+
+	type CoordQuery struct {
+		Lat float64 `query:"lat"`
+		Lng float32 `query:"lng"`
+	}
+
+	shiftapi.Get(api, "/nearby", func(r *http.Request, in CoordQuery) (*map[string]float64, error) {
+		return &map[string]float64{"lat": in.Lat, "lng": float64(in.Lng)}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/nearby?lat=40.7128&lng=-74.006", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]float64](t, resp)
+	if result["lat"] != 40.7128 {
+		t.Errorf("expected lat=40.7128, got %v", result["lat"])
+	}
+}
+
+// --- Query parameter: parse errors ---
+
+func TestGetWithQueryInvalidBool(t *testing.T) {
+	api := newTestAPI(t)
+
+	type BoolQuery struct {
+		Debug bool `query:"debug"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in BoolQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/test?debug=notabool", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryInvalidUint(t *testing.T) {
+	api := newTestAPI(t)
+
+	type UintQuery struct {
+		Count uint `query:"count"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in UintQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/test?count=-1", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithQueryInvalidFloat(t *testing.T) {
+	api := newTestAPI(t)
+
+	type FloatQuery struct {
+		Score float64 `query:"score"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in FloatQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/test?score=abc", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+// --- Query parameter: skip and zero-value behavior ---
+
+func TestGetWithQuerySkipTag(t *testing.T) {
+	api := newTestAPI(t)
+
+	type SkipQuery struct {
+		Name   string `query:"name"`
+		Secret string `json:"-"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in SkipQuery) (*map[string]string, error) {
+		return &map[string]string{"name": in.Name, "secret": in.Secret}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/test?name=alice&secret=hidden", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	if result["name"] != "alice" {
+		t.Errorf("expected name=alice, got %q", result["name"])
+	}
+	if result["secret"] != "" {
+		t.Errorf("expected secret to be empty (skipped), got %q", result["secret"])
+	}
+}
+
+func TestGetWithQueryAbsentParamsGetZeroValues(t *testing.T) {
+	api := newTestAPI(t)
+
+	type MixedQuery struct {
+		Name  string `query:"name"`
+		Count int    `query:"count"`
+		Flag  bool   `query:"flag"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in MixedQuery) (*map[string]any, error) {
+		return &map[string]any{
+			"name":  in.Name,
+			"count": in.Count,
+			"flag":  in.Flag,
+		}, nil
+	})
+
+	// No query params at all — everything should be zero-valued
+	resp := doRequest(t, api, http.MethodGet, "/test", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]any](t, resp)
+	if result["name"] != "" {
+		t.Errorf("expected name=\"\", got %v", result["name"])
+	}
+	if result["count"] != float64(0) {
+		t.Errorf("expected count=0, got %v", result["count"])
+	}
+	if result["flag"] != false {
+		t.Errorf("expected flag=false, got %v", result["flag"])
+	}
+}
+
+// --- Query parameter: spec types for bool/float/uint ---
+
+func TestSpecQueryParamBoolType(t *testing.T) {
+	api := newTestAPI(t)
+
+	type BoolQuery struct {
+		Debug bool `query:"debug"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in BoolQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/test").Get
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(op.Parameters))
+	}
+	if !op.Parameters[0].Value.Schema.Value.Type.Is("boolean") {
+		t.Errorf("expected boolean type, got %v", op.Parameters[0].Value.Schema.Value.Type)
+	}
+}
+
+func TestSpecQueryParamFloatType(t *testing.T) {
+	api := newTestAPI(t)
+
+	type FloatQuery struct {
+		Score float64 `query:"score"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in FloatQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/test").Get
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(op.Parameters))
+	}
+	if !op.Parameters[0].Value.Schema.Value.Type.Is("number") {
+		t.Errorf("expected number type, got %v", op.Parameters[0].Value.Schema.Value.Type)
+	}
+}
+
+func TestSpecQueryParamUintType(t *testing.T) {
+	api := newTestAPI(t)
+
+	type UintQuery struct {
+		Count uint `query:"count"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in UintQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/test").Get
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(op.Parameters))
+	}
+	if !op.Parameters[0].Value.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected integer type, got %v", op.Parameters[0].Value.Schema.Value.Type)
+	}
+}
+
+func TestSpecQuerySkipTagNotDocumented(t *testing.T) {
+	api := newTestAPI(t)
+
+	type SkipQuery struct {
+		Name   string `query:"name"`
+		Secret string `json:"-"`
+	}
+
+	shiftapi.Get(api, "/test", func(r *http.Request, in SkipQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/test").Get
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter (secret should be skipped), got %d", len(op.Parameters))
+	}
+	if op.Parameters[0].Value.Name != "name" {
+		t.Errorf("expected parameter 'name', got %q", op.Parameters[0].Value.Name)
+	}
+}
+
+func TestSpecQueryParamOptionalPointerNotRequired(t *testing.T) {
+	api := newTestAPI(t)
+
+	shiftapi.Get(api, "/optional", func(r *http.Request, in OptionalQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/optional").Get
+
+	for _, p := range op.Parameters {
+		if p.Value.Required {
+			t.Errorf("expected parameter %q to not be required (pointer type)", p.Value.Name)
+		}
+	}
+}
+
+// --- Query parameter spec tests ---
+
+func TestSpecQueryParamsDocumented(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+	if op == nil {
+		t.Fatal("expected GET operation on /search")
+	}
+
+	// Should have 3 query params: q, page, limit
+	queryParams := 0
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			queryParams++
+		}
+	}
+	if queryParams != 3 {
+		t.Fatalf("expected 3 query parameters, got %d", queryParams)
+	}
+}
+
+func TestSpecQueryParamTypes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// q is a string
+	if q, ok := paramByName["q"]; !ok {
+		t.Fatal("expected 'q' query parameter")
+	} else if !q.Schema.Value.Type.Is("string") {
+		t.Errorf("expected q type 'string', got %v", q.Schema.Value.Type)
+	}
+
+	// page is an integer
+	if page, ok := paramByName["page"]; !ok {
+		t.Fatal("expected 'page' query parameter")
+	} else if !page.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected page type 'integer', got %v", page.Schema.Value.Type)
+	}
+
+	// limit is an integer
+	if limit, ok := paramByName["limit"]; !ok {
+		t.Fatal("expected 'limit' query parameter")
+	} else if !limit.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected limit type 'integer', got %v", limit.Schema.Value.Type)
+	}
+}
+
+func TestSpecQueryParamRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// q has validate:"required" so it should be required
+	if !paramByName["q"].Required {
+		t.Error("expected 'q' to be required")
+	}
+	// page does not have required tag
+	if paramByName["page"].Required {
+		t.Error("expected 'page' to not be required")
+	}
+}
+
+func TestSpecQueryParamValidationConstraints(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	paramByName := make(map[string]*openapi3.Parameter)
+	for _, p := range op.Parameters {
+		paramByName[p.Value.Name] = p.Value
+	}
+
+	// page has min=1
+	pageSchema := paramByName["page"].Schema.Value
+	if pageSchema.Min == nil || *pageSchema.Min != 1 {
+		t.Errorf("expected page minimum 1, got %v", pageSchema.Min)
+	}
+
+	// limit has min=1,max=100
+	limitSchema := paramByName["limit"].Schema.Value
+	if limitSchema.Min == nil || *limitSchema.Min != 1 {
+		t.Errorf("expected limit minimum 1, got %v", limitSchema.Min)
+	}
+	if limitSchema.Max == nil || *limitSchema.Max != 100 {
+		t.Errorf("expected limit maximum 100, got %v", limitSchema.Max)
+	}
+}
+
+func TestSpecQueryParamEnum(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/filter", func(r *http.Request, in FilterQuery) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/filter").Get
+
+	var statusParam *openapi3.Parameter
+	for _, p := range op.Parameters {
+		if p.Value.Name == "status" {
+			statusParam = p.Value
+			break
+		}
+	}
+	if statusParam == nil {
+		t.Fatal("expected 'status' query parameter")
+	}
+	if len(statusParam.Schema.Value.Enum) != 3 {
+		t.Fatalf("expected 3 enum values, got %d", len(statusParam.Schema.Value.Enum))
+	}
+}
+
+func TestSpecQueryParamSliceType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/tags", func(r *http.Request, in TagQuery) (*TagResult, error) {
+		return &TagResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/tags").Get
+
+	var tagParam *openapi3.Parameter
+	for _, p := range op.Parameters {
+		if p.Value.Name == "tag" {
+			tagParam = p.Value
+			break
+		}
+	}
+	if tagParam == nil {
+		t.Fatal("expected 'tag' query parameter")
+	}
+	if !tagParam.Schema.Value.Type.Is("array") {
+		t.Errorf("expected tag type 'array', got %v", tagParam.Schema.Value.Type)
+	}
+	if tagParam.Schema.Value.Items == nil || !tagParam.Schema.Value.Items.Value.Type.Is("string") {
+		t.Error("expected tag items type 'string'")
+	}
+}
+
+func TestSpecQueryParamsCombinedWithPathParams(t *testing.T) {
+	api := newTestAPI(t)
+
+	type ItemQuery struct {
+		Fields string `query:"fields"`
+	}
+
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, in ItemQuery) (*Item, error) {
+		return &Item{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items/{id}").Get
+
+	pathParams := 0
+	queryParams := 0
+	for _, p := range op.Parameters {
+		switch p.Value.In {
+		case "path":
+			pathParams++
+		case "query":
+			queryParams++
+		}
+	}
+	if pathParams != 1 {
+		t.Errorf("expected 1 path parameter, got %d", pathParams)
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query parameter, got %d", queryParams)
+	}
+}
+
+func TestSpecPostWithQueryHasQueryParamsAndBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type CreateInput struct {
+		DryRun bool   `query:"dry_run"`
+		Name   string `json:"name"`
+		ID     string `json:"id"`
+	}
+
+	shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*Item, error) {
+		return &Item{ID: in.ID, Name: in.Name}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items").Post
+	if op == nil {
+		t.Fatal("expected POST operation on /items")
+	}
+
+	// Should have query params
+	queryParams := 0
+	for _, p := range op.Parameters {
+		if p.Value.In == "query" {
+			queryParams++
+		}
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query parameter, got %d", queryParams)
+	}
+
+	// Should also have a request body
+	if op.RequestBody == nil {
+		t.Error("expected request body on POST with query and body")
+	}
+}
+
+// --- Query-only input should not have request body ---
+
+func TestSpecQueryOnlyInputHasNoRequestBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*SearchResult, error) {
+		return &SearchResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+	if op.RequestBody != nil {
+		t.Error("GET with query-only input should not have a request body in the spec")
+	}
 }
