@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, pathType, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
+func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -65,6 +65,15 @@ func (a *API) updateSchema(method, path string, pathType, queryType, inType, out
 			return err
 		}
 		op.Parameters = append(op.Parameters, queryParams...)
+	}
+
+	// Header parameters
+	if headerType != nil {
+		headerParams, err := a.generateHeaderParams(headerType)
+		if err != nil {
+			return err
+		}
+		op.Parameters = append(op.Parameters, headerParams...)
 	}
 
 	// Response schema
@@ -140,8 +149,9 @@ func (a *API) updateSchema(method, path string, pathType, queryType, inType, out
 			return err
 		}
 		if inSchema != nil {
-			// Strip query-tagged and path-tagged fields from the body schema
+			// Strip query-tagged, header-tagged, and path-tagged fields from the body schema
 			stripQueryFields(inType, inSchema.Value)
+			stripHeaderFields(inType, inSchema.Value)
 			stripPathFields(inType, inSchema.Value)
 
 			if len(inSchema.Value.Properties) > 0 {
@@ -440,6 +450,73 @@ func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
 	}
 	for f := range t.Fields() {
 		if !f.IsExported() || !hasQueryTag(f) {
+			continue
+		}
+		jname := jsonFieldName(f)
+		if jname == "" || jname == "-" {
+			continue
+		}
+		delete(schema.Properties, jname)
+		// Remove from Required slice
+		for j, req := range schema.Required {
+			if req == jname {
+				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// generateHeaderParams produces OpenAPI parameter definitions for a header struct type.
+// Only fields with `header` tags are included. Slices are not supported for headers.
+func (a *API) generateHeaderParams(t reflect.Type) ([]*openapi3.ParameterRef, error) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("header type must be a struct, got %s", t.Kind())
+	}
+
+	var params []*openapi3.ParameterRef
+	for field := range t.Fields() {
+		if !field.IsExported() {
+			continue
+		}
+		if !hasHeaderTag(field) {
+			continue
+		}
+		name := http.CanonicalHeaderKey(headerFieldName(field))
+		schema := scalarToOpenAPISchema(field.Type)
+
+		// Apply validation constraints
+		if err := validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
+			return nil, err
+		}
+
+		required := hasRule(field.Tag.Get("validate"), "required")
+
+		params = append(params, &openapi3.ParameterRef{
+			Value: &openapi3.Parameter{
+				Name:     name,
+				In:       "header",
+				Required: required,
+				Schema:   schema,
+			},
+		})
+	}
+	return params, nil
+}
+
+// stripHeaderFields removes header-tagged fields from a body schema's Properties and Required.
+func stripHeaderFields(t reflect.Type, schema *openapi3.Schema) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || schema == nil {
+		return
+	}
+	for f := range t.Fields() {
+		if !f.IsExported() || !hasHeaderTag(f) {
 			continue
 		}
 		jname := jsonFieldName(f)

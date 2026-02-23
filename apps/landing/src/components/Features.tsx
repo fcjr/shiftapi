@@ -2,7 +2,7 @@ const features = [
   {
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>,
     title: "Type-Safe Handlers",
-    desc: "Generic Go functions capture request and response types at compile time. No annotations, no magic comments.",
+    desc: <>Generic Go functions capture request and response types at compile time. <code>json</code>, <code>query</code>, <code>header</code>, and <code>form</code> tags route input automatically.</>,
   },
   {
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,

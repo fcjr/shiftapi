@@ -15,17 +15,18 @@ import (
 // The In struct's fields are discriminated by struct tags:
 //   - path:"name" — parsed from URL path parameters (e.g. /users/{id})
 //   - query:"name" — parsed from URL query parameters
+//   - header:"name" — parsed from HTTP headers
 //   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
 //   - form:"name" — parsed from multipart/form-data (for file uploads)
 //
 // Use struct{} as In for routes that take no input, or as Resp for routes
 // that return no body (e.g. health checks that only need a status code).
 //
-// The [*http.Request] parameter gives access to headers, cookies, path
+// The [*http.Request] parameter gives access to cookies, path
 // parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
@@ -56,6 +57,12 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 			}
 		}
 
+		// Reset any header-tagged fields that body decode may have
+		// inadvertently set, so they only come from HTTP headers.
+		if hasBody && hasHeader {
+			resetHeaderFields(rv)
+		}
+
 		// Parse query params if there are query fields
 		if hasQuery {
 			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
@@ -67,6 +74,14 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 		// Parse path params if there are path fields
 		if hasPath {
 			if err := parsePathInto(rv, r); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+		}
+
+		// Parse headers if there are header fields
+		if hasHeader {
+			if err := parseHeadersInto(rv, r.Header); err != nil {
 				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
 				return
 			}

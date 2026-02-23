@@ -28,8 +28,8 @@ func handler(r *http.Request, in InputType) (OutputType, error) {
 }
 ```
 
-- **`r *http.Request`** — the standard HTTP request, useful for headers, cookies, path parameters, etc.
-- **`in InputType`** — automatically decoded from JSON body, query parameters, or multipart form data
+- **`r *http.Request`** — the standard HTTP request, useful for cookies, path parameters, and other request metadata
+- **`in InputType`** — automatically decoded from JSON body, query parameters, HTTP headers, or multipart form data
 - **`OutputType`** — serialized as JSON in the response (can be a pointer or value type)
 - **`error`** — return an error to send an error response
 
@@ -50,16 +50,20 @@ Fields are decoded based on struct tags:
 | `path` | URL path parameters | `path:"id"` |
 | `json` | Request body (JSON) | `json:"name"` |
 | `query` | Query parameters | `query:"page"` |
+| `header` | HTTP headers | `header:"Authorization"` |
 | `form` | Multipart form data | `form:"file"` |
 
-You can combine tags in a single struct:
+You can combine tags in a single struct — `path`, `query`, `header`, and `json` fields can be freely mixed. The only restriction is that `form` and `json` tags cannot coexist on the same struct.
 
 ```go
 type UpdateUser struct {
-    ID   int    `path:"id"`
-    Name string `json:"name"`
+    ID    int    `path:"id"`
+    Token string `header:"Authorization"`
+    Name  string `json:"name"`
 }
 ```
+
+Header and query fields support `string`, `bool`, `int*`, `uint*`, `float*` scalars and `*T` pointers for optional values. Query fields also support `[]T` slices for repeated params. Slices are not supported for headers. Parse errors return `400`; validation failures return `422`.
 
 ## Path parameters
 

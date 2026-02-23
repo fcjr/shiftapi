@@ -14,14 +14,15 @@ func hasQueryTag(f reflect.StructField) bool {
 }
 
 // partitionFields inspects a struct type and reports whether it contains
-// path-tagged, query-tagged, body (json-tagged or untagged non-path/query) fields,
-// and/or form-tagged fields. It panics if both body and form fields are present.
-func partitionFields(t reflect.Type) (hasPath, hasQuery, hasBody, hasForm bool) {
+// path-tagged, query-tagged, header-tagged, body (json-tagged or untagged
+// non-path/query/header) fields, and/or form-tagged fields. It panics if both
+// body and form fields are present.
+func partitionFields(t reflect.Type) (hasPath, hasQuery, hasHeader, hasBody, hasForm bool) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
-		return false, false, false, false
+		return false, false, false, false, false
 	}
 	for f := range t.Fields() {
 		if !f.IsExported() {
@@ -31,10 +32,12 @@ func partitionFields(t reflect.Type) (hasPath, hasQuery, hasBody, hasForm bool) 
 			hasPath = true
 		} else if hasQueryTag(f) {
 			hasQuery = true
+		} else if hasHeaderTag(f) {
+			hasHeader = true
 		} else if hasFormTag(f) {
 			hasForm = true
 		} else {
-			// Any exported field without a path, query, or form tag is a body field
+			// Any exported field without a path, query, header, or form tag is a body field
 			jsonTag := f.Tag.Get("json")
 			if jsonTag == "-" {
 				continue
@@ -178,7 +181,7 @@ func setScalarValue(v reflect.Value, raw string) error {
 		}
 		v.SetFloat(n)
 	default:
-		return fmt.Errorf("unsupported query parameter type %s", v.Kind())
+		return fmt.Errorf("unsupported parameter type %s", v.Kind())
 	}
 	return nil
 }
@@ -192,3 +195,5 @@ type queryParseError struct {
 func (e *queryParseError) Error() string {
 	return fmt.Sprintf("invalid query parameter %q: %v", e.Field, e.Err)
 }
+
+func (e *queryParseError) Unwrap() error { return e.Err }

@@ -96,7 +96,7 @@ Error types merge across all three levels. In the example above, `GET /api/v1/us
 
 ## Parse errors
 
-When the framework cannot parse the request (malformed JSON, invalid query parameter types, invalid form data), it returns a `400 Bad Request`. By default the response body is `{"message": "bad request"}`.
+When the framework cannot parse the request (malformed JSON, invalid query parameter types, invalid header values, invalid form data), it returns a `400 Bad Request`. By default the response body is `{"message": "bad request"}`.
 
 ### Customizing the 400 response
 
