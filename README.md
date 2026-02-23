@@ -82,7 +82,7 @@ That's it. ShiftAPI reflects your Go types into an OpenAPI 3.1 spec at `/openapi
 
 ### Generic type-safe handlers
 
-Generic free functions capture your request and response types at compile time. Every method uses a single function — struct tags discriminate query params (`query:"..."`) from body fields (`json:"..."`). For routes without input, use `_ struct{}`.
+Generic free functions capture your request and response types at compile time. Every method uses a single function — struct tags discriminate query params (`query:"..."`), HTTP headers (`header:"..."`), and body fields (`json:"..."`). For routes without input, use `_ struct{}`.
 
 ```go
 // POST with body — input is decoded and passed as *CreateUser
@@ -126,6 +126,25 @@ shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*Result, err
     return createItem(in.Name, in.DryRun), nil
 })
 ```
+
+### Typed HTTP headers
+
+Define a struct with `header` tags. Headers are parsed, validated, and documented in the OpenAPI spec automatically — just like query params.
+
+```go
+type AuthInput struct {
+    Token string `header:"Authorization" validate:"required"`
+    Q     string `query:"q"`
+}
+
+shiftapi.Get(api, "/search", func(r *http.Request, in AuthInput) (*Results, error) {
+    // in.Token parsed from the Authorization header
+    // in.Q parsed from ?q= query param
+    return doSearch(in.Token, in.Q), nil
+})
+```
+
+Supports `string`, `bool`, `int*`, `uint*`, `float*` scalars and `*T` pointers for optional headers. Parse errors return `400`; validation failures return `422`. Header, query, and body fields can be freely combined in one struct.
 
 ### Validation
 
@@ -234,6 +253,14 @@ const { data: results } = await client.GET("/search", {
     params: { query: { q: "hello", page: 1, limit: 10 } },
 });
 // query params are fully typed too — { q: string, page?: number, limit?: number }
+
+const { data: authResults } = await client.GET("/search", {
+    params: {
+        query: { q: "hello" },
+        header: { Authorization: "Bearer token" },
+    },
+});
+// header params are fully typed as well
 ```
 
 In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.

@@ -14,13 +14,14 @@ func hasQueryTag(f reflect.StructField) bool {
 }
 
 // partitionFields inspects a struct type and reports whether it contains
-// query-tagged fields and/or body (json-tagged or untagged non-query) fields.
-func partitionFields(t reflect.Type) (hasQuery, hasBody bool) {
+// query-tagged fields, header-tagged fields, and/or body (json-tagged or
+// untagged non-query/non-header) fields.
+func partitionFields(t reflect.Type) (hasQuery, hasHeader, hasBody bool) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
-		return false, false
+		return false, false, false
 	}
 	for i := range t.NumField() {
 		f := t.Field(i)
@@ -29,8 +30,10 @@ func partitionFields(t reflect.Type) (hasQuery, hasBody bool) {
 		}
 		if hasQueryTag(f) {
 			hasQuery = true
+		} else if hasHeaderTag(f) {
+			hasHeader = true
 		} else {
-			// Any exported field without a query tag is a body field
+			// Any exported field without a query or header tag is a body field
 			jsonTag := f.Tag.Get("json")
 			if jsonTag == "-" {
 				continue
@@ -171,7 +174,7 @@ func setScalarValue(v reflect.Value, raw string) error {
 		}
 		v.SetFloat(n)
 	default:
-		return fmt.Errorf("unsupported query parameter type %s", v.Kind())
+		return fmt.Errorf("unsupported parameter type %s", v.Kind())
 	}
 	return nil
 }
