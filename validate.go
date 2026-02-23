@@ -38,7 +38,7 @@ func WithValidator(v *validator.Validate) Option {
 // It dereferences pointers and skips non-struct types.
 func validateStruct(v *validator.Validate, val any) error {
 	rv := reflect.ValueOf(val)
-	for rv.Kind() == reflect.Ptr {
+	for rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return nil
 		}
@@ -110,8 +110,8 @@ func validateSchemaCustomizer(name string, t reflect.Type, tag reflect.StructTag
 		return nil
 	}
 
-	rules := strings.Split(validateTag, ",")
-	for _, rule := range rules {
+	rules := strings.SplitSeq(validateTag, ",")
+	for rule := range rules {
 		rule = strings.TrimSpace(rule)
 
 		key, param, _ := strings.Cut(rule, "=")
@@ -219,7 +219,7 @@ func applyLen(t reflect.Type, schema *openapi3.Schema, param string) {
 }
 
 func derefKind(t reflect.Type) reflect.Kind {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.Kind()
@@ -246,7 +246,7 @@ func isSliceKind(k reflect.Kind) bool {
 // applyRequired walks struct fields and adds JSON names to schema.Required
 // for fields that have validate:"required".
 func applyRequired(t reflect.Type, schema *openapi3.Schema) {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -269,7 +269,7 @@ func applyRequired(t reflect.Type, schema *openapi3.Schema) {
 
 // hasRule checks whether a comma-separated validate tag contains the given rule name.
 func hasRule(tag, rule string) bool {
-	for _, r := range strings.Split(tag, ",") {
+	for r := range strings.SplitSeq(tag, ",") {
 		key, _, _ := strings.Cut(strings.TrimSpace(r), "=")
 		if key == rule {
 			return true

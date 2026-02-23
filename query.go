@@ -8,47 +8,92 @@ import (
 	"strings"
 )
 
-// parseQuery populates a struct of type T from URL query parameters.
-// It uses the `query` struct tag for parameter names, falling back to the field name.
-// A tag of `query:"-"` causes the field to be skipped.
-func parseQuery[T any](values url.Values) (T, error) {
-	var result T
-	rv := reflect.ValueOf(&result).Elem()
-	rt := rv.Type()
+// hasQueryTag returns true if the struct field has a `query` tag.
+func hasQueryTag(f reflect.StructField) bool {
+	return f.Tag.Get("query") != ""
+}
 
-	for rt.Kind() == reflect.Ptr {
-		rv.Set(reflect.New(rt.Elem()))
+// partitionFields inspects a struct type and reports whether it contains
+// query-tagged fields and/or body (json-tagged or untagged non-query) fields.
+func partitionFields(t reflect.Type) (hasQuery, hasBody bool) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return false, false
+	}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		if hasQueryTag(f) {
+			hasQuery = true
+		} else {
+			// Any exported field without a query tag is a body field
+			jsonTag := f.Tag.Get("json")
+			if jsonTag == "-" {
+				continue
+			}
+			hasBody = true
+		}
+	}
+	return
+}
+
+// resetQueryFields zeros out any query-tagged fields on a struct value.
+// This is called after body decode so that query-tagged fields are only
+// populated by parseQueryInto, not by JSON keys that happen to match.
+func resetQueryFields(rv reflect.Value) {
+	for rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
-		rt = rt.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return
+	}
+	rt := rv.Type()
+	for i := range rt.NumField() {
+		f := rt.Field(i)
+		if f.IsExported() && hasQueryTag(f) {
+			rv.Field(i).SetZero()
+		}
+	}
+}
+
+// parseQueryInto populates query-tagged fields on an existing struct value
+// from URL query parameters. Non-query fields are left untouched.
+func parseQueryInto(rv reflect.Value, values url.Values) error {
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			rv.Set(reflect.New(rv.Type().Elem()))
+		}
+		rv = rv.Elem()
 	}
 
+	rt := rv.Type()
 	if rt.Kind() != reflect.Struct {
-		return result, fmt.Errorf("query type must be a struct, got %s", rt.Kind())
+		return fmt.Errorf("query type must be a struct, got %s", rt.Kind())
 	}
 
 	for i := range rt.NumField() {
 		field := rt.Field(i)
-		if !field.IsExported() {
+		if !field.IsExported() || !hasQueryTag(field) {
 			continue
 		}
 
 		name := queryFieldName(field)
-		if name == "-" {
-			continue
-		}
-
 		fv := rv.Field(i)
 		ft := field.Type
 
 		// Handle pointer fields (optional params)
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			rawValues, exists := values[name]
 			if !exists || len(rawValues) == 0 {
-				continue // leave nil
+				continue
 			}
 			ptr := reflect.New(ft.Elem())
 			if err := setScalarValue(ptr.Elem(), rawValues[0]); err != nil {
-				return result, &queryParseError{Field: name, Err: err}
+				return &queryParseError{Field: name, Err: err}
 			}
 			fv.Set(ptr)
 			continue
@@ -65,7 +110,7 @@ func parseQuery[T any](values url.Values) (T, error) {
 			for j, raw := range rawValues {
 				elem := reflect.New(elemType).Elem()
 				if err := setScalarValue(elem, raw); err != nil {
-					return result, &queryParseError{Field: name, Err: err}
+					return &queryParseError{Field: name, Err: err}
 				}
 				slice.Index(j).Set(elem)
 			}
@@ -79,20 +124,17 @@ func parseQuery[T any](values url.Values) (T, error) {
 			continue
 		}
 		if err := setScalarValue(fv, raw); err != nil {
-			return result, &queryParseError{Field: name, Err: err}
+			return &queryParseError{Field: name, Err: err}
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
 // queryFieldName returns the query parameter name for a struct field.
+// The field must have a non-empty `query` tag (guaranteed by hasQueryTag).
 func queryFieldName(f reflect.StructField) string {
-	tag := f.Tag.Get("query")
-	if tag == "" {
-		return f.Name
-	}
-	name, _, _ := strings.Cut(tag, ",")
+	name, _, _ := strings.Cut(f.Tag.Get("query"), ",")
 	if name == "" {
 		return f.Name
 	}

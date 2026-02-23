@@ -15,15 +15,15 @@ type EchoResponse struct {
 	Message string `json:"message"`
 }
 
-func echo(r *http.Request, body *EchoRequest) (*EchoResponse, error) {
-	return &EchoResponse{Message: body.Message}, nil
+func echo(r *http.Request, in *EchoRequest) (*EchoResponse, error) {
+	return &EchoResponse{Message: in.Message}, nil
 }
 
 type Status struct {
 	OK bool `json:"ok"`
 }
 
-func health(r *http.Request) (*Status, error) {
+func health(r *http.Request, _ struct{}) (*Status, error) {
 	return &Status{OK: true}, nil
 }
 

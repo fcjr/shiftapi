@@ -121,20 +121,44 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 			return err
 		}
 		if inSchema != nil {
-			content := make(map[string]*openapi3.MediaType)
-			content["application/json"] = &openapi3.MediaType{
-				Schema: &openapi3.SchemaRef{
-					Ref: fmt.Sprintf("#/components/schemas/%s", inSchema.Ref),
-				},
-			}
-			op.RequestBody = &openapi3.RequestBodyRef{
-				Value: &openapi3.RequestBody{
-					Required: true,
-					Content:  content,
-				},
-			}
-			a.spec.Components.Schemas[inSchema.Ref] = &openapi3.SchemaRef{
-				Value: inSchema.Value,
+			// Strip query-tagged fields from the body schema
+			stripQueryFields(inType, inSchema.Value)
+
+			if len(inSchema.Value.Properties) > 0 {
+				// Named body schema with properties
+				content := make(map[string]*openapi3.MediaType)
+				content["application/json"] = &openapi3.MediaType{
+					Schema: &openapi3.SchemaRef{
+						Ref: fmt.Sprintf("#/components/schemas/%s", inSchema.Ref),
+					},
+				}
+				op.RequestBody = &openapi3.RequestBodyRef{
+					Value: &openapi3.RequestBody{
+						Required: true,
+						Content:  content,
+					},
+				}
+				a.spec.Components.Schemas[inSchema.Ref] = &openapi3.SchemaRef{
+					Value: inSchema.Value,
+				}
+			} else {
+				// No body fields (e.g. struct{}) — inline empty object schema.
+				// This happens for POST/PUT/PATCH where a body is required
+				// even when the input struct has no body fields.
+				op.RequestBody = &openapi3.RequestBodyRef{
+					Value: &openapi3.RequestBody{
+						Required: true,
+						Content: map[string]*openapi3.MediaType{
+							"application/json": {
+								Schema: &openapi3.SchemaRef{
+									Value: &openapi3.Schema{
+										Type: &openapi3.Types{"object"},
+									},
+								},
+							},
+						},
+					},
+				}
 			}
 		}
 	}
@@ -220,8 +244,9 @@ func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {
 }
 
 // generateQueryParams produces OpenAPI parameter definitions for a query struct type.
+// Only fields with `query` tags are included.
 func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, error) {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -234,11 +259,10 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 		if !field.IsExported() {
 			continue
 		}
-		name := queryFieldName(field)
-		if name == "-" {
+		if !hasQueryTag(field) {
 			continue
 		}
-
+		name := queryFieldName(field)
 		schema := fieldToOpenAPISchema(field.Type)
 
 		// Apply validation constraints
@@ -263,7 +287,7 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 // fieldToOpenAPISchema maps a Go type to an OpenAPI schema.
 func fieldToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
 	// Unwrap pointer
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		return fieldToOpenAPISchema(t.Elem())
 	}
 
@@ -283,7 +307,7 @@ func fieldToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
 
 // scalarToOpenAPISchema maps a scalar Go type to an OpenAPI schema.
 func scalarToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	switch t.Kind() {
@@ -298,6 +322,34 @@ func scalarToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"number"}}}
 	default:
 		return &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}}
+	}
+}
+
+// stripQueryFields removes query-tagged fields from a body schema's Properties and Required.
+func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || schema == nil {
+		return
+	}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() || !hasQueryTag(f) {
+			continue
+		}
+		jname := jsonFieldName(f)
+		if jname == "" || jname == "-" {
+			continue
+		}
+		delete(schema.Properties, jname)
+		// Remove from Required slice
+		for j, req := range schema.Required {
+			if req == jname {
+				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)
+				break
+			}
+		}
 	}
 }
 

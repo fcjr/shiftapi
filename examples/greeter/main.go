@@ -15,11 +15,11 @@ type Greeting struct {
 	Hello string `json:"hello"`
 }
 
-func greet(r *http.Request, body *Person) (*Greeting, error) {
-	if body.Name != "frank" {
+func greet(r *http.Request, in *Person) (*Greeting, error) {
+	if in.Name != "frank" {
 		return nil, shiftapi.Error(http.StatusBadRequest, "wrong name, I only greet frank")
 	}
-	return &Greeting{Hello: body.Name}, nil
+	return &Greeting{Hello: in.Name}, nil
 }
 
 type SearchQuery struct {
@@ -34,11 +34,11 @@ type SearchResult struct {
 	Limit int    `json:"limit"`
 }
 
-func search(r *http.Request, query SearchQuery) (*SearchResult, error) {
+func search(r *http.Request, in SearchQuery) (*SearchResult, error) {
 	return &SearchResult{
-		Query: query.Q,
-		Page:  query.Page,
-		Limit: query.Limit,
+		Query: in.Q,
+		Page:  in.Page,
+		Limit: in.Limit,
 	}, nil
 }
 
@@ -46,7 +46,7 @@ type Status struct {
 	OK bool `json:"ok"`
 }
 
-func health(r *http.Request) (*Status, error) {
+func health(r *http.Request, _ struct{}) (*Status, error) {
 	return &Status{OK: true}, nil
 }
 
@@ -63,7 +63,7 @@ func main() {
 		}),
 	)
 
-	shiftapi.GetWithQuery(api, "/search", search,
+	shiftapi.Get(api, "/search", search,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Search for things",
 			Description: "Search with typed query parameters",
