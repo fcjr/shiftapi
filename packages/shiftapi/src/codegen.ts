@@ -1,10 +1,10 @@
-import { resolve } from "node:path";
+import { resolve, relative } from "node:path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { parse, stringify } from "comment-json";
 import { extractSpec } from "./extract";
 import { generateTypes } from "./generate";
 import { MODULE_ID, DEV_API_PREFIX } from "./constants";
-import { dtsTemplate, virtualModuleTemplate } from "./templates";
+import { dtsTemplate, clientJsTemplate, virtualModuleTemplate } from "./templates";
 
 export async function regenerateTypes(
   serverEntry: string,
@@ -26,18 +26,32 @@ export async function regenerateTypes(
   return { types, virtualModuleSource, changed };
 }
 
-export function writeDtsFile(projectRoot: string, generatedDts: string): void {
-  const outDir = resolve(projectRoot, ".shiftapi");
+export function writeGeneratedFiles(typesRoot: string, generatedDts: string, baseUrl: string): void {
+  const outDir = resolve(typesRoot, ".shiftapi");
   if (!existsSync(outDir)) {
     mkdirSync(outDir, { recursive: true });
   }
 
-  const dtsContent = dtsTemplate(generatedDts);
-  writeFileSync(resolve(outDir, "client.d.ts"), dtsContent);
+  writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts));
+  writeFileSync(resolve(outDir, "client.js"), clientJsTemplate(baseUrl));
+  writeFileSync(
+    resolve(outDir, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          paths: {
+            [MODULE_ID]: ["./client.d.ts"],
+          },
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
 }
 
-export function patchTsConfig(projectRoot: string): void {
-  const tsconfigPath = resolve(projectRoot, "tsconfig.json");
+export function patchTsConfig(tsconfigDir: string, typesRoot: string): void {
+  const tsconfigPath = resolve(tsconfigDir, "tsconfig.json");
   if (!existsSync(tsconfigPath)) return;
 
   const raw = readFileSync(tsconfigPath, "utf-8");
@@ -52,15 +66,16 @@ export function patchTsConfig(projectRoot: string): void {
     return;
   }
 
-  if (tsconfig?.compilerOptions?.paths?.[MODULE_ID]) return;
+  const rel = relative(tsconfigDir, resolve(typesRoot, ".shiftapi", "tsconfig.json"));
+  const extendsPath = rel.startsWith("..") ? rel : `./${rel}`;
 
-  if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
-  if (!tsconfig.compilerOptions.paths) tsconfig.compilerOptions.paths = {};
-  tsconfig.compilerOptions.paths[MODULE_ID] = ["./.shiftapi/client.d.ts"];
+  if (tsconfig?.extends === extendsPath) return;
+
+  tsconfig.extends = extendsPath;
 
   const detectedIndent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
   writeFileSync(tsconfigPath, stringify(tsconfig, null, detectedIndent) + "\n");
   console.log(
-    "[shiftapi] Updated tsconfig.json with @shiftapi/client path mapping",
+    "[shiftapi] Updated tsconfig.json to extend .shiftapi/tsconfig.json",
   );
 }

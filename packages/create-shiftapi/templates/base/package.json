@@ -2,9 +2,14 @@
   "name": "{{name}}",
   "private": true,
   "scripts": {
-    "dev": "npm run dev --workspace apps/web"
+    "dev": "npm run dev --workspace apps/web",
+    "postinstall": "shiftapi prepare"
+  },
+  "devDependencies": {
+    "shiftapi": "^{{version}}"
   },
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ]
 }

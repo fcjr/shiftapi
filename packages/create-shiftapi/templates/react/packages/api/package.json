@@ -1,0 +1,12 @@
+{
+  "name": "@{{name}}/api",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "openapi-react-query": "^0.2.0"
+  }
+}

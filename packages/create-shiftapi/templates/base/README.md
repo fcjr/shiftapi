@@ -22,6 +22,8 @@ cmd/{{name}}/main.go          # Go entry point
 internal/server/server.go      # API routes and handlers
 go.mod
 .env                           # Environment variables (PORT)
+shiftapi.config.ts             # ShiftAPI config (anchors project root)
+packages/api/                  # Typed API client (shared)
 apps/web/                      # Frontend (Vite + TypeScript)
 ```
 

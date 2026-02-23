@@ -30,7 +30,7 @@ export function extractSpec(serverEntry: string, goRoot: string): object {
         ? String((err as { stderr: unknown }).stderr)
         : "";
     throw new Error(
-      `@shiftapi/vite-plugin: Failed to extract OpenAPI spec.\n` +
+      `shiftapi: Failed to extract OpenAPI spec.\n` +
         `  Command: go run ${serverEntry}\n` +
         `  CWD: ${goRoot}\n` +
         `  Error: ${stderr || String(err)}`,
@@ -42,7 +42,7 @@ export function extractSpec(serverEntry: string, goRoot: string): object {
     raw = readFileSync(specPath, "utf-8");
   } catch {
     throw new Error(
-      `@shiftapi/vite-plugin: Spec file was not created at ${specPath}.\n` +
+      `shiftapi: Spec file was not created at ${specPath}.\n` +
         `  Make sure your Go server calls shiftapi.ListenAndServe().`,
     );
   }

@@ -32,7 +32,7 @@ describe("extractSpec", () => {
 
   it("throws on invalid server entry", () => {
     expect(() => extractSpec("./nonexistent", REPO_ROOT)).toThrow(
-      "@shiftapi/vite-plugin"
+      "shiftapi:"
     );
   });
 });

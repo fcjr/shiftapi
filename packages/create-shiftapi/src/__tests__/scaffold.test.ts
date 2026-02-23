@@ -22,15 +22,18 @@ describe("getFiles", () => {
     expect(files).toContain(".env");
     expect(files).toContain(".gitignore");
     expect(files).toContain("package.json");
+    expect(files).toContain("shiftapi.config.ts");
     expect(files).toContain("apps/web/package.json");
     expect(files).toContain("apps/web/vite.config.ts");
     expect(files).toContain("apps/web/tsconfig.json");
     expect(files).toContain("apps/web/index.html");
-    expect(files).toContain("apps/web/src/api.ts");
     expect(files).toContain("apps/web/src/main.tsx");
     expect(files).toContain("apps/web/src/App.tsx");
+    expect(files).toContain("packages/api/package.json");
+    expect(files).toContain("packages/api/tsconfig.json");
+    expect(files).toContain("packages/api/src/index.ts");
     expect(files).toContain("README.md");
-    expect(files).toHaveLength(14);
+    expect(files).toHaveLength(17);
   });
 
   it("returns all expected files for svelte", () => {
@@ -38,7 +41,11 @@ describe("getFiles", () => {
 
     expect(files).toContain("apps/web/src/main.ts");
     expect(files).toContain("apps/web/src/App.svelte");
-    expect(files).toHaveLength(13);
+    expect(files).toContain("apps/web/src/Home.svelte");
+    expect(files).toContain("packages/api/package.json");
+    expect(files).toContain("packages/api/src/index.ts");
+    expect(files).toContain("shiftapi.config.ts");
+    expect(files).toHaveLength(18);
   });
 });
 
@@ -72,9 +79,12 @@ describe("scaffold", () => {
     expect(await exists(".env")).toBe(true);
     expect(await exists(".gitignore")).toBe(true);
     expect(await exists("package.json")).toBe(true);
+    expect(await exists("shiftapi.config.ts")).toBe(true);
     expect(await exists("apps/web/package.json")).toBe(true);
     expect(await exists("apps/web/src/main.tsx")).toBe(true);
     expect(await exists("apps/web/src/App.tsx")).toBe(true);
+    expect(await exists("packages/api/package.json")).toBe(true);
+    expect(await exists("packages/api/src/index.ts")).toBe(true);
     expect(await exists(".git")).toBe(true);
   });
 
@@ -93,6 +103,9 @@ describe("scaffold", () => {
 
     expect(await exists("apps/web/src/main.ts")).toBe(true);
     expect(await exists("apps/web/src/App.svelte")).toBe(true);
+    expect(await exists("apps/web/src/Home.svelte")).toBe(true);
+    expect(await exists("packages/api/package.json")).toBe(true);
+    expect(await exists("packages/api/src/index.ts")).toBe(true);
   });
 
   it("initializes a git repository", async () => {
@@ -147,6 +160,13 @@ describe("scaffold", () => {
     expect(rootPkg.name).toBe("cool-project");
     expect(rootPkg.private).toBe(true);
     expect(rootPkg.workspaces).toContain("apps/*");
+    expect(rootPkg.workspaces).toContain("packages/*");
+
+    const shiftapiConfig = await fs.readFile(
+      path.join(targetDir, "shiftapi.config.ts"),
+      "utf-8",
+    );
+    expect(shiftapiConfig).toContain("./cmd/cool-project");
 
     const webPkg = JSON.parse(
       await fs.readFile(
@@ -156,6 +176,12 @@ describe("scaffold", () => {
     );
     expect(webPkg.dependencies["react"]).toBeDefined();
     expect(webPkg.devDependencies["@vitejs/plugin-react"]).toBeDefined();
+
+    const viteConfig = await fs.readFile(
+      path.join(targetDir, "apps/web/vite.config.ts"),
+      "utf-8",
+    );
+    expect(viteConfig).toContain("shiftapi()");
   });
 
   it("renames _gitignore to .gitignore", async () => {

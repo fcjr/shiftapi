@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { $api } from "./api";
+  import { api } from "@{{name}}/api";
 
   let message = $state("");
-  const health = $api.createQuery("get", "/health");
-  const echo = $api.createMutation("post", "/echo");
+  const health = api.createQuery("get", "/health");
+  const echo = api.createMutation("post", "/echo");
 
   function handleSubmit(e: SubmitEvent) {
     e.preventDefault();

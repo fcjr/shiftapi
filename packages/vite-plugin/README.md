@@ -11,23 +11,36 @@ Vite plugin that generates fully-typed TypeScript clients from [ShiftAPI](https:
 
 ## How it works
 
-1. Extracts the OpenAPI 3.1 spec from your Go server at build time
-2. Generates TypeScript types using `openapi-typescript`
-3. Provides a virtual `@shiftapi/client` module with a pre-configured, fully-typed API client
-4. In dev mode, watches `.go` files and regenerates types on changes
-5. Auto-configures Vite's dev server proxy to forward API requests to your Go server
+1. Reads your `shiftapi.config.ts` (powered by [`shiftapi`](https://www.npmjs.com/package/shiftapi))
+2. Extracts the OpenAPI 3.1 spec from your Go server at build time
+3. Generates TypeScript types using `openapi-typescript`
+4. Provides a virtual `@shiftapi/client` module with a pre-configured, fully-typed API client
+5. In dev mode, watches `.go` files and regenerates types on changes
+6. Auto-configures Vite's dev server proxy to forward API requests to your Go server
 
 ## Installation
 
 ```bash
-npm install -D @shiftapi/vite-plugin
+npm install -D shiftapi @shiftapi/vite-plugin
 # or
-pnpm add -D @shiftapi/vite-plugin
+pnpm add -D shiftapi @shiftapi/vite-plugin
 ```
 
-**Peer dependency:** `vite` (v5 or v6).
+**Peer dependency:** `vite` (v6).
 
 ## Setup
+
+### shiftapi.config.ts
+
+Create a `shiftapi.config.ts` in your project root:
+
+```ts
+import { defineConfig } from "shiftapi";
+
+export default defineConfig({
+  server: "./cmd/server",
+});
+```
 
 ### vite.config.ts
 
@@ -36,22 +49,25 @@ import { defineConfig } from "vite";
 import shiftapi from "@shiftapi/vite-plugin";
 
 export default defineConfig({
-  plugins: [
-    shiftapi({
-      server: "./cmd/server",
-    }),
-  ],
+  plugins: [shiftapi()],
 });
 ```
 
-### Options
+### Config options
+
+Options are set in `shiftapi.config.ts` (see [`shiftapi`](https://www.npmjs.com/package/shiftapi)):
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `server` | `string` | **(required)** | Path to the Go server entry point (e.g. `"./cmd/server"` or `"./cmd/server/main.go"`) |
-| `baseUrl` | `string` | `"/"` | Fallback base URL for the API client. Can be overridden via the `VITE_SHIFTAPI_BASE_URL` env var. |
-| `goRoot` | `string` | `process.cwd()` | Working directory for `go run` |
+| `server` | `string` | **(required)** | Path to the Go server entry point (e.g. `"./cmd/server"`) |
+| `baseUrl` | `string` | `"/"` | Fallback base URL for the API client. Can be overridden via `VITE_SHIFTAPI_BASE_URL`. |
 | `url` | `string` | `"http://localhost:8080"` | Address the Go server listens on. Used to auto-configure the Vite dev proxy. |
+
+### Plugin options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `configPath` | `string` | auto-detected | Explicit path to `shiftapi.config.ts` (for advanced use only) |
 
 ## Usage
 

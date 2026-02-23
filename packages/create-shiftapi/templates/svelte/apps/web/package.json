@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@{{name}}/api": "*",
     "@tanstack/svelte-query": "^5.0.0",
-    "openapi-svelte-query": "^0.2.0",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

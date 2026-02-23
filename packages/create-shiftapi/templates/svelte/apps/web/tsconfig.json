@@ -5,12 +5,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@shiftapi/client": [
-        "./.shiftapi/client.d.ts"
-      ]
-    }
+    "skipLibCheck": true
   },
   "include": [
     "src"

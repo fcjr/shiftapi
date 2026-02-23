@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { $api } from "./api";
+import { api } from "@{{name}}/api";
 
 export default function App() {
   const [message, setMessage] = useState("");
-  const health = $api.useQuery("get", "/health");
-  const echo = $api.useMutation("post", "/echo");
+  const health = api.useQuery("get", "/health");
+  const echo = api.useMutation("post", "/echo");
 
   if (health.isLoading) return <p>Loading...</p>;
   if (health.error) return <p>Health check failed: {health.error.message}</p>;

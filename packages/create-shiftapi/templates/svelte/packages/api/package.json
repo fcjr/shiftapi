@@ -1,0 +1,12 @@
+{
+  "name": "@{{name}}/api",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tanstack/svelte-query": "^5.0.0",
+    "openapi-svelte-query": "^0.2.0"
+  }
+}

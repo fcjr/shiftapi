@@ -16,7 +16,8 @@
   <a href="https://pkg.go.dev/github.com/fcjr/shiftapi"><img src="https://pkg.go.dev/badge/github.com/fcjr/shiftapi.svg" alt="Go Reference"></a>
   <a href="https://github.com/fcjr/shiftapi/actions?query=workflow%3Ago-lint"><img src="https://github.com/fcjr/shiftapi/workflows/go-lint/badge.svg" alt="GolangCI"></a>
   <a href="https://goreportcard.com/report/github.com/fcjr/shiftapi"><img src="https://goreportcard.com/badge/github.com/fcjr/shiftapi" alt="Go Report Card"></a>
-  <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/shiftapi"><img src="https://img.shields.io/npm/v/shiftapi" alt="npm shiftapi"></a>
+  <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm @shiftapi/vite-plugin"></a>
 </p>
 
 ```
@@ -194,12 +195,25 @@ mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
 
 ## TypeScript Integration
 
-The `@shiftapi/vite-plugin` extracts your OpenAPI spec at build time, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and serves a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client as a virtual module.
+ShiftAPI ships two npm packages for the frontend:
+
+- **`shiftapi`** — CLI and codegen core. Extracts the OpenAPI spec from your Go server, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and writes a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client.
+- **`@shiftapi/vite-plugin`** — Vite plugin that wraps the CLI for dev-time HMR, proxy, and Go server management.
 
 **Install:**
 
 ```sh
-npm install @shiftapi/vite-plugin
+npm install shiftapi @shiftapi/vite-plugin
+```
+
+**`shiftapi.config.ts`** (project root):
+
+```typescript
+import { defineConfig } from "shiftapi";
+
+export default defineConfig({
+    server: "./cmd/server", // Go entry point
+});
 ```
 
 **`vite.config.ts`:**
@@ -209,11 +223,7 @@ import shiftapi from "@shiftapi/vite-plugin";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-    plugins: [
-        shiftapi({
-            server: "./cmd/server", // Go entry point
-        }),
-    ],
+    plugins: [shiftapi()],
 });
 ```
 
@@ -238,13 +248,20 @@ const { data: results } = await client.GET("/search", {
 
 In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.
 
-**Plugin options:**
+**CLI usage (without Vite):**
+
+```sh
+shiftapi prepare
+```
+
+This extracts the spec and generates `.shiftapi/client.d.ts` and `.shiftapi/client.js`. Useful in `postinstall` scripts or CI.
+
+**Config options:**
 
 | Option | Default | Description |
 |---|---|---|
 | `server` | *(required)* | Go entry point (e.g. `"./cmd/server"`) |
 | `baseUrl` | `"/"` | Fallback base URL for the API client |
-| `goRoot` | `process.cwd()` | Go module root directory |
 | `url` | `"http://localhost:8080"` | Go server address for dev proxy |
 
 For production, set `VITE_SHIFTAPI_BASE_URL` in a `.env.production` file to point at your API host. The plugin automatically updates `tsconfig.json` with the required path mapping for IDE autocomplete.
