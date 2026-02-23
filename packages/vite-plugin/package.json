@@ -31,8 +31,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
-    "test": "vitest run"
+    "dev": "tsup src/index.ts --format esm --dts --watch"
   },
   "peerDependencies": {
     "vite": "^6.0.0"
@@ -45,7 +44,6 @@
     "@types/node": "^25.2.3",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
-    "vite": "^6.0.0",
-    "vitest": "^2.0.0"
+    "vite": "^6.0.0"
   }
 }

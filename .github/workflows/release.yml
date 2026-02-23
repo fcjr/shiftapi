@@ -148,8 +148,10 @@ jobs:
         include:
           - package: "@shiftapi/vite-plugin"
             directory: packages/vite-plugin
+            has_tests: false
           - package: create-shiftapi
             directory: packages/create-shiftapi
+            has_tests: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -178,6 +180,7 @@ jobs:
         run: pnpm --filter ${{ matrix.package }}... build
 
       - name: Test
+        if: matrix.has_tests
         run: pnpm --filter ${{ matrix.package }} test
 
       - name: Publish
