@@ -1,4 +1,4 @@
-import { defineConfig } from "@shiftapi/core";
+import { defineConfig } from "shiftapi";
 
 export default defineConfig({
   server: "./cmd/{{name}}",

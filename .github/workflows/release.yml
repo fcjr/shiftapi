@@ -73,7 +73,7 @@ jobs:
           esac
 
           # Bump all packages
-          bump_version packages/core "$NEW_VERSION"
+          bump_version packages/shiftapi "$NEW_VERSION"
           bump_version packages/vite-plugin "$NEW_VERSION"
           bump_version packages/create-shiftapi "$NEW_VERSION"
 
@@ -84,14 +84,14 @@ jobs:
 
       - name: Commit and tag
         run: |
-          git add packages/core/package.json packages/vite-plugin/package.json packages/create-shiftapi/package.json pnpm-lock.yaml
+          git add packages/shiftapi/package.json packages/vite-plugin/package.json packages/create-shiftapi/package.json pnpm-lock.yaml
           git commit -m "chore: bump package versions to ${{ steps.bump.outputs.new_version }}"
           git tag "v${{ steps.bump.outputs.new_version }}"
           git push --no-verify
           git push --no-verify origin "v${{ steps.bump.outputs.new_version }}"
 
   publish-core:
-    name: Publish @shiftapi/core
+    name: Publish shiftapi
     needs: bump
     runs-on: ubuntu-latest
     environment: npm
@@ -123,13 +123,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm --filter @shiftapi/core build
+        run: pnpm --filter shiftapi build
 
       - name: Test
-        run: pnpm --filter @shiftapi/core test
+        run: pnpm --filter shiftapi test
 
       - name: Publish
-        working-directory: packages/core
+        working-directory: packages/shiftapi
         run: |
           pnpm pack
           tarball=$(ls *.tgz)

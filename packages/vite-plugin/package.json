@@ -37,7 +37,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
-    "@shiftapi/core": "workspace:*",
+    "shiftapi": "workspace:*",
     "openapi-fetch": "^0.13.0"
   },
   "devDependencies": {

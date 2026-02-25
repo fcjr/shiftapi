@@ -1,5 +1,5 @@
 {
-  "name": "@shiftapi/core",
+  "name": "shiftapi",
   "version": "0.0.14",
   "description": "CLI and codegen for shiftapi – fully-typed TypeScript clients from Go servers",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/fcjr/shiftapi",
-    "directory": "packages/core"
+    "directory": "packages/shiftapi"
   },
   "bugs": {
     "url": "https://github.com/fcjr/shiftapi/issues"

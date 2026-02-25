@@ -16,7 +16,7 @@
   <a href="https://pkg.go.dev/github.com/fcjr/shiftapi"><img src="https://pkg.go.dev/badge/github.com/fcjr/shiftapi.svg" alt="Go Reference"></a>
   <a href="https://github.com/fcjr/shiftapi/actions?query=workflow%3Ago-lint"><img src="https://github.com/fcjr/shiftapi/workflows/go-lint/badge.svg" alt="GolangCI"></a>
   <a href="https://goreportcard.com/report/github.com/fcjr/shiftapi"><img src="https://goreportcard.com/badge/github.com/fcjr/shiftapi" alt="Go Report Card"></a>
-  <a href="https://www.npmjs.com/package/@shiftapi/core"><img src="https://img.shields.io/npm/v/@shiftapi/core" alt="npm @shiftapi/core"></a>
+  <a href="https://www.npmjs.com/package/shiftapi"><img src="https://img.shields.io/npm/v/shiftapi" alt="npm shiftapi"></a>
   <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm @shiftapi/vite-plugin"></a>
 </p>
 
@@ -197,19 +197,19 @@ mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
 
 ShiftAPI ships two npm packages for the frontend:
 
-- **`@shiftapi/core`** — CLI and codegen core. Extracts the OpenAPI spec from your Go server, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and writes a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client.
+- **`shiftapi`** — CLI and codegen core. Extracts the OpenAPI spec from your Go server, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and writes a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client.
 - **`@shiftapi/vite-plugin`** — Vite plugin that wraps the CLI for dev-time HMR, proxy, and Go server management.
 
 **Install:**
 
 ```sh
-npm install @shiftapi/core @shiftapi/vite-plugin
+npm install shiftapi @shiftapi/vite-plugin
 ```
 
 **`shiftapi.config.ts`** (project root):
 
 ```typescript
-import { defineConfig } from "@shiftapi/core";
+import { defineConfig } from "shiftapi";
 
 export default defineConfig({
     server: "./cmd/server", // Go entry point

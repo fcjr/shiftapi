@@ -11,7 +11,7 @@ Vite plugin that generates fully-typed TypeScript clients from [ShiftAPI](https:
 
 ## How it works
 
-1. Reads your `shiftapi.config.ts` (powered by [`@shiftapi/core`](https://www.npmjs.com/package/@shiftapi/core))
+1. Reads your `shiftapi.config.ts` (powered by [`shiftapi`](https://www.npmjs.com/package/shiftapi))
 2. Extracts the OpenAPI 3.1 spec from your Go server at build time
 3. Generates TypeScript types using `openapi-typescript`
 4. Provides a virtual `@shiftapi/client` module with a pre-configured, fully-typed API client
@@ -21,9 +21,9 @@ Vite plugin that generates fully-typed TypeScript clients from [ShiftAPI](https:
 ## Installation
 
 ```bash
-npm install -D @shiftapi/core @shiftapi/vite-plugin
+npm install -D shiftapi @shiftapi/vite-plugin
 # or
-pnpm add -D @shiftapi/core @shiftapi/vite-plugin
+pnpm add -D shiftapi @shiftapi/vite-plugin
 ```
 
 **Peer dependency:** `vite` (v6).
@@ -35,7 +35,7 @@ pnpm add -D @shiftapi/core @shiftapi/vite-plugin
 Create a `shiftapi.config.ts` in your project root:
 
 ```ts
-import { defineConfig } from "@shiftapi/core";
+import { defineConfig } from "shiftapi";
 
 export default defineConfig({
   server: "./cmd/server",
@@ -55,7 +55,7 @@ export default defineConfig({
 
 ### Config options
 
-Options are set in `shiftapi.config.ts` (see [`@shiftapi/core`](https://www.npmjs.com/package/@shiftapi/core)):
+Options are set in `shiftapi.config.ts` (see [`shiftapi`](https://www.npmjs.com/package/shiftapi)):
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

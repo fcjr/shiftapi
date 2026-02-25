@@ -5,16 +5,16 @@
 	</picture>
 </p>
 
-# @shiftapi/core
+# shiftapi
 
 CLI and codegen core for [ShiftAPI](https://github.com/fcjr/shiftapi). Extracts the OpenAPI spec from your Go server and generates a fully-typed TypeScript client — no Vite required.
 
 ## Installation
 
 ```bash
-npm install -D @shiftapi/core
+npm install -D shiftapi
 # or
-pnpm add -D @shiftapi/core
+pnpm add -D shiftapi
 ```
 
 ## Setup
@@ -22,7 +22,7 @@ pnpm add -D @shiftapi/core
 Create a `shiftapi.config.ts` in your project root:
 
 ```ts
-import { defineConfig } from "@shiftapi/core";
+import { defineConfig } from "shiftapi";
 
 export default defineConfig({
   server: "./cmd/server",
