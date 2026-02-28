@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { watch, type FSWatcher } from "node:fs";
+import { readFileSync, watch, type FSWatcher } from "node:fs";
 import { createRequire } from "node:module";
 import {
   loadConfig,
@@ -105,14 +105,16 @@ function applyShiftAPI(
   const isDev = process.env.NODE_ENV !== "production";
   const shiftapiClientPath = resolve(configDir, ".shiftapi", "client.js");
 
-  // Resolve to the ESM entry point (require.resolve would pick the CJS one)
+  // Vendor openapi-fetch into .shiftapi/ so the generated client.js can use
+  // a relative import. This avoids requiring the user to install openapi-fetch.
   const require = createRequire(import.meta.url);
-  const openapiPkgDir = resolve(require.resolve("openapi-fetch/package.json"), "..");
-  const openapiPath = resolve(openapiPkgDir, "dist", "index.js");
+  const openapiDistDir = resolve(require.resolve("openapi-fetch/package.json"), "..", "dist");
+  const openapiSource = readFileSync(resolve(openapiDistDir, "index.js"), "utf-8");
+  const openapiDts = readFileSync(resolve(openapiDistDir, "index.d.ts"), "utf-8");
 
   // Kick off async initialization (Go server, type generation) immediately.
   // The promise is awaited lazily by webpack (beforeCompile hook) and rewrites.
-  const initPromise = initializeAsync(projectRoot, configDir, isDev, opts);
+  const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, openapiDts, opts);
 
   const patched: NextConfigObject = { ...nextConfig };
 
@@ -122,11 +124,10 @@ function applyShiftAPI(
   patched.webpack = (config: WebpackConfigObj, context: unknown) => {
     const cfg = existingWebpack ? existingWebpack(config, context) : config;
 
-    // Aliases
+    // Alias @shiftapi/client to the generated client file
     cfg.resolve = cfg.resolve || {};
     cfg.resolve.alias = cfg.resolve.alias || {};
     cfg.resolve.alias["@shiftapi/client"] = shiftapiClientPath;
-    cfg.resolve.alias["openapi-fetch"] = openapiPath;
 
     // Block compilation until async init is done
     cfg.plugins = cfg.plugins || [];
@@ -142,18 +143,10 @@ function applyShiftAPI(
     return cfg;
   };
 
-  // -- Turbopack aliases (top-level in Next.js 15.3+) ----------------------
-  const existingTurbopack = (nextConfig.turbopack ?? {}) as Record<string, unknown>;
-  const existingResolveAlias = (existingTurbopack.resolveAlias ?? {}) as Record<string, string>;
-
-  patched.turbopack = {
-    ...existingTurbopack,
-    resolveAlias: {
-      ...existingResolveAlias,
-      "@shiftapi/client": shiftapiClientPath,
-      "openapi-fetch": openapiPath,
-    },
-  };
+  // Turbopack resolves @shiftapi/client via tsconfig.json paths
+  // (set up by patchTsConfigPaths). The generated client.js uses a
+  // relative import to a vendored copy of openapi-fetch, so no extra
+  // bundler config is needed.
 
   // -- Rewrites (dev proxy) ------------------------------------------------
   if (isDev) {
@@ -203,6 +196,8 @@ async function initializeAsync(
   projectRoot: string,
   configDir: string,
   isDev: boolean,
+  openapiSource: string,
+  openapiDts: string,
   opts?: ShiftAPIPluginOptions,
 ): Promise<InitResult> {
   const { config } = await loadConfig(projectRoot, opts?.configPath);
@@ -222,10 +217,12 @@ async function initializeAsync(
       goRoot,
       parsedUrl,
       basePort,
+      openapiSource,
+      openapiDts,
     );
   }
 
-  return initializeBuild(projectRoot, configDir, serverEntry, baseUrl, goRoot, basePort);
+  return initializeBuild(projectRoot, configDir, serverEntry, baseUrl, goRoot, basePort, openapiSource, openapiDts);
 }
 
 async function initializeDev(
@@ -236,6 +233,8 @@ async function initializeDev(
   goRoot: string,
   parsedUrl: URL,
   basePort: number,
+  openapiSource: string,
+  openapiDts: string,
 ): Promise<InitResult> {
   const goPort = await findFreePort(basePort);
   if (goPort !== basePort) {
@@ -260,7 +259,7 @@ async function initializeDev(
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
     generatedDts = result.types;
     const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
-    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs });
+    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource, openapiDts });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
   } catch (err) {
@@ -295,6 +294,8 @@ async function initializeDev(
             const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
+              openapiSource,
+              openapiDts,
             });
             console.log("[shiftapi] Types regenerated.");
           }
@@ -338,11 +339,13 @@ async function initializeBuild(
   baseUrl: string,
   goRoot: string,
   basePort: number,
+  openapiSource: string,
+  openapiDts: string,
 ): Promise<InitResult> {
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, false, "");
     const clientJs = nextClientJsTemplate(basePort, baseUrl);
-    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs });
+    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource, openapiDts });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated for build.");
   } catch (err) {
