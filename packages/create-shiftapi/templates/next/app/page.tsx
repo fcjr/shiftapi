@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/api";
+import { api } from "./api";
 
 export default function Home() {
   const [message, setMessage] = useState("");
