@@ -1,6 +1,6 @@
 {
   "name": "shiftapi",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "CLI and codegen for shiftapi – fully-typed TypeScript clients from Go servers",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
   "license": "MIT",
