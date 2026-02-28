@@ -105,12 +105,11 @@ function applyShiftAPI(
   const require = createRequire(import.meta.url);
   const openapiDistDir = resolve(require.resolve("openapi-fetch/package.json"), "..", "dist");
   const openapiSource = readFileSync(resolve(openapiDistDir, "index.js"), "utf-8");
-  const openapiDts = readFileSync(resolve(openapiDistDir, "index.d.ts"), "utf-8");
 
   // Kick off async initialization (Go server, type generation) immediately.
   // The promise is awaited lazily by the rewrites hook, which Next.js
   // resolves before compilation starts.
-  const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, openapiDts, opts);
+  const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, opts);
 
   const patched: NextConfigObject = { ...nextConfig };
 
@@ -168,7 +167,7 @@ async function initializeAsync(
   configDir: string,
   isDev: boolean,
   openapiSource: string,
-  openapiDts: string,
+
   opts?: ShiftAPIPluginOptions,
 ): Promise<InitResult> {
   const { config } = await loadConfig(projectRoot, opts?.configPath);
@@ -189,11 +188,10 @@ async function initializeAsync(
       parsedUrl,
       basePort,
       openapiSource,
-      openapiDts,
     );
   }
 
-  return initializeBuild(projectRoot, configDir, serverEntry, baseUrl, goRoot, basePort, openapiSource, openapiDts);
+  return initializeBuild(projectRoot, configDir, serverEntry, baseUrl, goRoot, basePort, openapiSource);
 }
 
 async function initializeDev(
@@ -205,7 +203,7 @@ async function initializeDev(
   parsedUrl: URL,
   basePort: number,
   openapiSource: string,
-  openapiDts: string,
+
 ): Promise<InitResult> {
   const goPort = await findFreePort(basePort);
   if (goPort !== basePort) {
@@ -230,7 +228,7 @@ async function initializeDev(
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
     generatedDts = result.types;
     const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
-    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource, openapiDts });
+    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
   } catch (err) {
@@ -266,7 +264,6 @@ async function initializeDev(
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
               openapiSource,
-              openapiDts,
             });
             console.log("[shiftapi] Types regenerated.");
           }
@@ -311,12 +308,12 @@ async function initializeBuild(
   goRoot: string,
   basePort: number,
   openapiSource: string,
-  openapiDts: string,
+
 ): Promise<InitResult> {
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, false, "");
     const clientJs = nextClientJsTemplate(basePort, baseUrl);
-    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource, openapiDts });
+    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated for build.");
   } catch (err) {

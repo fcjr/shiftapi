@@ -33,7 +33,6 @@ export function writeGeneratedFiles(
   options?: {
     clientJsContent?: string;
     openapiSource?: string;
-    openapiDts?: string;
   },
 ): void {
   const outDir = resolve(typesRoot, ".shiftapi");
@@ -41,14 +40,10 @@ export function writeGeneratedFiles(
     mkdirSync(outDir, { recursive: true });
   }
 
-  const useLocalOpenapi = !!(options?.openapiSource);
-  writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts, useLocalOpenapi ? "./openapi-fetch.js" : undefined));
+  writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts));
   writeFileSync(resolve(outDir, "client.js"), options?.clientJsContent ?? clientJsTemplate(baseUrl));
   if (options?.openapiSource) {
     writeFileSync(resolve(outDir, "openapi-fetch.js"), options.openapiSource);
-  }
-  if (options?.openapiDts) {
-    writeFileSync(resolve(outDir, "openapi-fetch.d.ts"), options.openapiDts);
   }
   writeFileSync(
     resolve(outDir, "tsconfig.json"),

@@ -44,7 +44,7 @@ describe("getFiles", () => {
     expect(files).toContain("tsconfig.json");
     expect(files).toContain("eslint.config.mjs");
     expect(files).toContain("postcss.config.mjs");
-    expect(files).toContain("api.ts");
+    expect(files).toContain("app/api.ts");
     expect(files).toContain("app/globals.css");
     expect(files).toContain("app/layout.tsx");
     expect(files).toContain("app/page.tsx");
@@ -119,7 +119,7 @@ describe("scaffold", () => {
       }
     };
 
-    expect(await exists("api.ts")).toBe(true);
+    expect(await exists("app/api.ts")).toBe(true);
     expect(await exists("next.config.ts")).toBe(true);
     expect(await exists("tsconfig.json")).toBe(true);
     expect(await exists("eslint.config.mjs")).toBe(true);
