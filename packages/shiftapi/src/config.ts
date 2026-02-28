@@ -70,6 +70,25 @@ export async function loadConfig(
   return { config, configDir: dirname(resolvedPath) };
 }
 
+export interface ShiftAPIPluginOptions {
+  /** Explicit path to shiftapi.config.ts (for advanced use only) */
+  configPath?: string;
+}
+
+/**
+ * Synchronously walk up from `startDir` to find the directory containing
+ * a shiftapi config file. Returns the directory path, or undefined.
+ */
+export function findConfigDir(startDir: string, configPath?: string): string | undefined {
+  if (configPath) {
+    const resolved = resolve(startDir, configPath);
+    return existsSync(resolved) ? dirname(resolved) : undefined;
+  }
+
+  const file = findConfigFile(startDir);
+  return file ? dirname(file) : undefined;
+}
+
 function findConfigFile(startDir: string): string | undefined {
   let dir = resolve(startDir);
   const root = resolve("/");

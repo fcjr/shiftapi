@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type Framework = "react" | "svelte";
+export type Framework = "react" | "svelte" | "next";
 
 export interface ScaffoldOptions {
   name: string;

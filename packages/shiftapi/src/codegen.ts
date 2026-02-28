@@ -26,14 +26,19 @@ export async function regenerateTypes(
   return { types, virtualModuleSource, changed };
 }
 
-export function writeGeneratedFiles(typesRoot: string, generatedDts: string, baseUrl: string): void {
+export function writeGeneratedFiles(
+  typesRoot: string,
+  generatedDts: string,
+  baseUrl: string,
+  options?: { clientJsContent?: string },
+): void {
   const outDir = resolve(typesRoot, ".shiftapi");
   if (!existsSync(outDir)) {
     mkdirSync(outDir, { recursive: true });
   }
 
   writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts));
-  writeFileSync(resolve(outDir, "client.js"), clientJsTemplate(baseUrl));
+  writeFileSync(resolve(outDir, "client.js"), options?.clientJsContent ?? clientJsTemplate(baseUrl));
   writeFileSync(
     resolve(outDir, "tsconfig.json"),
     JSON.stringify(

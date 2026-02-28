@@ -59,7 +59,7 @@ Typically used in a `postinstall` script:
 |--------|------|---------|-------------|
 | `server` | `string` | **(required)** | Path to the Go server entry point (e.g. `"./cmd/server"`) |
 | `baseUrl` | `string` | `"/"` | Base URL for the generated API client |
-| `url` | `string` | `"http://localhost:8080"` | Go server address (used by the Vite plugin for dev proxy) |
+| `url` | `string` | `"http://localhost:8080"` | Go server address (used by the Vite/Next.js plugins for dev proxy) |
 
 ## License
 

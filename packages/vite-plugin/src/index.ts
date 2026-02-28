@@ -9,10 +9,10 @@ import {
   writeGeneratedFiles,
   patchTsConfig,
   loadConfig,
+  GoServerManager,
+  findFreePort,
 } from "shiftapi/internal";
-import { findFreePort } from "./ports";
-import { GoServerManager } from "./goServer";
-import type { ShiftAPIPluginOptions } from "./types";
+import type { ShiftAPIPluginOptions } from "shiftapi/internal";
 
 export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
   let serverEntry = "";

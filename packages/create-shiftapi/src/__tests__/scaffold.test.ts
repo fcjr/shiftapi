@@ -36,6 +36,20 @@ describe("getFiles", () => {
     expect(files).toHaveLength(17);
   });
 
+  it("returns all expected files for next", () => {
+    const files = getFiles({ ...defaultOpts, framework: "next" });
+
+    expect(files).toContain("apps/web/package.json");
+    expect(files).toContain("apps/web/next.config.ts");
+    expect(files).toContain("apps/web/tsconfig.json");
+    expect(files).toContain("apps/web/app/layout.tsx");
+    expect(files).toContain("apps/web/app/page.tsx");
+    expect(files).toContain("apps/web/app/providers.tsx");
+    expect(files).toContain("apps/web/app/api.ts");
+    expect(files).toContain("shiftapi.config.ts");
+    expect(files).toHaveLength(15);
+  });
+
   it("returns all expected files for svelte", () => {
     const files = getFiles({ ...defaultOpts, framework: "svelte" });
 
@@ -86,6 +100,26 @@ describe("scaffold", () => {
     expect(await exists("packages/api/package.json")).toBe(true);
     expect(await exists("packages/api/src/index.ts")).toBe(true);
     expect(await exists(".git")).toBe(true);
+  });
+
+  it("creates next files on disk", async () => {
+    const targetDir = path.join(tmpDir, "my-app");
+    await scaffold({ ...defaultOpts, framework: "next", targetDir });
+
+    const exists = async (p: string) => {
+      try {
+        await fs.access(path.join(targetDir, p));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    expect(await exists("apps/web/next.config.ts")).toBe(true);
+    expect(await exists("apps/web/app/layout.tsx")).toBe(true);
+    expect(await exists("apps/web/app/page.tsx")).toBe(true);
+    expect(await exists("apps/web/app/providers.tsx")).toBe(true);
+    expect(await exists("apps/web/app/api.ts")).toBe(true);
   });
 
   it("creates svelte files on disk", async () => {

@@ -1,0 +1,45 @@
+{
+  "name": "@shiftapi/next",
+  "version": "0.0.15",
+  "description": "Next.js integration for fully-typed TypeScript clients from shiftapi Go servers",
+  "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/fcjr/shiftapi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fcjr/shiftapi",
+    "directory": "packages/next"
+  },
+  "bugs": {
+    "url": "https://github.com/fcjr/shiftapi/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsup src/index.ts --format esm --dts --watch"
+  },
+  "peerDependencies": {
+    "next": ">=14.0.0"
+  },
+  "dependencies": {
+    "shiftapi": "workspace:*",
+    "openapi-fetch": "^0.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "next": "^15.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -54,8 +54,9 @@ async function main() {
         p.select({
           message: "Framework",
           options: [
-            { label: "React", value: "react" as const },
-            { label: "Svelte", value: "svelte" as const },
+            { label: "React + Vite", value: "react" as const },
+            { label: "Svelte + Vite", value: "svelte" as const },
+            { label: "Next.js", value: "next" as const },
           ],
         }),
       directory: ({ results }) =>

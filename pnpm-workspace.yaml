@@ -1,3 +1,4 @@
 packages:
   - "packages/*"
   - "examples/vite-app"
+  - "examples/next-app"

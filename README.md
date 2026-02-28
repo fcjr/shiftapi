@@ -9,7 +9,7 @@
 <h3 align="center">End-to-end type safety from Go structs to TypeScript frontend.</h3>
 
 <p align="center">
-  ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler types at runtime, then uses a Vite plugin to turn that spec into a fully-typed TypeScript client — so your frontend stays in sync with your API automatically.
+  ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler types at runtime, then uses a Vite or Next.js plugin to turn that spec into a fully-typed TypeScript client — so your frontend stays in sync with your API automatically.
 </p>
 
 <p align="center">
@@ -18,6 +18,7 @@
   <a href="https://goreportcard.com/report/github.com/fcjr/shiftapi"><img src="https://goreportcard.com/badge/github.com/fcjr/shiftapi" alt="Go Report Card"></a>
   <a href="https://www.npmjs.com/package/shiftapi"><img src="https://img.shields.io/npm/v/shiftapi" alt="npm shiftapi"></a>
   <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm @shiftapi/vite-plugin"></a>
+  <a href="https://www.npmjs.com/package/@shiftapi/next"><img src="https://img.shields.io/npm/v/@shiftapi/next" alt="npm @shiftapi/next"></a>
 </p>
 
 ```
@@ -27,7 +28,7 @@ Go structs ──→ OpenAPI 3.1 spec ──→ TypeScript types ──→ Typed
 
 ## Getting Started
 
-Scaffold a full-stack app (Go + React or Svelte):
+Scaffold a full-stack app (Go + React, Svelte, or Next.js):
 
 ```sh
 npm create shiftapi@latest
@@ -195,16 +196,11 @@ mux.Handle("/api/v1/", http.StripPrefix("/api/v1", api))
 
 ## TypeScript Integration
 
-ShiftAPI ships two npm packages for the frontend:
+ShiftAPI ships npm packages for the frontend:
 
 - **`shiftapi`** — CLI and codegen core. Extracts the OpenAPI spec from your Go server, generates TypeScript types via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), and writes a pre-configured [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) client.
-- **`@shiftapi/vite-plugin`** — Vite plugin that wraps the CLI for dev-time HMR, proxy, and Go server management.
-
-**Install:**
-
-```sh
-npm install shiftapi @shiftapi/vite-plugin
-```
+- **`@shiftapi/vite-plugin`** — Vite plugin for dev-time HMR, proxy, and Go server management.
+- **`@shiftapi/next`** — Next.js integration with the same DX (webpack/Turbopack aliases, rewrites proxy, Go server management).
 
 **`shiftapi.config.ts`** (project root):
 
@@ -216,9 +212,14 @@ export default defineConfig({
 });
 ```
 
-**`vite.config.ts`:**
+### Vite
+
+```sh
+npm install shiftapi @shiftapi/vite-plugin
+```
 
 ```typescript
+// vite.config.ts
 import shiftapi from "@shiftapi/vite-plugin";
 import { defineConfig } from "vite";
 
@@ -227,7 +228,23 @@ export default defineConfig({
 });
 ```
 
-**Use the typed client:**
+### Next.js
+
+```sh
+npm install shiftapi @shiftapi/next
+```
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next";
+import { withShiftAPI } from "@shiftapi/next";
+
+const nextConfig: NextConfig = {};
+
+export default withShiftAPI(nextConfig);
+```
+
+### Use the typed client
 
 ```typescript
 import { client } from "@shiftapi/client";
@@ -246,9 +263,9 @@ const { data: results } = await client.GET("/search", {
 // query params are fully typed too — { q: string, page?: number, limit?: number }
 ```
 
-In dev mode the plugin also starts the Go server, proxies API requests through Vite, watches `.go` files, and hot-reloads the frontend when types change.
+In dev mode the plugins start the Go server, proxy API requests, watch `.go` files, and regenerate types on changes.
 
-**CLI usage (without Vite):**
+**CLI usage (without Vite/Next.js):**
 
 ```sh
 shiftapi prepare
@@ -264,7 +281,7 @@ This extracts the spec and generates `.shiftapi/client.d.ts` and `.shiftapi/clie
 | `baseUrl` | `"/"` | Fallback base URL for the API client |
 | `url` | `"http://localhost:8080"` | Go server address for dev proxy |
 
-For production, set `VITE_SHIFTAPI_BASE_URL` in a `.env.production` file to point at your API host. The plugin automatically updates `tsconfig.json` with the required path mapping for IDE autocomplete.
+For production, set `VITE_SHIFTAPI_BASE_URL` (Vite) or `NEXT_PUBLIC_SHIFTAPI_BASE_URL` (Next.js) to point at your API host. The plugins automatically update `tsconfig.json` with the required path mapping for IDE autocomplete.
 
 ## Development
 
