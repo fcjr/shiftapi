@@ -1,6 +1,6 @@
 {
   "name": "@shiftapi/next",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "Next.js integration for fully-typed TypeScript clients from shiftapi Go servers",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
   "license": "MIT",
