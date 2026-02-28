@@ -142,20 +142,16 @@ function applyShiftAPI(
     return cfg;
   };
 
-  // -- Turbopack aliases ---------------------------------------------------
-  const existingExperimental = (nextConfig.experimental ?? {}) as Record<string, unknown>;
-  const existingTurbo = (existingExperimental.turbo ?? {}) as Record<string, unknown>;
-  const existingResolveAlias = (existingTurbo.resolveAlias ?? {}) as Record<string, string>;
+  // -- Turbopack aliases (top-level in Next.js 15.3+) ----------------------
+  const existingTurbopack = (nextConfig.turbopack ?? {}) as Record<string, unknown>;
+  const existingResolveAlias = (existingTurbopack.resolveAlias ?? {}) as Record<string, string>;
 
-  patched.experimental = {
-    ...existingExperimental,
-    turbo: {
-      ...existingTurbo,
-      resolveAlias: {
-        ...existingResolveAlias,
-        "@shiftapi/client": shiftapiClientPath,
-        "openapi-fetch": openapiPath,
-      },
+  patched.turbopack = {
+    ...existingTurbopack,
+    resolveAlias: {
+      ...existingResolveAlias,
+      "@shiftapi/client": shiftapiClientPath,
+      "openapi-fetch": openapiPath,
     },
   };
 
