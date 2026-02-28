@@ -18,7 +18,8 @@ import type { ShiftAPIPluginOptions } from "shiftapi/internal";
 // Types
 // ---------------------------------------------------------------------------
 
-type NextConfigObject = Record<string, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NextConfigObject = Record<string, any>;
 type NextConfigFunction = (...args: unknown[]) => NextConfigObject | Promise<NextConfigObject>;
 type NextConfig = NextConfigObject | NextConfigFunction;
 
@@ -104,8 +105,10 @@ function applyShiftAPI(
   const isDev = process.env.NODE_ENV !== "production";
   const shiftapiClientPath = resolve(configDir, ".shiftapi", "client.js");
 
+  // Resolve to the ESM entry point (require.resolve would pick the CJS one)
   const require = createRequire(import.meta.url);
-  const openapiPath = require.resolve("openapi-fetch");
+  const openapiPkgDir = resolve(require.resolve("openapi-fetch/package.json"), "..");
+  const openapiPath = resolve(openapiPkgDir, "dist", "index.js");
 
   // Kick off async initialization (Go server, type generation) immediately.
   // The promise is awaited lazily by webpack (beforeCompile hook) and rewrites.
