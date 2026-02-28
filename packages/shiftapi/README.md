@@ -7,7 +7,7 @@
 
 # shiftapi
 
-CLI and codegen core for [ShiftAPI](https://github.com/fcjr/shiftapi). Extracts the OpenAPI spec from your Go server and generates a fully-typed TypeScript client — no Vite required.
+CLI and codegen core for [ShiftAPI](https://github.com/fcjr/shiftapi). Extracts the OpenAPI spec from your Go server and generates a fully-typed TypeScript client. Used standalone or as the foundation for [`@shiftapi/vite-plugin`](https://www.npmjs.com/package/@shiftapi/vite-plugin) and [`@shiftapi/next`](https://www.npmjs.com/package/@shiftapi/next).
 
 ## Installation
 
