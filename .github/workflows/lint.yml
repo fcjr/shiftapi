@@ -39,5 +39,6 @@ jobs:
       - run: pnpm --filter shiftapi build
       - run: pnpm --filter shiftapi test
       - run: pnpm --filter @shiftapi/vite-plugin build
+      - run: pnpm --filter @shiftapi/next build
       - run: pnpm --filter create-shiftapi build
       - run: pnpm --filter create-shiftapi test
