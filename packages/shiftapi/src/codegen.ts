@@ -55,7 +55,7 @@ export function writeGeneratedFiles(
   );
 }
 
-export function patchTsConfig(tsconfigDir: string, typesRoot: string): void {
+export function patchTsConfigPaths(tsconfigDir: string, typesRoot: string): void {
   const tsconfigPath = resolve(tsconfigDir, "tsconfig.json");
   if (!existsSync(tsconfigPath)) return;
 
@@ -71,16 +71,22 @@ export function patchTsConfig(tsconfigDir: string, typesRoot: string): void {
     return;
   }
 
-  const rel = relative(tsconfigDir, resolve(typesRoot, ".shiftapi", "tsconfig.json"));
-  const extendsPath = rel.startsWith("..") ? rel : `./${rel}`;
+  const dtsRel = relative(tsconfigDir, resolve(typesRoot, ".shiftapi", "client.d.ts"));
+  const dtsPath = dtsRel.startsWith("..") ? dtsRel : `./${dtsRel}`;
 
-  if (tsconfig?.extends === extendsPath) return;
+  tsconfig.compilerOptions = tsconfig.compilerOptions || {};
+  tsconfig.compilerOptions.paths = tsconfig.compilerOptions.paths || {};
 
-  tsconfig.extends = extendsPath;
+  const existing = tsconfig.compilerOptions.paths[MODULE_ID];
+  if (Array.isArray(existing) && existing.length === 1 && existing[0] === dtsPath) {
+    return;
+  }
+
+  tsconfig.compilerOptions.paths[MODULE_ID] = [dtsPath];
 
   const detectedIndent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
   writeFileSync(tsconfigPath, stringify(tsconfig, null, detectedIndent) + "\n");
   console.log(
-    "[shiftapi] Updated tsconfig.json to extend .shiftapi/tsconfig.json",
+    "[shiftapi] Updated tsconfig.json with @shiftapi/client path mapping.",
   );
 }

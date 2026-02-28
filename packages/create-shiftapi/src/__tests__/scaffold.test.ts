@@ -39,15 +39,17 @@ describe("getFiles", () => {
   it("returns all expected files for next", () => {
     const files = getFiles({ ...defaultOpts, framework: "next" });
 
-    expect(files).toContain("apps/web/package.json");
-    expect(files).toContain("apps/web/next.config.ts");
-    expect(files).toContain("apps/web/tsconfig.json");
-    expect(files).toContain("apps/web/app/layout.tsx");
-    expect(files).toContain("apps/web/app/page.tsx");
-    expect(files).toContain("apps/web/app/providers.tsx");
-    expect(files).toContain("apps/web/app/api.ts");
+    expect(files).toContain("package.json");
+    expect(files).toContain("next.config.ts");
+    expect(files).toContain("tsconfig.json");
+    expect(files).toContain("eslint.config.mjs");
+    expect(files).toContain("postcss.config.mjs");
+    expect(files).toContain("app/globals.css");
+    expect(files).toContain("app/layout.tsx");
+    expect(files).toContain("app/page.tsx");
     expect(files).toContain("shiftapi.config.ts");
-    expect(files).toHaveLength(15);
+    expect(files).toContain(".gitignore");
+    expect(files).toHaveLength(16);
   });
 
   it("returns all expected files for svelte", () => {
@@ -115,11 +117,13 @@ describe("scaffold", () => {
       }
     };
 
-    expect(await exists("apps/web/next.config.ts")).toBe(true);
-    expect(await exists("apps/web/app/layout.tsx")).toBe(true);
-    expect(await exists("apps/web/app/page.tsx")).toBe(true);
-    expect(await exists("apps/web/app/providers.tsx")).toBe(true);
-    expect(await exists("apps/web/app/api.ts")).toBe(true);
+    expect(await exists("next.config.ts")).toBe(true);
+    expect(await exists("tsconfig.json")).toBe(true);
+    expect(await exists("eslint.config.mjs")).toBe(true);
+    expect(await exists("postcss.config.mjs")).toBe(true);
+    expect(await exists("app/globals.css")).toBe(true);
+    expect(await exists("app/layout.tsx")).toBe(true);
+    expect(await exists("app/page.tsx")).toBe(true);
   });
 
   it("creates svelte files on disk", async () => {

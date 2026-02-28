@@ -6,7 +6,7 @@ import {
   findConfigDir,
   regenerateTypes as _regenerateTypes,
   writeGeneratedFiles,
-  patchTsConfig,
+  patchTsConfigPaths,
   nextClientJsTemplate,
   DEV_API_PREFIX,
   GoServerManager,
@@ -260,9 +260,9 @@ async function initializeDev(
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
     generatedDts = result.types;
-    const clientJs = nextClientJsTemplate(goPort, baseUrl);
+    const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
     writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs });
-    patchTsConfig(projectRoot, configDir);
+    patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
   } catch (err) {
     console.error("[shiftapi] Failed to generate types:", err);
@@ -293,7 +293,7 @@ async function initializeDev(
           );
           if (result.changed) {
             generatedDts = result.types;
-            const clientJs = nextClientJsTemplate(goPort, baseUrl);
+            const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
             });
@@ -344,7 +344,7 @@ async function initializeBuild(
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, false, "");
     const clientJs = nextClientJsTemplate(basePort, baseUrl);
     writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs });
-    patchTsConfig(projectRoot, configDir);
+    patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated for build.");
   } catch (err) {
     console.error("[shiftapi] Failed to generate types for build:", err);

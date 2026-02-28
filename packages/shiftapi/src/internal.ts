@@ -1,6 +1,6 @@
 export { defineConfig, loadConfig, findConfigDir } from "./config";
 export type { ShiftAPIConfig, ShiftAPIPluginOptions } from "./config";
-export { regenerateTypes, writeGeneratedFiles, patchTsConfig } from "./codegen";
+export { regenerateTypes, writeGeneratedFiles, patchTsConfigPaths } from "./codegen";
 export { extractSpec } from "./extract";
 export { generateTypes } from "./generate";
 export { dtsTemplate, clientJsTemplate, nextClientJsTemplate, virtualModuleTemplate } from "./templates";

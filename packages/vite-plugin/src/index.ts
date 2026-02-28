@@ -7,7 +7,7 @@ import {
   DEV_API_PREFIX,
   regenerateTypes as _regenerateTypes,
   writeGeneratedFiles,
-  patchTsConfig,
+  patchTsConfigPaths,
   loadConfig,
   GoServerManager,
   findFreePort,
@@ -58,7 +58,7 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
 
       goServer = new GoServerManager(serverEntry, goRoot);
 
-      patchTsConfig(projectRoot, configDir);
+      patchTsConfigPaths(projectRoot, configDir);
     },
 
     async config(_, env) {

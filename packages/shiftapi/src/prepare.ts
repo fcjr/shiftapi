@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { loadConfig } from "./config";
 import { extractSpec } from "./extract";
 import { generateTypes } from "./generate";
-import { writeGeneratedFiles, patchTsConfig } from "./codegen";
+import { writeGeneratedFiles, patchTsConfigPaths } from "./codegen";
 
 const command = process.argv[2];
 if (command !== "prepare") {
@@ -28,7 +28,7 @@ async function main() {
   const types = await generateTypes(spec);
 
   writeGeneratedFiles(configDir, types, baseUrl);
-  patchTsConfig(cwd, configDir);
+  patchTsConfigPaths(cwd, configDir);
 
   console.log("[shiftapi] Done. Generated .shiftapi/client.d.ts and .shiftapi/client.js");
 }

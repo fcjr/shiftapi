@@ -11,13 +11,27 @@
 node_modules/
 dist/
 .turbo/
-.shiftapi/
+
+# Next.js
+.next/
+out/
 
 # Env
 .env
+.env*
+
+# ShiftAPI
+.shiftapi/
+
+# Debug
+*.log
+*.tsbuildinfo
+next-env.d.ts
 
 # IDE
 .DS_Store
-*.log
 .vscode/
 .idea/
+
+# Vercel
+.vercel
