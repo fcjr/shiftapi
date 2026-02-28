@@ -56,7 +56,7 @@ export function writeGeneratedFiles(
       {
         compilerOptions: {
           paths: {
-            [MODULE_ID]: ["./client.d.ts"],
+            [MODULE_ID]: ["./client"],
           },
         },
       },
@@ -82,18 +82,20 @@ export function patchTsConfigPaths(tsconfigDir: string, typesRoot: string): void
     return;
   }
 
-  const dtsRel = relative(tsconfigDir, resolve(typesRoot, ".shiftapi", "client.d.ts"));
-  const dtsPath = dtsRel.startsWith("..") ? dtsRel : `./${dtsRel}`;
+  // Use extensionless path so TypeScript finds client.d.ts for types
+  // and bundlers (Turbopack) find client.js for runtime.
+  const clientRel = relative(tsconfigDir, resolve(typesRoot, ".shiftapi", "client"));
+  const clientPath = clientRel.startsWith("..") ? clientRel : `./${clientRel}`;
 
   tsconfig.compilerOptions = tsconfig.compilerOptions || {};
   tsconfig.compilerOptions.paths = tsconfig.compilerOptions.paths || {};
 
   const existing = tsconfig.compilerOptions.paths[MODULE_ID];
-  if (Array.isArray(existing) && existing.length === 1 && existing[0] === dtsPath) {
+  if (Array.isArray(existing) && existing.length === 1 && existing[0] === clientPath) {
     return;
   }
 
-  tsconfig.compilerOptions.paths[MODULE_ID] = [dtsPath];
+  tsconfig.compilerOptions.paths[MODULE_ID] = [clientPath];
 
   const detectedIndent = raw.match(/^[ \t]+/m)?.[0] ?? "  ";
   writeFileSync(tsconfigPath, stringify(tsconfig, null, detectedIndent) + "\n");

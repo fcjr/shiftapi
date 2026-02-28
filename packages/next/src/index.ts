@@ -29,10 +29,6 @@ type RewritesResult =
   | { beforeFiles: Rewrite[]; afterFiles: Rewrite[]; fallback: Rewrite[] };
 type RewritesFn = () => Promise<RewritesResult>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type WebpackConfigObj = Record<string, any>;
-type WebpackFn = (config: WebpackConfigObj, context: unknown) => WebpackConfigObj;
-
 interface InitResult {
   port: number;
 }
@@ -103,7 +99,6 @@ function applyShiftAPI(
   }
 
   const isDev = process.env.NODE_ENV !== "production";
-  const shiftapiClientPath = resolve(configDir, ".shiftapi", "client.js");
 
   // Vendor openapi-fetch into .shiftapi/ so the generated client.js can use
   // a relative import. This avoids requiring the user to install openapi-fetch.
@@ -113,77 +108,53 @@ function applyShiftAPI(
   const openapiDts = readFileSync(resolve(openapiDistDir, "index.d.ts"), "utf-8");
 
   // Kick off async initialization (Go server, type generation) immediately.
-  // The promise is awaited lazily by webpack (beforeCompile hook) and rewrites.
+  // The promise is awaited lazily by the rewrites hook, which Next.js
+  // resolves before compilation starts.
   const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, openapiDts, opts);
 
   const patched: NextConfigObject = { ...nextConfig };
 
-  // -- Webpack: sync aliases + async plugin to block until types exist ------
-  const existingWebpack = nextConfig.webpack as WebpackFn | undefined;
+  // -- Rewrites: await init + dev proxy ------------------------------------
+  const existingRewrites = nextConfig.rewrites as RewritesFn | undefined;
 
-  patched.webpack = (config: WebpackConfigObj, context: unknown) => {
-    const cfg = existingWebpack ? existingWebpack(config, context) : config;
+  patched.rewrites = async () => {
+    const { port } = await initPromise;
 
-    // Alias @shiftapi/client to the generated client file
-    cfg.resolve = cfg.resolve || {};
-    cfg.resolve.alias = cfg.resolve.alias || {};
-    cfg.resolve.alias["@shiftapi/client"] = shiftapiClientPath;
+    if (!isDev) {
+      // Production build — no proxy, just ensure types were generated.
+      if (!existingRewrites) return [];
+      return existingRewrites();
+    }
 
-    // Block compilation until async init is done
-    cfg.plugins = cfg.plugins || [];
-    cfg.plugins.push({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      apply(compiler: any) {
-        compiler.hooks.beforeCompile.tapPromise("ShiftAPI", async () => {
-          await initPromise;
-        });
-      },
-    });
-
-    return cfg;
-  };
-
-  // Turbopack resolves @shiftapi/client via tsconfig.json paths
-  // (set up by patchTsConfigPaths). The generated client.js uses a
-  // relative import to a vendored copy of openapi-fetch, so no extra
-  // bundler config is needed.
-
-  // -- Rewrites (dev proxy) ------------------------------------------------
-  if (isDev) {
-    const existingRewrites = nextConfig.rewrites as RewritesFn | undefined;
-
-    patched.rewrites = async () => {
-      const { port } = await initPromise;
-      const shiftapiRewrite: Rewrite = {
-        source: `${DEV_API_PREFIX}/:path*`,
-        destination: `http://localhost:${port}/:path*`,
-      };
-
-      if (!existingRewrites) {
-        return {
-          beforeFiles: [shiftapiRewrite],
-          afterFiles: [],
-          fallback: [],
-        };
-      }
-
-      const existing = await existingRewrites();
-
-      if (Array.isArray(existing)) {
-        return {
-          beforeFiles: [shiftapiRewrite],
-          afterFiles: existing,
-          fallback: [],
-        };
-      }
-
-      return {
-        beforeFiles: [shiftapiRewrite, ...(existing.beforeFiles ?? [])],
-        afterFiles: existing.afterFiles ?? [],
-        fallback: existing.fallback ?? [],
-      };
+    const shiftapiRewrite: Rewrite = {
+      source: `${DEV_API_PREFIX}/:path*`,
+      destination: `http://localhost:${port}/:path*`,
     };
-  }
+
+    if (!existingRewrites) {
+      return {
+        beforeFiles: [shiftapiRewrite],
+        afterFiles: [],
+        fallback: [],
+      };
+    }
+
+    const existing = await existingRewrites();
+
+    if (Array.isArray(existing)) {
+      return {
+        beforeFiles: [shiftapiRewrite],
+        afterFiles: existing,
+        fallback: [],
+      };
+    }
+
+    return {
+      beforeFiles: [shiftapiRewrite, ...(existing.beforeFiles ?? [])],
+      afterFiles: existing.afterFiles ?? [],
+      fallback: existing.fallback ?? [],
+    };
+  };
 
   return patched;
 }

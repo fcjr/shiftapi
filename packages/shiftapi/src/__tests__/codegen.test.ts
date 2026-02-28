@@ -36,7 +36,7 @@ describe("writeGeneratedFiles", () => {
       readFileSync(join(tempDir, ".shiftapi", "tsconfig.json"), "utf-8"),
     );
     expect(tsconfig.compilerOptions.paths["@shiftapi/client"]).toEqual([
-      "./client.d.ts",
+      "./client",
     ]);
   });
 
@@ -80,7 +80,7 @@ describe("patchTsConfigPaths", () => {
     patchTsConfigPaths(tempDir, tempDir);
 
     const result = JSON.parse(readFileSync(join(tempDir, "tsconfig.json"), "utf-8"));
-    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["./.shiftapi/client.d.ts"]);
+    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["./.shiftapi/client"]);
     expect(result.compilerOptions.strict).toBe(true);
   });
 
@@ -95,12 +95,12 @@ describe("patchTsConfigPaths", () => {
     patchTsConfigPaths(appDir, tempDir);
 
     const result = JSON.parse(readFileSync(join(appDir, "tsconfig.json"), "utf-8"));
-    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["../../.shiftapi/client.d.ts"]);
+    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["../../.shiftapi/client"]);
   });
 
   it("is a no-op if path already set", () => {
     const original = JSON.stringify(
-      { compilerOptions: { paths: { "@shiftapi/client": ["./.shiftapi/client.d.ts"] } } },
+      { compilerOptions: { paths: { "@shiftapi/client": ["./.shiftapi/client"] } } },
       null,
       2,
     );
@@ -122,7 +122,7 @@ describe("patchTsConfigPaths", () => {
 
     const result = JSON.parse(readFileSync(join(tempDir, "tsconfig.json"), "utf-8"));
     expect(result.compilerOptions.paths["@/*"]).toEqual(["./*"]);
-    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["./.shiftapi/client.d.ts"]);
+    expect(result.compilerOptions.paths["@shiftapi/client"]).toEqual(["./.shiftapi/client"]);
   });
 
   it("preserves comments in JSONC", () => {
