@@ -44,12 +44,14 @@ describe("getFiles", () => {
     expect(files).toContain("tsconfig.json");
     expect(files).toContain("eslint.config.mjs");
     expect(files).toContain("postcss.config.mjs");
+    expect(files).toContain("api.ts");
     expect(files).toContain("app/globals.css");
     expect(files).toContain("app/layout.tsx");
     expect(files).toContain("app/page.tsx");
+    expect(files).toContain("app/providers.tsx");
     expect(files).toContain("shiftapi.config.ts");
     expect(files).toContain(".gitignore");
-    expect(files).toHaveLength(16);
+    expect(files).toHaveLength(18);
   });
 
   it("returns all expected files for svelte", () => {
@@ -117,6 +119,7 @@ describe("scaffold", () => {
       }
     };
 
+    expect(await exists("api.ts")).toBe(true);
     expect(await exists("next.config.ts")).toBe(true);
     expect(await exists("tsconfig.json")).toBe(true);
     expect(await exists("eslint.config.mjs")).toBe(true);
@@ -124,6 +127,7 @@ describe("scaffold", () => {
     expect(await exists("app/globals.css")).toBe(true);
     expect(await exists("app/layout.tsx")).toBe(true);
     expect(await exists("app/page.tsx")).toBe(true);
+    expect(await exists("app/providers.tsx")).toBe(true);
   });
 
   it("creates svelte files on disk", async () => {

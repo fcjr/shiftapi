@@ -9,7 +9,9 @@
     "postinstall": "shiftapi prepare"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.0.0",
     "next": "^16.0.0",
+    "openapi-react-query": "^0.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
