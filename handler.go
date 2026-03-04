@@ -15,25 +15,32 @@ import (
 // For routes without input, use struct{} as the In type.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody bool) http.HandlerFunc {
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody, hasForm bool, maxUploadSize int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
 
-		// JSON-decode body if there are body fields
-		if hasBody {
+		if hasForm {
+			// Parse multipart form
+			if err := parseFormInto(rv, r, maxUploadSize); err != nil {
+				writeError(w, Error(http.StatusBadRequest, err.Error()))
+				return
+			}
+			rv = reflect.ValueOf(&in).Elem()
+		} else if hasBody {
+			// JSON-decode body if there are body fields
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 				writeError(w, Error(http.StatusBadRequest, "invalid request body"))
 				return
 			}
 			// Re-point rv after decode (in case In is a pointer that was nil)
 			rv = reflect.ValueOf(&in).Elem()
-		}
 
-		// Reset any query-tagged fields that body decode may have
-		// inadvertently set, so they only come from URL query params.
-		if hasBody && hasQuery {
-			resetQueryFields(rv)
+			// Reset any query-tagged fields that body decode may have
+			// inadvertently set, so they only come from URL query params.
+			if hasQuery {
+				resetQueryFields(rv)
+			}
 		}
 
 		// Parse query params if there are query fields

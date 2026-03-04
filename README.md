@@ -84,7 +84,7 @@ That's it. ShiftAPI reflects your Go types into an OpenAPI 3.1 spec at `/openapi
 
 ### Generic type-safe handlers
 
-Generic free functions capture your request and response types at compile time. Every method uses a single function — struct tags discriminate query params (`query:"..."`) from body fields (`json:"..."`). For routes without input, use `_ struct{}`.
+Generic free functions capture your request and response types at compile time. Every method uses a single function — struct tags discriminate query params (`query:"..."`), body fields (`json:"..."`), and form fields (`form:"..."`). For routes without input, use `_ struct{}`.
 
 ```go
 // POST with body — input is decoded and passed as *CreateUser
@@ -127,6 +127,48 @@ type CreateInput struct {
 shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*Result, error) {
     return createItem(in.Name, in.DryRun), nil
 })
+```
+
+### File uploads (`multipart/form-data`)
+
+Use `form` tags to declare file upload endpoints. The `form` tag drives OpenAPI spec generation — the generated TypeScript client gets the correct `multipart/form-data` types automatically. At runtime, the request body is parsed via `ParseMultipartForm` and form-tagged fields are populated.
+
+```go
+type UploadInput struct {
+    File  *multipart.FileHeader   `form:"file" validate:"required"`
+    Title string                  `form:"title" validate:"required"`
+    Tags  string                  `query:"tags"`
+}
+
+shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*Result, error) {
+    f, err := in.File.Open()
+    if err != nil {
+        return nil, shiftapi.Error(http.StatusBadRequest, "failed to open file")
+    }
+    defer f.Close()
+    // read from f, save to disk/S3/etc.
+    return &Result{Filename: in.File.Filename, Title: in.Title}, nil
+})
+```
+
+- `*multipart.FileHeader` — single file (`type: string, format: binary` in OpenAPI, `File | Blob | Uint8Array` in TypeScript)
+- `[]*multipart.FileHeader` — multiple files (`type: array, items: {type: string, format: binary}`)
+- Scalar types with `form` tag — text form fields
+- `query` tags work alongside `form` tags
+- Mixing `json` and `form` tags on the same struct panics at registration time
+
+Restrict accepted file types with the `accept` tag. This validates the `Content-Type` at runtime (returns `400` if rejected) and documents the constraint in the OpenAPI spec via the `encoding` map:
+
+```go
+type ImageUpload struct {
+    Avatar *multipart.FileHeader `form:"avatar" accept:"image/png,image/jpeg" validate:"required"`
+}
+```
+
+The default max upload size is 32 MB. Configure it with `WithMaxUploadSize`:
+
+```go
+api := shiftapi.New(shiftapi.WithMaxUploadSize(64 << 20)) // 64 MB
 ```
 
 ### Validation
@@ -261,6 +303,12 @@ const { data: results } = await client.GET("/search", {
     params: { query: { q: "hello", page: 1, limit: 10 } },
 });
 // query params are fully typed too — { q: string, page?: number, limit?: number }
+
+const { data: upload } = await client.POST("/upload", {
+    body: { file: new File(["content"], "doc.txt"), title: "My Doc" },
+    params: { query: { tags: "important" } },
+});
+// file uploads are typed as File | Blob | Uint8Array — generated from format: binary in the spec
 ```
 
 In dev mode the plugins start the Go server, proxy API requests, watch `.go` files, and regenerate types on changes.

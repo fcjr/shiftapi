@@ -59,6 +59,14 @@ func WithInfo(info Info) Option {
 	}
 }
 
+// WithMaxUploadSize sets the maximum memory used for parsing multipart form data.
+// The default is 32 MB.
+func WithMaxUploadSize(size int64) Option {
+	return func(api *API) {
+		api.maxUploadSize = size
+	}
+}
+
 // WithExternalDocs links to external documentation.
 func WithExternalDocs(docs ExternalDocs) Option {
 	return func(api *API) {

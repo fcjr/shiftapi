@@ -1,11 +1,15 @@
 package shiftapi_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"slices"
 	"strings"
 	"testing"
@@ -2491,5 +2495,531 @@ func TestSpecQueryOnlyInputHasNoRequestBody(t *testing.T) {
 	op := spec.Paths.Find("/search").Get
 	if op.RequestBody != nil {
 		t.Error("GET with query-only input should not have a request body in the spec")
+	}
+}
+
+// --- Form upload test types ---
+
+type UploadInput struct {
+	File  *multipart.FileHeader `form:"file" validate:"required"`
+	Title string                `form:"title" validate:"required"`
+}
+
+type UploadResult struct {
+	Filename string `json:"filename"`
+	Title    string `json:"title"`
+	Size     int64  `json:"size"`
+}
+
+type MultiUploadInput struct {
+	Files []*multipart.FileHeader `form:"files" validate:"required"`
+}
+
+type MultiUploadResult struct {
+	Count int `json:"count"`
+}
+
+type FormWithQueryInput struct {
+	File *multipart.FileHeader `form:"file"`
+	Tags string                `query:"tags"`
+}
+
+type FormWithQueryResult struct {
+	HasFile bool   `json:"has_file"`
+	Tags    string `json:"tags"`
+}
+
+type FormTextFieldsInput struct {
+	Name  string  `form:"name"`
+	Age   int     `form:"age"`
+	Score float64 `form:"score"`
+	Admin bool    `form:"admin"`
+}
+
+type FormTextFieldsResult struct {
+	Name  string  `json:"name"`
+	Age   int     `json:"age"`
+	Score float64 `json:"score"`
+	Admin bool    `json:"admin"`
+}
+
+type MixedJsonFormInput struct {
+	Name string                `json:"name"`
+	File *multipart.FileHeader `form:"file"`
+}
+
+type AcceptUploadInput struct {
+	Image *multipart.FileHeader `form:"image" accept:"image/png,image/jpeg" validate:"required"`
+}
+
+type AcceptMultiUploadInput struct {
+	Images []*multipart.FileHeader `form:"images" accept:"image/png,image/jpeg"`
+}
+
+// --- Form upload helpers ---
+
+func doMultipartRequest(t *testing.T, api http.Handler, method, path string, fields map[string]string, files map[string][]byte) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for name, content := range files {
+		part, err := w.CreateFormFile(name, name+".txt")
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		if _, err := part.Write(content); err != nil {
+			t.Fatalf("failed to write file content: %v", err)
+		}
+	}
+	for name, value := range fields {
+		if err := w.WriteField(name, value); err != nil {
+			t.Fatalf("failed to write field: %v", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close multipart writer: %v", err)
+	}
+
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// doMultipartRequestMultiFiles sends a multipart request with multiple files under the same field name.
+func doMultipartRequestMultiFiles(t *testing.T, api http.Handler, method, path, fieldName string, fileContents [][]byte) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for i, content := range fileContents {
+		part, err := w.CreateFormFile(fieldName, fmt.Sprintf("file%d.txt", i))
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		if _, err := part.Write(content); err != nil {
+			t.Fatalf("failed to write file content: %v", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close multipart writer: %v", err)
+	}
+
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// --- Form upload runtime tests ---
+
+func TestPostFormUpload(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return &UploadResult{
+			Filename: in.File.Filename,
+			Title:    in.Title,
+			Size:     in.File.Size,
+		}, nil
+	})
+
+	resp := doMultipartRequest(t, api, http.MethodPost, "/upload",
+		map[string]string{"title": "My Document"},
+		map[string][]byte{"file": []byte("hello world")},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := readBody(t, resp)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	result := decodeJSON[UploadResult](t, resp)
+	if result.Filename != "file.txt" {
+		t.Errorf("expected filename %q, got %q", "file.txt", result.Filename)
+	}
+	if result.Title != "My Document" {
+		t.Errorf("expected title %q, got %q", "My Document", result.Title)
+	}
+	if result.Size != 11 {
+		t.Errorf("expected size 11, got %d", result.Size)
+	}
+}
+
+func TestPostFormUploadMissingRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return &UploadResult{}, nil
+	})
+
+	// Send without the required file field
+	resp := doMultipartRequest(t, api, http.MethodPost, "/upload",
+		map[string]string{"title": "My Document"},
+		nil,
+	)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		body := readBody(t, resp)
+		t.Fatalf("expected 422, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+func TestPostFormUploadMultipleFiles(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-multi", func(r *http.Request, in MultiUploadInput) (*MultiUploadResult, error) {
+		return &MultiUploadResult{Count: len(in.Files)}, nil
+	})
+
+	resp := doMultipartRequestMultiFiles(t, api, http.MethodPost, "/upload-multi", "files",
+		[][]byte{[]byte("file1"), []byte("file2"), []byte("file3")},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := readBody(t, resp)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	result := decodeJSON[MultiUploadResult](t, resp)
+	if result.Count != 3 {
+		t.Errorf("expected count 3, got %d", result.Count)
+	}
+}
+
+func TestPostFormWithQueryParams(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-tags", func(r *http.Request, in FormWithQueryInput) (*FormWithQueryResult, error) {
+		return &FormWithQueryResult{
+			HasFile: in.File != nil,
+			Tags:    in.Tags,
+		}, nil
+	})
+
+	resp := doMultipartRequest(t, api, http.MethodPost, "/upload-tags?tags=a,b,c",
+		nil,
+		map[string][]byte{"file": []byte("data")},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := readBody(t, resp)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	result := decodeJSON[FormWithQueryResult](t, resp)
+	if !result.HasFile {
+		t.Error("expected HasFile=true")
+	}
+	if result.Tags != "a,b,c" {
+		t.Errorf("expected tags %q, got %q", "a,b,c", result.Tags)
+	}
+}
+
+func TestPostFormTextFieldTypes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/form-fields", func(r *http.Request, in FormTextFieldsInput) (*FormTextFieldsResult, error) {
+		return &FormTextFieldsResult{
+			Name:  in.Name,
+			Age:   in.Age,
+			Score: in.Score,
+			Admin: in.Admin,
+		}, nil
+	})
+
+	resp := doMultipartRequest(t, api, http.MethodPost, "/form-fields",
+		map[string]string{
+			"name":  "Alice",
+			"age":   "30",
+			"score": "9.5",
+			"admin": "true",
+		},
+		nil,
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := readBody(t, resp)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	result := decodeJSON[FormTextFieldsResult](t, resp)
+	if result.Name != "Alice" {
+		t.Errorf("expected name %q, got %q", "Alice", result.Name)
+	}
+	if result.Age != 30 {
+		t.Errorf("expected age 30, got %d", result.Age)
+	}
+	if result.Score != 9.5 {
+		t.Errorf("expected score 9.5, got %f", result.Score)
+	}
+	if !result.Admin {
+		t.Error("expected admin=true")
+	}
+}
+
+// --- Form upload OpenAPI spec tests ---
+
+func TestSpecFormUploadContentType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload").Post
+	if op.RequestBody == nil {
+		t.Fatal("expected request body")
+	}
+	if op.RequestBody.Value.Content.Get("multipart/form-data") == nil {
+		t.Error("expected multipart/form-data content type")
+	}
+	if op.RequestBody.Value.Content.Get("application/json") != nil {
+		t.Error("should not have application/json content type for form upload")
+	}
+}
+
+func TestSpecFormUploadFileIsBinary(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+	fileSchema := formContent.Schema.Value.Properties["file"]
+	if fileSchema == nil {
+		t.Fatal("expected file property in form schema")
+	}
+	if !fileSchema.Value.Type.Is("string") {
+		t.Errorf("expected type string, got %v", fileSchema.Value.Type)
+	}
+	if fileSchema.Value.Format != "binary" {
+		t.Errorf("expected format binary, got %q", fileSchema.Value.Format)
+	}
+}
+
+func TestSpecFormUploadArrayIsBinaryArray(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-multi", func(r *http.Request, in MultiUploadInput) (*MultiUploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload-multi").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+	filesSchema := formContent.Schema.Value.Properties["files"]
+	if filesSchema == nil {
+		t.Fatal("expected files property in form schema")
+	}
+	if !filesSchema.Value.Type.Is("array") {
+		t.Errorf("expected type array, got %v", filesSchema.Value.Type)
+	}
+	if filesSchema.Value.Items == nil {
+		t.Fatal("expected items in array schema")
+	}
+	if !filesSchema.Value.Items.Value.Type.Is("string") {
+		t.Errorf("expected items type string, got %v", filesSchema.Value.Items.Value.Type)
+	}
+	if filesSchema.Value.Items.Value.Format != "binary" {
+		t.Errorf("expected items format binary, got %q", filesSchema.Value.Items.Value.Format)
+	}
+}
+
+func TestSpecFormUploadExcludesQueryFields(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-tags", func(r *http.Request, in FormWithQueryInput) (*FormWithQueryResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload-tags").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+	schema := formContent.Schema.Value
+
+	// file should be in form schema
+	if schema.Properties["file"] == nil {
+		t.Error("expected file property in form schema")
+	}
+	// tags should NOT be in form schema (it's a query param)
+	if schema.Properties["tags"] != nil {
+		t.Error("query field 'tags' should not appear in form schema")
+	}
+
+	// tags should be a query parameter
+	var foundTags bool
+	for _, p := range op.Parameters {
+		if p.Value.Name == "tags" && p.Value.In == "query" {
+			foundTags = true
+		}
+	}
+	if !foundTags {
+		t.Error("expected 'tags' as query parameter")
+	}
+}
+
+func TestSpecFormUploadRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+	required := formContent.Schema.Value.Required
+
+	if !slices.Contains(required, "file") {
+		t.Error("expected 'file' in required list")
+	}
+	if !slices.Contains(required, "title") {
+		t.Error("expected 'title' in required list")
+	}
+}
+
+// --- Form upload edge case tests ---
+
+func TestMixedJsonAndFormTagsPanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic when mixing json and form tags")
+		}
+		msg := fmt.Sprintf("%v", r)
+		if !strings.Contains(msg, "json and form tags") {
+			t.Errorf("expected panic message about mixed tags, got: %s", msg)
+		}
+	}()
+
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/bad", func(r *http.Request, in MixedJsonFormInput) (*Empty, error) {
+		return &Empty{}, nil
+	})
+}
+
+func TestFormUploadEmptyBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return &UploadResult{}, nil
+	})
+
+	// Send request with no multipart body
+	req := httptest.NewRequest(http.MethodPost, "/upload", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	resp := rec.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+// --- Accept tag helpers ---
+
+// doMultipartRequestWithContentType sends a multipart request with a file part that has a specific Content-Type.
+func doMultipartRequestWithContentType(t *testing.T, api http.Handler, method, path, fieldName, fileName, contentType string, content []byte) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fileName))
+	h.Set("Content-Type", contentType)
+	part, err := w.CreatePart(h)
+	if err != nil {
+		t.Fatalf("failed to create part: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("failed to write content: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// --- Accept tag runtime tests ---
+
+func TestPostFormAcceptAllowed(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-image", func(r *http.Request, in AcceptUploadInput) (*UploadResult, error) {
+		return &UploadResult{Filename: in.Image.Filename}, nil
+	})
+
+	resp := doMultipartRequestWithContentType(t, api, http.MethodPost, "/upload-image",
+		"image", "photo.png", "image/png", []byte("fake png data"),
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := readBody(t, resp)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	result := decodeJSON[UploadResult](t, resp)
+	if result.Filename != "photo.png" {
+		t.Errorf("expected filename %q, got %q", "photo.png", result.Filename)
+	}
+}
+
+func TestPostFormAcceptRejected(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-image", func(r *http.Request, in AcceptUploadInput) (*UploadResult, error) {
+		return &UploadResult{}, nil
+	})
+
+	resp := doMultipartRequestWithContentType(t, api, http.MethodPost, "/upload-image",
+		"image", "doc.pdf", "application/pdf", []byte("fake pdf data"),
+	)
+	if resp.StatusCode != http.StatusBadRequest {
+		body := readBody(t, resp)
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+func TestPostFormAcceptMultipleFilesRejected(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-images", func(r *http.Request, in AcceptMultiUploadInput) (*MultiUploadResult, error) {
+		return &MultiUploadResult{Count: len(in.Images)}, nil
+	})
+
+	// Send a file with wrong content type
+	resp := doMultipartRequestWithContentType(t, api, http.MethodPost, "/upload-images",
+		"images", "doc.pdf", "application/pdf", []byte("fake pdf data"),
+	)
+	if resp.StatusCode != http.StatusBadRequest {
+		body := readBody(t, resp)
+		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+// --- Accept tag OpenAPI spec tests ---
+
+func TestSpecFormAcceptEncoding(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload-image", func(r *http.Request, in AcceptUploadInput) (*UploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload-image").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+
+	if formContent.Encoding == nil {
+		t.Fatal("expected encoding map to be set")
+	}
+	enc, ok := formContent.Encoding["image"]
+	if !ok {
+		t.Fatal("expected encoding entry for 'image'")
+	}
+	if enc.ContentType != "image/png,image/jpeg" {
+		t.Errorf("expected contentType %q, got %q", "image/png,image/jpeg", enc.ContentType)
+	}
+}
+
+func TestSpecFormNoAcceptNoEncoding(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/upload").Post
+	formContent := op.RequestBody.Value.Content.Get("multipart/form-data")
+
+	if formContent.Encoding != nil {
+		t.Error("expected no encoding map when no accept tags")
 	}
 }

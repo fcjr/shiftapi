@@ -6,9 +6,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "paths": {
       "@shiftapi/client": [
-        "./.shiftapi/client.d.ts"
+        "./.shiftapi/client"
       ]
     }
   },

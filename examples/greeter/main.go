@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/fcjr/shiftapi"
@@ -50,6 +52,60 @@ func health(r *http.Request, _ struct{}) (*Status, error) {
 	return &Status{OK: true}, nil
 }
 
+type UploadInput struct {
+	File *multipart.FileHeader `form:"file" validate:"required"`
+}
+
+type UploadResult struct {
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
+
+func upload(r *http.Request, in UploadInput) (*UploadResult, error) {
+	return &UploadResult{
+		Filename: in.File.Filename,
+		Size:     in.File.Size,
+	}, nil
+}
+
+type ImageUploadInput struct {
+	Image *multipart.FileHeader `form:"image" accept:"image/png,image/jpeg" validate:"required"`
+}
+
+type ImageUploadResult struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+}
+
+func uploadImage(r *http.Request, in ImageUploadInput) (*ImageUploadResult, error) {
+	return &ImageUploadResult{
+		Filename:    in.Image.Filename,
+		ContentType: in.Image.Header.Get("Content-Type"),
+		Size:        in.Image.Size,
+	}, nil
+}
+
+type MultiUploadInput struct {
+	Files []*multipart.FileHeader `form:"files" validate:"required"`
+}
+
+type MultiUploadResult struct {
+	Count     int      `json:"count"`
+	Filenames []string `json:"filenames"`
+}
+
+func uploadMulti(r *http.Request, in MultiUploadInput) (*MultiUploadResult, error) {
+	names := make([]string, len(in.Files))
+	for i, f := range in.Files {
+		names[i] = fmt.Sprintf("%s (%d bytes)", f.Filename, f.Size)
+	}
+	return &MultiUploadResult{
+		Count:     len(in.Files),
+		Filenames: names,
+	}, nil
+}
+
 func main() {
 	api := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
 		Title: "Greeter Demo API",
@@ -75,6 +131,30 @@ func main() {
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary: "Health check",
 			Tags:    []string{"health"},
+		}),
+	)
+
+	shiftapi.Post(api, "/upload", upload,
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary:     "Upload a file",
+			Description: "Upload a single file",
+			Tags:        []string{"uploads"},
+		}),
+	)
+
+	shiftapi.Post(api, "/upload-image", uploadImage,
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary:     "Upload an image",
+			Description: "Upload a single image (PNG or JPEG only)",
+			Tags:        []string{"uploads"},
+		}),
+	)
+
+	shiftapi.Post(api, "/upload-multi", uploadMulti,
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary:     "Upload multiple files",
+			Description: "Upload multiple files at once",
+			Tags:        []string{"uploads"},
 		}),
 	)
 
