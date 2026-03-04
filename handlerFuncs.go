@@ -23,11 +23,15 @@ func registerRoute[In, Resp any](
 		rawInType = rawInType.Elem()
 	}
 
-	hasQuery, hasBody := partitionFields(rawInType)
+	hasQuery, hasHeader, hasBody := partitionFields(rawInType)
 
 	var queryType reflect.Type
 	if hasQuery {
 		queryType = rawInType
+	}
+	var headerType reflect.Type
+	if hasHeader {
+		headerType = rawInType
 	}
 	// POST/PUT/PATCH conventionally carry a request body, so always attempt
 	// body decode for these methods — even when the input is struct{}.
@@ -45,12 +49,12 @@ func registerRoute[In, Resp any](
 	var resp Resp
 	outType := reflect.TypeOf(resp)
 
-	if err := api.updateSchema(method, path, queryType, bodyType, outType, cfg.info, cfg.status); err != nil {
+	if err := api.updateSchema(method, path, queryType, headerType, bodyType, outType, cfg.info, cfg.status); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, path, err))
 	}
 
 	pattern := fmt.Sprintf("%s %s", method, path)
-	api.mux.HandleFunc(pattern, adapt(fn, cfg.status, api.validateBody, hasQuery, decodeBody))
+	api.mux.HandleFunc(pattern, adapt(fn, cfg.status, api.validateBody, hasQuery, hasHeader, decodeBody))
 }
 
 // Get registers a GET handler.

@@ -2493,3 +2493,497 @@ func TestSpecQueryOnlyInputHasNoRequestBody(t *testing.T) {
 		t.Error("GET with query-only input should not have a request body in the spec")
 	}
 }
+
+// --- Header parameter test types ---
+
+type AuthHeader struct {
+	Token string `header:"Authorization" validate:"required"`
+}
+
+type AuthResult struct {
+	Token string `json:"token"`
+}
+
+type OptionalHeader struct {
+	Debug *bool `header:"X-Debug"`
+	Limit *int  `header:"X-Limit"`
+}
+
+type OptionalHeaderResult struct {
+	HasDebug bool `json:"has_debug"`
+	Debug    bool `json:"debug"`
+	HasLimit bool `json:"has_limit"`
+	Limit    int  `json:"limit"`
+}
+
+type HeaderAndBody struct {
+	Token string `header:"Authorization" validate:"required"`
+	Name  string `json:"name" validate:"required"`
+}
+
+type HeaderAndBodyResult struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+}
+
+type HeaderAndQuery struct {
+	Token string `header:"Authorization" validate:"required"`
+	Q     string `query:"q"`
+}
+
+type HeaderAndQueryResult struct {
+	Token string `json:"token"`
+	Q     string `json:"q"`
+}
+
+type ScalarHeaders struct {
+	Flag  bool    `header:"X-Flag"`
+	Count uint    `header:"X-Count"`
+	Score float64 `header:"X-Score"`
+}
+
+type ScalarHeaderResult struct {
+	Flag  bool    `json:"flag"`
+	Count uint    `json:"count"`
+	Score float64 `json:"score"`
+}
+
+// --- Header parameter test helpers ---
+
+func doRequestWithHeaders(t *testing.T, api http.Handler, method, path, body string, headers map[string]string) *http.Response {
+	t.Helper()
+	var bodyReader io.Reader
+	if body != "" {
+		bodyReader = strings.NewReader(body)
+	}
+	req := httptest.NewRequest(method, path, bodyReader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// --- Header parameter runtime tests ---
+
+func TestGetWithHeaderBasic(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/auth", func(r *http.Request, in AuthHeader) (*AuthResult, error) {
+		return &AuthResult{Token: in.Token}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/auth", "", map[string]string{
+		"Authorization": "Bearer abc123",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[AuthResult](t, resp)
+	if result.Token != "Bearer abc123" {
+		t.Errorf("expected Token=%q, got %q", "Bearer abc123", result.Token)
+	}
+}
+
+func TestGetWithHeaderMissingRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/auth", func(r *http.Request, in AuthHeader) (*AuthResult, error) {
+		return &AuthResult{Token: in.Token}, nil
+	})
+
+	// Missing required "Authorization" header
+	resp := doRequest(t, api, http.MethodGet, "/auth", "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithHeaderInvalidType(t *testing.T) {
+	api := newTestAPI(t)
+	type IntHeader struct {
+		Count int `header:"X-Count" validate:"required"`
+	}
+	shiftapi.Get(api, "/count", func(r *http.Request, in IntHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/count", "", map[string]string{
+		"X-Count": "notanumber",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithHeaderOptionalPointers(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/optional", func(r *http.Request, in OptionalHeader) (*OptionalHeaderResult, error) {
+		result := &OptionalHeaderResult{}
+		if in.Debug != nil {
+			result.HasDebug = true
+			result.Debug = *in.Debug
+		}
+		if in.Limit != nil {
+			result.HasLimit = true
+			result.Limit = *in.Limit
+		}
+		return result, nil
+	})
+
+	// With both headers
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/optional", "", map[string]string{
+		"X-Debug": "true",
+		"X-Limit": "50",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[OptionalHeaderResult](t, resp)
+	if !result.HasDebug || !result.Debug {
+		t.Error("expected Debug to be true")
+	}
+	if !result.HasLimit || result.Limit != 50 {
+		t.Errorf("expected Limit=50, got %d", result.Limit)
+	}
+
+	// Without optional headers
+	resp2 := doRequest(t, api, http.MethodGet, "/optional", "")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+	result2 := decodeJSON[OptionalHeaderResult](t, resp2)
+	if result2.HasDebug {
+		t.Error("expected HasDebug=false when header absent")
+	}
+	if result2.HasLimit {
+		t.Error("expected HasLimit=false when header absent")
+	}
+}
+
+func TestPostWithHeaderAndBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/items", func(r *http.Request, in HeaderAndBody) (*HeaderAndBodyResult, error) {
+		return &HeaderAndBodyResult{Token: in.Token, Name: in.Name}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodPost, "/items", `{"name":"widget"}`, map[string]string{
+		"Authorization": "Bearer xyz",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[HeaderAndBodyResult](t, resp)
+	if result.Token != "Bearer xyz" {
+		t.Errorf("expected Token=%q, got %q", "Bearer xyz", result.Token)
+	}
+	if result.Name != "widget" {
+		t.Errorf("expected Name=%q, got %q", "widget", result.Name)
+	}
+}
+
+func TestHeaderFieldNotSetByBodyDecode(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/items", func(r *http.Request, in HeaderAndBody) (*HeaderAndBodyResult, error) {
+		return &HeaderAndBodyResult{Token: in.Token, Name: in.Name}, nil
+	})
+
+	// Body includes "Token" key that matches the header field name — it should be ignored
+	resp := doRequestWithHeaders(t, api, http.MethodPost, "/items", `{"name":"widget","Token":"body-token"}`, map[string]string{
+		"Authorization": "Bearer real",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[HeaderAndBodyResult](t, resp)
+	if result.Token != "Bearer real" {
+		t.Errorf("expected Token=%q from header, got %q", "Bearer real", result.Token)
+	}
+}
+
+func TestGetWithHeaderAndQuery(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in HeaderAndQuery) (*HeaderAndQueryResult, error) {
+		return &HeaderAndQueryResult{Token: in.Token, Q: in.Q}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/search?q=hello", "", map[string]string{
+		"Authorization": "Bearer abc",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[HeaderAndQueryResult](t, resp)
+	if result.Token != "Bearer abc" {
+		t.Errorf("expected Token=%q, got %q", "Bearer abc", result.Token)
+	}
+	if result.Q != "hello" {
+		t.Errorf("expected Q=%q, got %q", "hello", result.Q)
+	}
+}
+
+func TestGetWithHeaderScalars(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/scalars", func(r *http.Request, in ScalarHeaders) (*ScalarHeaderResult, error) {
+		return &ScalarHeaderResult{Flag: in.Flag, Count: in.Count, Score: in.Score}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/scalars", "", map[string]string{
+		"X-Flag":  "true",
+		"X-Count": "42",
+		"X-Score": "3.14",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[ScalarHeaderResult](t, resp)
+	if !result.Flag {
+		t.Error("expected Flag=true")
+	}
+	if result.Count != 42 {
+		t.Errorf("expected Count=42, got %d", result.Count)
+	}
+	if result.Score != 3.14 {
+		t.Errorf("expected Score=3.14, got %f", result.Score)
+	}
+}
+
+func TestGetWithHeaderInvalidBool(t *testing.T) {
+	api := newTestAPI(t)
+	type BoolHeader struct {
+		Flag bool `header:"X-Flag"`
+	}
+	shiftapi.Get(api, "/test", func(r *http.Request, in BoolHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/test", "", map[string]string{
+		"X-Flag": "notabool",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithHeaderInvalidUint(t *testing.T) {
+	api := newTestAPI(t)
+	type UintHeader struct {
+		Count uint `header:"X-Count"`
+	}
+	shiftapi.Get(api, "/test", func(r *http.Request, in UintHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/test", "", map[string]string{
+		"X-Count": "-1",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetWithHeaderInvalidFloat(t *testing.T) {
+	api := newTestAPI(t)
+	type FloatHeader struct {
+		Score float64 `header:"X-Score"`
+	}
+	shiftapi.Get(api, "/test", func(r *http.Request, in FloatHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	resp := doRequestWithHeaders(t, api, http.MethodGet, "/test", "", map[string]string{
+		"X-Score": "abc",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+// --- Header parameter OpenAPI spec tests ---
+
+func TestSpecHeaderParamsDocumented(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/auth", func(r *http.Request, in AuthHeader) (*AuthResult, error) {
+		return &AuthResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/auth").Get
+
+	var found bool
+	for _, p := range op.Parameters {
+		if p.Value.Name == "Authorization" && p.Value.In == "header" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected Authorization header parameter documented in spec")
+	}
+}
+
+func TestSpecHeaderParamTypes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/scalars", func(r *http.Request, in ScalarHeaders) (*ScalarHeaderResult, error) {
+		return &ScalarHeaderResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/scalars").Get
+
+	expected := map[string]string{
+		"X-Flag":  "boolean",
+		"X-Count": "integer",
+		"X-Score": "number",
+	}
+	for _, p := range op.Parameters {
+		if p.Value.In != "header" {
+			continue
+		}
+		want, ok := expected[p.Value.Name]
+		if !ok {
+			t.Errorf("unexpected header param %q", p.Value.Name)
+			continue
+		}
+		got := p.Value.Schema.Value.Type.Slice()[0]
+		if got != want {
+			t.Errorf("header %q: expected type %q, got %q", p.Value.Name, want, got)
+		}
+	}
+}
+
+func TestSpecHeaderParamRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/auth", func(r *http.Request, in AuthHeader) (*AuthResult, error) {
+		return &AuthResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/auth").Get
+
+	for _, p := range op.Parameters {
+		if p.Value.Name == "Authorization" && p.Value.In == "header" {
+			if !p.Value.Required {
+				t.Error("expected Authorization header to be required")
+			}
+			return
+		}
+	}
+	t.Error("Authorization header param not found")
+}
+
+func TestSpecHeaderParamOptionalPointerNotRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/optional", func(r *http.Request, in OptionalHeader) (*OptionalHeaderResult, error) {
+		return &OptionalHeaderResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/optional").Get
+
+	for _, p := range op.Parameters {
+		if p.Value.In == "header" && p.Value.Required {
+			t.Errorf("optional header %q should not be required", p.Value.Name)
+		}
+	}
+}
+
+func TestSpecHeaderParamValidationConstraints(t *testing.T) {
+	api := newTestAPI(t)
+	type ConstrainedHeader struct {
+		Count int `header:"X-Count" validate:"min=1,max=100"`
+	}
+	shiftapi.Get(api, "/constrained", func(r *http.Request, in ConstrainedHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/constrained").Get
+
+	for _, p := range op.Parameters {
+		if p.Value.Name == "X-Count" && p.Value.In == "header" {
+			s := p.Value.Schema.Value
+			if s.Min == nil || *s.Min != 1 {
+				t.Error("expected Min=1 on X-Count header param")
+			}
+			if s.Max == nil || *s.Max != 100 {
+				t.Error("expected Max=100 on X-Count header param")
+			}
+			return
+		}
+	}
+	t.Error("X-Count header param not found")
+}
+
+func TestSpecBodySchemaExcludesHeaderFields(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/items", func(r *http.Request, in HeaderAndBody) (*HeaderAndBodyResult, error) {
+		return &HeaderAndBodyResult{}, nil
+	})
+
+	spec := api.Spec()
+	// Find the body schema in components
+	for name, schemaRef := range spec.Components.Schemas {
+		if name == "HeaderAndBody" {
+			if _, has := schemaRef.Value.Properties["Token"]; has {
+				t.Error("body schema should not contain header field 'Token'")
+			}
+			if _, has := schemaRef.Value.Properties["name"]; !has {
+				t.Error("body schema should contain body field 'name'")
+			}
+			return
+		}
+	}
+	t.Error("HeaderAndBody schema not found in components")
+}
+
+func TestSpecHeaderParamsCombinedWithQueryParams(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/search", func(r *http.Request, in HeaderAndQuery) (*HeaderAndQueryResult, error) {
+		return &HeaderAndQueryResult{}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/search").Get
+
+	var headerParams, queryParams int
+	for _, p := range op.Parameters {
+		switch p.Value.In {
+		case "header":
+			headerParams++
+		case "query":
+			queryParams++
+		}
+	}
+	if headerParams != 1 {
+		t.Errorf("expected 1 header param, got %d", headerParams)
+	}
+	if queryParams != 1 {
+		t.Errorf("expected 1 query param, got %d", queryParams)
+	}
+}
+
+func TestSpecHeaderParamEnum(t *testing.T) {
+	api := newTestAPI(t)
+	type EnumHeader struct {
+		Format string `header:"Accept" validate:"oneof=json xml csv"`
+	}
+	shiftapi.Get(api, "/data", func(r *http.Request, in EnumHeader) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/data").Get
+
+	for _, p := range op.Parameters {
+		if p.Value.Name == "Accept" && p.Value.In == "header" {
+			if len(p.Value.Schema.Value.Enum) != 3 {
+				t.Errorf("expected 3 enum values, got %d", len(p.Value.Schema.Value.Enum))
+			}
+			return
+		}
+	}
+	t.Error("Accept header param not found")
+}
