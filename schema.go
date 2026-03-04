@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, info *RouteInfo, status int) error {
+func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -114,8 +114,27 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 		},
 	})
 
-	// Request body schema (only for methods with bodies)
-	if inType != nil {
+	// Request body schema
+	if hasForm {
+		// multipart/form-data request body
+		formSchema, formEncoding := generateFormSchema(formType)
+		mediaType := &openapi3.MediaType{
+			Schema: &openapi3.SchemaRef{
+				Value: formSchema,
+			},
+		}
+		if formEncoding != nil {
+			mediaType.Encoding = formEncoding
+		}
+		op.RequestBody = &openapi3.RequestBodyRef{
+			Value: &openapi3.RequestBody{
+				Required: true,
+				Content: map[string]*openapi3.MediaType{
+					"multipart/form-data": mediaType,
+				},
+			},
+		}
+	} else if inType != nil {
 		inSchema, err := a.generateSchemaRef(inType)
 		if err != nil {
 			return err
@@ -284,6 +303,77 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 	return params, nil
 }
 
+// generateFormSchema builds an inline OpenAPI schema and encoding map for multipart/form-data.
+// Only fields with `form` tags are included; query-tagged fields are skipped.
+// The encoding map is populated for fields with `accept` tags.
+func generateFormSchema(t reflect.Type) (*openapi3.Schema, map[string]*openapi3.Encoding) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	schema := &openapi3.Schema{
+		Type:       &openapi3.Types{"object"},
+		Properties: make(openapi3.Schemas),
+	}
+	var encoding map[string]*openapi3.Encoding
+
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if !field.IsExported() || !hasFormTag(field) {
+			continue
+		}
+
+		name := formFieldName(field)
+
+		var propSchema *openapi3.SchemaRef
+		switch field.Type {
+		case fileHeaderType:
+			// Single file upload
+			propSchema = &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					Type:   &openapi3.Types{"string"},
+					Format: "binary",
+				},
+			}
+		case fileHeaderSliceType:
+			// Multiple file upload
+			propSchema = &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					Type: &openapi3.Types{"array"},
+					Items: &openapi3.SchemaRef{
+						Value: &openapi3.Schema{
+							Type:   &openapi3.Types{"string"},
+							Format: "binary",
+						},
+					},
+				},
+			}
+		default:
+			// Text form field
+			propSchema = fieldToOpenAPISchema(field.Type)
+			_ = validateSchemaCustomizer(name, field.Type, field.Tag, propSchema.Value)
+		}
+
+		schema.Properties[name] = propSchema
+
+		// Add encoding entry for fields with accept tags
+		if accept := field.Tag.Get("accept"); accept != "" && isFileField(field) {
+			if encoding == nil {
+				encoding = make(map[string]*openapi3.Encoding)
+			}
+			encoding[name] = &openapi3.Encoding{
+				ContentType: accept,
+			}
+		}
+
+		if hasRule(field.Tag.Get("validate"), "required") {
+			schema.Required = append(schema.Required, name)
+		}
+	}
+
+	return schema, encoding
+}
+
 // fieldToOpenAPISchema maps a Go type to an OpenAPI schema.
 func fieldToOpenAPISchema(t reflect.Type) *openapi3.SchemaRef {
 	// Unwrap pointer
@@ -354,15 +444,19 @@ func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
 }
 
 func scrubRefs(s *openapi3.SchemaRef) {
-	if s == nil || s.Value == nil || len(s.Value.Properties) == 0 {
+	if s == nil || s.Value == nil {
 		return
 	}
+	// Scrub ref on non-object schemas
+	if s.Value.Type != nil && !s.Value.Type.Is("object") {
+		s.Ref = ""
+	}
+	// Recurse into array items
+	if s.Value.Items != nil {
+		scrubRefs(s.Value.Items)
+	}
+	// Recurse into properties
 	for _, p := range s.Value.Properties {
-		if p == nil || p.Value == nil {
-			continue
-		}
-		if !p.Value.Type.Is("object") {
-			p.Ref = ""
-		}
+		scrubRefs(p)
 	}
 }

@@ -13,10 +13,11 @@ import (
 // API collects typed handler registrations, generates an OpenAPI schema,
 // and implements http.Handler so it can be used with any standard server.
 type API struct {
-	spec     *openapi3.T
-	specGen  *openapi3gen.Generator
-	mux      *http.ServeMux
-	validate *validator.Validate
+	spec          *openapi3.T
+	specGen       *openapi3gen.Generator
+	mux           *http.ServeMux
+	validate      *validator.Validate
+	maxUploadSize int64
 }
 
 // New creates a new API with the given options.
@@ -32,8 +33,9 @@ func New(options ...Option) *API {
 		specGen: openapi3gen.NewGenerator(
 			openapi3gen.SchemaCustomizer(validateSchemaCustomizer),
 		),
-		mux:      http.NewServeMux(),
-		validate: validator.New(),
+		mux:           http.NewServeMux(),
+		validate:      validator.New(),
+		maxUploadSize: 32 << 20, // 32 MB
 	}
 	for _, opt := range options {
 		opt(api)
