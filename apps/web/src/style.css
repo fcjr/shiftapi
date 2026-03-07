@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #07080a;
+  --color-surface: #0f1115;
+  --color-elevated: #161920;
+  --color-border: #222630;
+  --color-border-hover: #333845;
+  --color-text: #eef0f5;
+  --color-text-secondary: #8b90a0;
+  --color-text-muted: #52566a;
+  --color-go: #00ADD8;
+  --color-ts: #3178C6;
+  --color-accent: #c4f042;
+  --color-accent-bright: #e2ff7a;
+  --color-green: #4ade80;
+  --color-red: #ff6b6b;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+}
+
+/* Ambient background */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 100%);
+}
+
+.bg-glow {
+  position: fixed;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.bg-glow-1 {
+  width: 600px;
+  height: 600px;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-60%);
+  background: radial-gradient(circle, var(--color-accent) 0%, transparent 70%);
+  animation: glow-drift 12s ease-in-out infinite alternate;
+}
+
+.bg-glow-2 {
+  width: 500px;
+  height: 500px;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-20%);
+  background: radial-gradient(circle, var(--color-go) 0%, transparent 70%);
+  animation: glow-drift 12s ease-in-out 3s infinite alternate-reverse;
+}
+
+@keyframes glow-drift {
+  0% { transform: translateX(-60%) translateY(0); }
+  100% { transform: translateX(-40%) translateY(40px); }
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Pipeline animation */
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pipeline-step {
+  animation: step-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--delay) * 0.12s) both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
