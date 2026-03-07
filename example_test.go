@@ -2,6 +2,7 @@ package shiftapi_test
 
 import (
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +27,7 @@ func Example() {
 		return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
 	})
 
-	shiftapi.ListenAndServe(":8080", api)
+	log.Fatal(shiftapi.ListenAndServe(":8080", api))
 }
 
 func ExampleNew() {
