@@ -2,10 +2,10 @@ package shiftapi
 
 import "github.com/getkin/kin-openapi/openapi3"
 
-// Option configures an API.
+// Option configures an [API] created with [New].
 type Option func(*API)
 
-// Info describes the API.
+// Info describes the API and is rendered into the OpenAPI spec's info object.
 type Info struct {
 	Title          string
 	Description    string
@@ -34,7 +34,13 @@ type ExternalDocs struct {
 	URL         string
 }
 
-// WithInfo configures the API metadata.
+// WithInfo configures the API metadata that appears in the OpenAPI spec
+// and documentation UI.
+//
+//	api := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
+//	    Title:   "My API",
+//	    Version: "1.0.0",
+//	}))
 func WithInfo(info Info) Option {
 	return func(api *API) {
 		api.spec.Info = &openapi3.Info{
