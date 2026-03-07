@@ -1,0 +1,13 @@
+name = "shiftapi-web"
+compatibility_date = "2026-03-07"
+
+[assets]
+directory = "dist"
+
+[[routes]]
+pattern = "shiftapi.dev"
+custom_domain = true
+
+[[routes]]
+pattern = "www.shiftapi.dev"
+custom_domain = true
