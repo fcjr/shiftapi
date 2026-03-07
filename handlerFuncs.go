@@ -55,12 +55,16 @@ func registerRoute[In, Resp any](
 	api.mux.HandleFunc(pattern, adapt(fn, cfg.status, api.validateBody, hasQuery, decodeBody, hasForm, api.maxUploadSize))
 }
 
-// Get registers a GET handler.
+// Get registers a handler for GET requests at the given path. The path
+// follows [net/http.ServeMux] patterns, including wildcards like /users/{id}.
+// Path parameters are accessible via [http.Request.PathValue].
 func Get[In, Resp any](api *API, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
 	registerRoute(api, http.MethodGet, path, fn, options...)
 }
 
-// Post registers a POST handler.
+// Post registers a handler for POST requests at the given path. The request
+// body is automatically decoded from JSON (or multipart/form-data if the In
+// type has form-tagged fields). Validation is applied before the handler runs.
 func Post[In, Resp any](api *API, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
 	registerRoute(api, http.MethodPost, path, fn, options...)
 }

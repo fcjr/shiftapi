@@ -11,7 +11,11 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// ValidationError is returned when request body validation fails.
+// ValidationError is returned when request validation fails. It is serialized
+// as a 422 Unprocessable Entity response with a structured list of per-field
+// errors. Validation rules are specified using validate struct tags from
+// [github.com/go-playground/validator/v10] and are also reflected into the
+// generated OpenAPI schema.
 type ValidationError struct {
 	Message string       `json:"message"`
 	Errors  []FieldError `json:"errors"`
@@ -27,7 +31,8 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
-// WithValidator sets a custom validator instance on the API.
+// WithValidator sets a custom [github.com/go-playground/validator/v10] instance
+// on the API. Use this to register custom validations or override default behavior.
 func WithValidator(v *validator.Validate) Option {
 	return func(api *API) {
 		api.validate = v

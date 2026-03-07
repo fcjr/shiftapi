@@ -10,8 +10,12 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// API collects typed handler registrations, generates an OpenAPI schema,
-// and implements http.Handler so it can be used with any standard server.
+// API is the central type that collects typed handler registrations, generates
+// an OpenAPI 3.1 schema, and implements [http.Handler]. Create one with [New]
+// and register routes with [Get], [Post], [Put], [Patch], [Delete], etc.
+//
+// API automatically serves the OpenAPI spec at GET /openapi.json and
+// interactive documentation at GET /docs.
 type API struct {
 	spec          *openapi3.T
 	specGen       *openapi3gen.Generator
@@ -20,7 +24,10 @@ type API struct {
 	maxUploadSize int64
 }
 
-// New creates a new API with the given options.
+// New creates a new API with the given options. By default the API uses a
+// 32 MB upload limit and the standard [github.com/go-playground/validator/v10]
+// instance. Use [WithInfo], [WithMaxUploadSize], [WithValidator], and
+// [WithExternalDocs] to customize behavior.
 func New(options ...Option) *API {
 	api := &API{
 		spec: &openapi3.T{

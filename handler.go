@@ -8,11 +8,20 @@ import (
 	"reflect"
 )
 
-// HandlerFunc is a typed handler for routes.
+// HandlerFunc is a typed handler function for API routes. The type parameters
+// In and Resp are the request and response types — both are automatically
+// reflected into the OpenAPI schema.
+//
 // The In struct's fields are discriminated by struct tags:
-// fields with `query:"..."` tags are parsed from query parameters,
-// and fields with `json:"..."` tags (or no query tag) are parsed from the request body.
-// For routes without input, use struct{} as the In type.
+//   - query:"name" — parsed from URL query parameters
+//   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
+//   - form:"name" — parsed from multipart/form-data (for file uploads)
+//
+// Use struct{} as In for routes that take no input, or as Resp for routes
+// that return no body (e.g. health checks that only need a status code).
+//
+// The [*http.Request] parameter gives access to headers, cookies, path
+// parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
 func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody, hasForm bool, maxUploadSize int64) http.HandlerFunc {
