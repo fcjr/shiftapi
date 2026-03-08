@@ -14,25 +14,27 @@ func hasQueryTag(f reflect.StructField) bool {
 }
 
 // partitionFields inspects a struct type and reports whether it contains
-// query-tagged fields, body (json-tagged or untagged non-query) fields,
+// path-tagged, query-tagged, body (json-tagged or untagged non-path/query) fields,
 // and/or form-tagged fields. It panics if both body and form fields are present.
-func partitionFields(t reflect.Type) (hasQuery, hasBody, hasForm bool) {
+func partitionFields(t reflect.Type) (hasPath, hasQuery, hasBody, hasForm bool) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
-		return false, false, false
+		return false, false, false, false
 	}
 	for f := range t.Fields() {
 		if !f.IsExported() {
 			continue
 		}
-		if hasQueryTag(f) {
+		if hasPathTag(f) {
+			hasPath = true
+		} else if hasQueryTag(f) {
 			hasQuery = true
 		} else if hasFormTag(f) {
 			hasForm = true
 		} else {
-			// Any exported field without a query or form tag is a body field
+			// Any exported field without a path, query, or form tag is a body field
 			jsonTag := f.Tag.Get("json")
 			if jsonTag == "-" {
 				continue

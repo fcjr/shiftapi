@@ -47,6 +47,7 @@ Fields are decoded based on struct tags:
 
 | Tag | Source | Example |
 |-----|--------|---------|
+| `path` | URL path parameters | `path:"id"` |
 | `json` | Request body (JSON) | `json:"name"` |
 | `query` | Query parameters | `query:"page"` |
 | `form` | Multipart form data | `form:"file"` |
@@ -54,20 +55,35 @@ Fields are decoded based on struct tags:
 You can combine tags in a single struct:
 
 ```go
-type Request struct {
-    Version string                `query:"v"`
-    Name    string                `json:"name"`
-    Avatar  *multipart.FileHeader `form:"avatar"`
+type UpdateUser struct {
+    ID   int    `path:"id"`
+    Name string `json:"name"`
 }
 ```
 
 ## Path parameters
 
-Use `{param}` syntax in the route pattern and access values via `r.PathValue()`:
+Use `path` tags to declare typed path parameters. The field name in the tag must match a `{param}` in the route pattern:
+
+```go
+type GetUserInput struct {
+    ID int `path:"id" validate:"required,gt=0"`
+}
+
+shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
+    return findUser(in.ID) // in.ID is already an int, validated
+})
+```
+
+Path parameters are always required and scalar — `string`, `bool`, `int*`, `uint*`, `float*` are supported. Use `validate:"uuid"` on a `string` field for UUID params. Parse errors return `400`; validation failures return `422`.
+
+If a `path`-tagged field name doesn't match any `{param}` in the route, registration panics immediately.
+
+You can also access path parameters directly via `r.PathValue()` — this still works for routes that don't need typed parsing:
 
 ```go
 shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
-    id := r.PathValue("id")
+    id := r.PathValue("id") // string
     return findUser(id)
 })
 ```

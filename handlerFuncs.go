@@ -28,7 +28,17 @@ func registerRoute[In, Resp any](
 		rawInType = rawInType.Elem()
 	}
 
-	hasQuery, hasBody, hasForm := partitionFields(rawInType)
+	hasPath, hasQuery, hasBody, hasForm := partitionFields(rawInType)
+
+	// Validate path-tagged fields match the route pattern.
+	if hasPath {
+		matches := pathParamRe.FindAllStringSubmatch(fullPath, -1)
+		routeParams := make(map[string]bool, len(matches))
+		for _, m := range matches {
+			routeParams[m[1]] = true
+		}
+		validatePathFields(rawInType, routeParams)
+	}
 
 	var queryType reflect.Type
 	if hasQuery {
@@ -56,14 +66,19 @@ func registerRoute[In, Resp any](
 	// Append route-level errors on top.
 	allErrors := append(rd.errors, cfg.errors...)
 
-	if err := api.updateSchema(method, fullPath, queryType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
+	var pathType reflect.Type
+	if hasPath {
+		pathType = rawInType
+	}
+
+	if err := api.updateSchema(method, fullPath, pathType, queryType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
 	}
 
 	errLookup := buildErrorLookup(allErrors)
 
 	pattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasQuery, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
+	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
 	// Apply route-level middleware (innermost), then group-level (outermost).
 	// Reverse order so the first middleware in the slice wraps outermost.
 	for i := len(cfg.middleware) - 1; i >= 0; i-- {
@@ -77,7 +92,8 @@ func registerRoute[In, Resp any](
 
 // Get registers a handler for GET requests at the given path. The path
 // follows [net/http.ServeMux] patterns, including wildcards like /users/{id}.
-// Path parameters are accessible via [http.Request.PathValue].
+// Path parameters can be declared on the input struct with path:"name" tags
+// for automatic parsing and validation, or accessed via [http.Request.PathValue].
 func Get[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
 	registerRoute(router, http.MethodGet, path, fn, options...)
 }
