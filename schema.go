@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int) error {
+func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -67,52 +67,28 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 		}
 	}
 
-	// Default error response
-	op.Responses.Set("default", &openapi3.ResponseRef{
-		Value: &openapi3.Response{
-			Description: new("Error"),
-			Content: map[string]*openapi3.MediaType{
-				"application/json": {
-					Schema: &openapi3.SchemaRef{
-						Value: &openapi3.Schema{
-							Type: &openapi3.Types{"object"},
-							Properties: openapi3.Schemas{
-								"message": &openapi3.SchemaRef{
-									Value: &openapi3.Schema{
-										Type: &openapi3.Types{"string"},
-									},
-								},
-								"errors": &openapi3.SchemaRef{
-									Value: &openapi3.Schema{
-										Type: &openapi3.Types{"array"},
-										Items: &openapi3.SchemaRef{
-											Value: &openapi3.Schema{
-												Type: &openapi3.Types{"object"},
-												Properties: openapi3.Schemas{
-													"field": &openapi3.SchemaRef{
-														Value: &openapi3.Schema{
-															Type: &openapi3.Types{"string"},
-														},
-													},
-													"message": &openapi3.SchemaRef{
-														Value: &openapi3.Schema{
-															Type: &openapi3.Types{"string"},
-														},
-													},
-												},
-												Required: []string{"field", "message"},
-											},
-										},
-									},
-								},
-							},
-							Required: []string{"message"},
-						},
-					},
-				},
-			},
-		},
-	})
+	// Error responses — always include 400, 422, and 500.
+	op.Responses.Set("400", errorResponseRef("Bad Request", "BadRequestError"))
+	op.Responses.Set("422", errorResponseRef("Validation Error", "ValidationError"))
+	op.Responses.Set("500", errorResponseRef("Internal Server Error", "InternalServerError"))
+
+	// Add user-declared error responses from WithError.
+	for _, e := range errors {
+		codeStr := fmt.Sprintf("%d", e.status)
+		errSchema, err := a.generateSchemaRef(e.typ)
+		if err != nil {
+			return err
+		}
+		if errSchema != nil && errSchema.Ref != "" {
+			a.spec.Components.Schemas[errSchema.Ref] = &openapi3.SchemaRef{
+				Value: errSchema.Value,
+			}
+			op.Responses.Set(codeStr, errorResponseRef(
+				http.StatusText(e.status),
+				errSchema.Ref,
+			))
+		}
+	}
 
 	// Request body schema
 	if hasForm {
@@ -247,6 +223,22 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// errorResponseRef creates an OpenAPI response reference for an error component schema.
+func errorResponseRef(description, schemaName string) *openapi3.ResponseRef {
+	return &openapi3.ResponseRef{
+		Value: &openapi3.Response{
+			Description: new(description),
+			Content: map[string]*openapi3.MediaType{
+				"application/json": {
+					Schema: &openapi3.SchemaRef{
+						Ref: fmt.Sprintf("#/components/schemas/%s", schemaName),
+					},
+				},
+			},
+		},
+	}
 }
 
 func (a *API) generateSchemaRef(t reflect.Type) (*openapi3.SchemaRef, error) {

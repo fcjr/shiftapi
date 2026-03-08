@@ -17,9 +17,20 @@ type Greeting struct {
 	Hello string `json:"hello"`
 }
 
+// WrongNameError is returned when the name is not "frank".
+type WrongNameError struct {
+	Message string `json:"message"`
+	Name    string `json:"name"`
+}
+
+func (e *WrongNameError) Error() string { return e.Message }
+
 func greet(r *http.Request, in *Person) (*Greeting, error) {
 	if in.Name != "frank" {
-		return nil, shiftapi.Error(http.StatusBadRequest, "wrong name, I only greet frank")
+		return nil, &WrongNameError{
+			Message: "wrong name, I only greet frank",
+			Name:    in.Name,
+		}
 	}
 	return &Greeting{Hello: in.Name}, nil
 }
@@ -117,6 +128,7 @@ func main() {
 			Description: "Greet a person with a friendly greeting",
 			Tags:        []string{"greet"},
 		}),
+		shiftapi.WithError[*WrongNameError](http.StatusBadRequest),
 	)
 
 	shiftapi.Get(api, "/search", search,

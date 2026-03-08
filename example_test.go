@@ -10,6 +10,13 @@ import (
 	"github.com/fcjr/shiftapi"
 )
 
+type exampleNotFoundError struct {
+	Message string `json:"message"`
+	Detail  string `json:"detail"`
+}
+
+func (e *exampleNotFoundError) Error() string { return e.Message }
+
 func Example() {
 	api := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
 		Title:   "My API",
@@ -132,7 +139,13 @@ func ExamplePost_fileUpload() {
 	})
 }
 
-func ExampleError() {
+type exampleAuthError struct {
+	Message string `json:"message"`
+}
+
+func (e *exampleAuthError) Error() string { return e.Message }
+
+func ExampleWithError_auth() {
 	api := shiftapi.New()
 
 	type Empty struct{}
@@ -140,10 +153,10 @@ func ExampleError() {
 	shiftapi.Get(api, "/secret", func(r *http.Request, _ struct{}) (*Empty, error) {
 		token := r.Header.Get("Authorization")
 		if token == "" {
-			return nil, shiftapi.Error(http.StatusUnauthorized, "missing auth token")
+			return nil, &exampleAuthError{Message: "missing auth token"}
 		}
 		return &Empty{}, nil
-	})
+	}, shiftapi.WithError[*exampleAuthError](http.StatusUnauthorized))
 
 	// Make a request without auth to verify.
 	w := httptest.NewRecorder()
@@ -154,6 +167,26 @@ func ExampleError() {
 	// Output:
 	// 401
 	// {"message":"missing auth token"}
+}
+
+func ExampleWithError() {
+	api := shiftapi.New()
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*struct {
+		Name string `json:"name"`
+	}, error) {
+		return nil, &exampleNotFoundError{Message: "user not found", Detail: "no user with that ID"}
+	}, shiftapi.WithError[*exampleNotFoundError](http.StatusNotFound))
+
+	// Make a request to verify.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/users/42", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Code)
+	fmt.Println(w.Body.String())
+	// Output:
+	// 404
+	// {"message":"user not found","detail":"no user with that ID"}
 }
 
 func ExampleWithRouteInfo() {

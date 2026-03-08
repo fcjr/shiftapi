@@ -54,11 +54,48 @@
 //
 // # Error handling
 //
-// Return an [*APIError] from a handler to control the HTTP status code:
+// Use [WithError] to declare that a specific error type may be returned at a
+// given HTTP status code. The error type must implement the [error] interface and
+// its struct fields are reflected into the OpenAPI schema.
 //
-//	return nil, shiftapi.Error(http.StatusNotFound, "user not found")
+// Use [WithGlobalError] at the API level (applies to all routes) or [WithError]
+// at the route level (applies to a single route):
+//
+//	// API-level — applies to all routes
+//	api := shiftapi.New(
+//	    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+//	)
+//
+//	// Route-level — applies to this route only
+//	shiftapi.Get(api, "/users/{id}", getUser,
+//	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+//	)
+//
+// At runtime, if the handler returns an error matching a registered type (via
+// [errors.As]), it is serialized as JSON with the declared status code. Multiple
+// error types can be declared per route. Wrapped errors are matched automatically.
 //
 // Validation failures automatically return 422 with structured [ValidationError] responses.
+// Unrecognized errors return 500 Internal Server Error to prevent leaking implementation details.
+//
+// Use [WithBadRequestError] to customize the 400 response for parse errors:
+//
+//	api := shiftapi.New(
+//	    shiftapi.WithBadRequestError(func(err error) *MyBadRequest {
+//	        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
+//	    }),
+//	)
+//
+// Use [WithInternalServerError] to customize the 500 response body and schema:
+//
+//	api := shiftapi.New(
+//	    shiftapi.WithInternalServerError(func(err error) *MyServerError {
+//	        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
+//	    }),
+//	)
+//
+// Every route automatically includes 422 ([ValidationError]) and 500 responses
+// in the generated OpenAPI spec.
 //
 // # Built-in endpoints
 //

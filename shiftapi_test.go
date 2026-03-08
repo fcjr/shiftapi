@@ -445,11 +445,11 @@ func TestConnectHandler(t *testing.T) {
 
 // --- Error handling tests ---
 
-func TestAPIErrorReturnsCorrectStatusCode(t *testing.T) {
+func TestCustomErrorReturnsCorrectStatusCode(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Get(api, "/fail", func(r *http.Request, _ struct{}) (*Empty, error) {
-		return nil, shiftapi.Error(http.StatusNotFound, "not found")
-	})
+		return nil, &NotFoundError{Message: "not found", Detail: "gone"}
+	}, shiftapi.WithError[*NotFoundError](http.StatusNotFound))
 
 	resp := doRequest(t, api, http.MethodGet, "/fail", "")
 	if resp.StatusCode != http.StatusNotFound {
@@ -461,15 +461,15 @@ func TestAPIErrorReturnsCorrectStatusCode(t *testing.T) {
 	}
 }
 
-func TestAPIErrorReturnsJSON(t *testing.T) {
+func TestCustomErrorReturnsJSON(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Post(api, "/fail", func(r *http.Request, in *Person) (*Greeting, error) {
-		return nil, shiftapi.Error(http.StatusUnprocessableEntity, "invalid data")
-	})
+		return nil, &ConflictError{Code: "CONFLICT", Message: "invalid data"}
+	}, shiftapi.WithError[*ConflictError](http.StatusConflict))
 
 	resp := doRequest(t, api, http.MethodPost, "/fail", `{"name":"test"}`)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", resp.StatusCode)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("expected Content-Type application/json; charset=utf-8, got %q", ct)
@@ -485,25 +485,6 @@ func TestGenericErrorReturns500(t *testing.T) {
 	resp := doRequest(t, api, http.MethodGet, "/boom", "")
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", resp.StatusCode)
-	}
-}
-
-func TestAPIErrorSatisfiesErrorsAs(t *testing.T) {
-	err := shiftapi.Error(http.StatusBadRequest, "bad")
-	var apiErr *shiftapi.APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatal("expected errors.As to match *APIError")
-	}
-	if apiErr.Status != http.StatusBadRequest {
-		t.Errorf("expected status 400, got %d", apiErr.Status)
-	}
-}
-
-func TestAPIErrorMessage(t *testing.T) {
-	err := shiftapi.Error(http.StatusForbidden, "forbidden")
-	expected := "403: forbidden"
-	if err.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, err.Error())
 	}
 }
 
@@ -982,7 +963,7 @@ func TestSpecOperationID(t *testing.T) {
 
 // --- Default error response tests ---
 
-func TestSpecHasDefaultErrorResponse(t *testing.T) {
+func TestSpecHas422And500ErrorResponses(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
 		return &Status{OK: true}, nil
@@ -990,24 +971,41 @@ func TestSpecHasDefaultErrorResponse(t *testing.T) {
 
 	spec := api.Spec()
 	op := spec.Paths.Find("/health").Get
-	defaultResp := op.Responses.Value("default")
-	if defaultResp == nil {
-		t.Fatal("expected default error response in spec")
+
+	// 422 ValidationError
+	resp422 := op.Responses.Value("422")
+	if resp422 == nil {
+		t.Fatal("expected 422 error response in spec")
 	}
-	if defaultResp.Value.Description == nil || *defaultResp.Value.Description != "Error" {
-		t.Error("expected default response description 'Error'")
+	if resp422.Value.Description == nil || *resp422.Value.Description != "Validation Error" {
+		t.Error("expected 422 response description 'Validation Error'")
 	}
-	content := defaultResp.Value.Content["application/json"]
-	if content == nil {
-		t.Fatal("expected application/json content in default error response")
+	content422 := resp422.Value.Content["application/json"]
+	if content422 == nil {
+		t.Fatal("expected application/json content in 422 response")
 	}
-	msgProp := content.Schema.Value.Properties["message"]
-	if msgProp == nil {
-		t.Fatal("expected 'message' property in error schema")
+	if content422.Schema.Ref != "#/components/schemas/ValidationError" {
+		t.Errorf("expected 422 schema ref to ValidationError, got %s", content422.Schema.Ref)
+	}
+
+	// 500 APIError
+	resp500 := op.Responses.Value("500")
+	if resp500 == nil {
+		t.Fatal("expected 500 error response in spec")
+	}
+	if resp500.Value.Description == nil || *resp500.Value.Description != "Internal Server Error" {
+		t.Error("expected 500 response description 'Internal Server Error'")
+	}
+	content500 := resp500.Value.Content["application/json"]
+	if content500 == nil {
+		t.Fatal("expected application/json content in 500 response")
+	}
+	if content500.Schema.Ref != "#/components/schemas/InternalServerError" {
+		t.Errorf("expected 500 schema ref to APIError, got %s", content500.Schema.Ref)
 	}
 }
 
-func TestSpecDefaultErrorResponseOnPost(t *testing.T) {
+func TestSpecErrorResponsesOnPost(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
 		return in, nil
@@ -1015,8 +1013,11 @@ func TestSpecDefaultErrorResponseOnPost(t *testing.T) {
 
 	spec := api.Spec()
 	op := spec.Paths.Find("/items").Post
-	if op.Responses.Value("default") == nil {
-		t.Fatal("expected default error response on POST")
+	if op.Responses.Value("422") == nil {
+		t.Fatal("expected 422 error response on POST")
+	}
+	if op.Responses.Value("500") == nil {
+		t.Fatal("expected 500 error response on POST")
 	}
 }
 
@@ -1172,11 +1173,11 @@ func TestSuccessResponseHasJSONContentType(t *testing.T) {
 	}
 }
 
-func TestErrorResponseFromAPIErrorHasJSONContentType(t *testing.T) {
+func TestErrorResponseHasJSONContentType(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Get(api, "/fail", func(r *http.Request, _ struct{}) (*Empty, error) {
-		return nil, shiftapi.Error(http.StatusBadRequest, "bad")
-	})
+		return nil, &ConflictError{Code: "BAD", Message: "bad"}
+	}, shiftapi.WithError[*ConflictError](http.StatusConflict))
 
 	resp := doRequest(t, api, http.MethodGet, "/fail", "")
 	if ct := resp.Header.Get("Content-Type"); ct != "application/json; charset=utf-8" {
@@ -1389,9 +1390,9 @@ func TestValidationErrorSatisfiesErrorsAs(t *testing.T) {
 		Message: "validation failed",
 		Errors:  []shiftapi.FieldError{{Field: "Name", Message: "required"}},
 	}
-	var valErr *shiftapi.ValidationError
-	if !errors.As(err, &valErr) {
-		t.Fatal("expected errors.As to match *ValidationError")
+	valErr, ok := errors.AsType[*shiftapi.ValidationError](err)
+	if !ok {
+		t.Fatal("expected errors.AsType to match *ValidationError")
 	}
 	if valErr.Message != "validation failed" {
 		t.Errorf("expected message 'validation failed', got %q", valErr.Message)
@@ -3137,5 +3138,462 @@ func TestSpecPointerStructFieldRequired(t *testing.T) {
 	// *NestedAddress with validate:"required" should be required
 	if !slices.Contains(schema.Required, "work") {
 		t.Errorf("expected 'work' (*NestedAddress validate:required) in required, got %v", schema.Required)
+	}
+}
+
+// --- WithError tests ---
+
+type ConflictError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *ConflictError) Error() string { return e.Message }
+
+type NotFoundError struct {
+	Message string `json:"message"`
+	Detail  string `json:"detail"`
+}
+
+func (e *NotFoundError) Error() string { return e.Message }
+
+func TestErrorComponentSchemasExist(t *testing.T) {
+	api := newTestAPI(t)
+	spec := api.Spec()
+
+	if _, ok := spec.Components.Schemas["InternalServerError"]; !ok {
+		t.Error("expected APIError in component schemas")
+	}
+	if _, ok := spec.Components.Schemas["ValidationError"]; !ok {
+		t.Error("expected ValidationError in component schemas")
+	}
+}
+
+func TestWithErrorAddsResponseToSpec(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
+		return nil, nil
+	}, shiftapi.WithError[*NotFoundError](http.StatusNotFound))
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users/{id}").Get
+
+	resp404 := op.Responses.Value("404")
+	if resp404 == nil {
+		t.Fatal("expected 404 response in spec")
+	}
+	if resp404.Value.Description == nil || *resp404.Value.Description != "Not Found" {
+		t.Error("expected 404 response description 'Not Found'")
+	}
+	content := resp404.Value.Content["application/json"]
+	if content == nil {
+		t.Fatal("expected application/json content in 404 response")
+	}
+	if content.Schema.Ref != "#/components/schemas/NotFoundError" {
+		t.Errorf("expected 404 schema ref to NotFoundError, got %s", content.Schema.Ref)
+	}
+
+	// Verify the schema was registered in components
+	if _, ok := spec.Components.Schemas["NotFoundError"]; !ok {
+		t.Error("expected NotFoundError in component schemas")
+	}
+}
+
+func TestWithErrorCustomTypeSchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		return in, nil
+	}, shiftapi.WithError[*ConflictError](http.StatusConflict))
+
+	spec := api.Spec()
+	schema, ok := spec.Components.Schemas["ConflictError"]
+	if !ok {
+		t.Fatal("expected ConflictError in component schemas")
+	}
+	if schema.Value.Properties["code"] == nil {
+		t.Error("expected 'code' property in ConflictError schema")
+	}
+	if schema.Value.Properties["message"] == nil {
+		t.Error("expected 'message' property in ConflictError schema")
+	}
+}
+
+func TestWithErrorMultipleTypes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/items", func(r *http.Request, in *Item) (*Item, error) {
+		return in, nil
+	},
+		shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+		shiftapi.WithError[*ConflictError](http.StatusConflict),
+	)
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/items").Post
+	if op.Responses.Value("404") == nil {
+		t.Error("expected 404 response")
+	}
+	if op.Responses.Value("409") == nil {
+		t.Error("expected 409 response")
+	}
+	if op.Responses.Value("422") == nil {
+		t.Error("expected 422 response")
+	}
+	if op.Responses.Value("500") == nil {
+		t.Error("expected 500 response")
+	}
+}
+
+func TestWithErrorRuntimeMatching(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
+		return nil, &NotFoundError{Message: "not found", Detail: "no item with that ID"}
+	}, shiftapi.WithError[*NotFoundError](http.StatusNotFound))
+
+	resp := doRequest(t, api, "GET", "/items/123", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[NotFoundError](t, resp)
+	if body.Message != "not found" {
+		t.Errorf("expected message 'not found', got %q", body.Message)
+	}
+	if body.Detail != "no item with that ID" {
+		t.Errorf("expected detail 'no item with that ID', got %q", body.Detail)
+	}
+}
+
+func TestWithErrorWrappedError(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
+		return nil, fmt.Errorf("db lookup failed: %w", &NotFoundError{Message: "not found", Detail: "wrapped"})
+	}, shiftapi.WithError[*NotFoundError](http.StatusNotFound))
+
+	resp := doRequest(t, api, "GET", "/items/123", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[NotFoundError](t, resp)
+	if body.Detail != "wrapped" {
+		t.Errorf("expected detail 'wrapped', got %q", body.Detail)
+	}
+}
+
+func TestWithErrorUnregisteredFallsTo500(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Item, error) {
+		return nil, &ConflictError{Code: "CONFLICT", Message: "conflict"}
+	}) // No WithError registered for ConflictError
+
+	resp := doRequest(t, api, "GET", "/items/123", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected 500 for unregistered error type, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[struct{ Message string }](t, resp)
+	if body.Message != "internal server error" {
+		t.Errorf("expected generic message, got %q", body.Message)
+	}
+}
+
+type ValueReceiverError struct {
+	Message string `json:"message"`
+}
+
+func (e ValueReceiverError) Error() string { return e.Message }
+
+func TestWithErrorValueReceiver(t *testing.T) {
+	// WithError[ValueReceiverError] (non-pointer) should normalize to pointer internally
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) (*Item, error) {
+		return nil, ValueReceiverError{Message: "value receiver error"}
+	}, shiftapi.WithError[ValueReceiverError](http.StatusConflict))
+
+	resp := doRequest(t, api, "GET", "/items", "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("expected 409, got %d", resp.StatusCode)
+	}
+}
+
+func TestAllRoutesHave422And500(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*Status, error) { return nil, nil })
+	shiftapi.Post(api, "/b", func(r *http.Request, _ struct{}) (*Status, error) { return nil, nil })
+	shiftapi.Delete(api, "/c", func(r *http.Request, _ struct{}) (*Status, error) { return nil, nil })
+
+	spec := api.Spec()
+	for _, tc := range []struct {
+		path   string
+		method string
+	}{
+		{"/a", "GET"},
+		{"/b", "POST"},
+		{"/c", "DELETE"},
+	} {
+		pathItem := spec.Paths.Find(tc.path)
+		var op *openapi3.Operation
+		switch tc.method {
+		case "GET":
+			op = pathItem.Get
+		case "POST":
+			op = pathItem.Post
+		case "DELETE":
+			op = pathItem.Delete
+		}
+		if op.Responses.Value("422") == nil {
+			t.Errorf("%s %s: expected 422 response", tc.method, tc.path)
+		}
+		if op.Responses.Value("500") == nil {
+			t.Errorf("%s %s: expected 500 response", tc.method, tc.path)
+		}
+	}
+}
+
+// --- WithInternalServerError tests ---
+
+type CustomServerError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *CustomServerError) Error() string { return e.Message }
+
+func TestWithInternalServerErrorCustomResponse(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithInternalServerError(func(_ error) *CustomServerError {
+			return &CustomServerError{
+				Code:    "INTERNAL_ERROR",
+				Message: "something went wrong",
+			}
+		}),
+	)
+	shiftapi.Get(api, "/boom", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, errors.New("unexpected")
+	})
+
+	resp := doRequest(t, api, "GET", "/boom", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[CustomServerError](t, resp)
+	if body.Code != "INTERNAL_ERROR" {
+		t.Errorf("expected code 'INTERNAL_ERROR', got %q", body.Code)
+	}
+	if body.Message != "something went wrong" {
+		t.Errorf("expected message 'something went wrong', got %q", body.Message)
+	}
+}
+
+func TestWithInternalServerErrorReceivesError(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithInternalServerError(func(err error) *CustomServerError {
+			return &CustomServerError{
+				Code:    "INTERNAL_ERROR",
+				Message: err.Error(),
+			}
+		}),
+	)
+	shiftapi.Get(api, "/boom", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, errors.New("db connection lost")
+	})
+
+	resp := doRequest(t, api, "GET", "/boom", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[CustomServerError](t, resp)
+	if body.Message != "db connection lost" {
+		t.Errorf("expected original error message, got %q", body.Message)
+	}
+}
+
+func TestWithInternalServerErrorSchemaInSpec(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithInternalServerError(func(_ error) *CustomServerError {
+			return &CustomServerError{Code: "INTERNAL_ERROR", Message: "something went wrong"}
+		}),
+	)
+	shiftapi.Get(api, "/test", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema, ok := spec.Components.Schemas["InternalServerError"]
+	if !ok {
+		t.Fatal("expected InternalServerError in component schemas")
+	}
+	if schema.Value.Properties["code"] == nil {
+		t.Error("expected 'code' property in InternalServerError schema")
+	}
+	if schema.Value.Properties["message"] == nil {
+		t.Error("expected 'message' property in InternalServerError schema")
+	}
+}
+
+func TestWithInternalServerErrorDefault500StillWorks(t *testing.T) {
+	api := shiftapi.New() // no WithInternalServerError
+	shiftapi.Get(api, "/boom", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, errors.New("unexpected")
+	})
+
+	resp := doRequest(t, api, "GET", "/boom", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[struct{ Message string }](t, resp)
+	if body.Message != "internal server error" {
+		t.Errorf("expected default message, got %q", body.Message)
+	}
+}
+
+// --- WithBadRequestError tests ---
+
+type CustomBadRequestError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func TestWithBadRequestErrorCustomResponse(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithBadRequestError(func(err error) *CustomBadRequestError {
+			return &CustomBadRequestError{
+				Code:    "BAD_REQUEST",
+				Message: err.Error(),
+			}
+		}),
+	)
+	shiftapi.Post(api, "/test", func(r *http.Request, in struct {
+		Name string `json:"name"`
+	}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, "POST", "/test", "not json")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[CustomBadRequestError](t, resp)
+	if body.Code != "BAD_REQUEST" {
+		t.Errorf("expected code 'BAD_REQUEST', got %q", body.Code)
+	}
+}
+
+func TestWithBadRequestErrorSchemaInSpec(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithBadRequestError(func(err error) *CustomBadRequestError {
+			return &CustomBadRequestError{Code: "BAD_REQUEST", Message: err.Error()}
+		}),
+	)
+	shiftapi.Get(api, "/test", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema, ok := spec.Components.Schemas["BadRequestError"]
+	if !ok {
+		t.Fatal("expected BadRequestError in component schemas")
+	}
+	if schema.Value.Properties["code"] == nil {
+		t.Error("expected 'code' property in BadRequestError schema")
+	}
+	if schema.Value.Properties["message"] == nil {
+		t.Error("expected 'message' property in BadRequestError schema")
+	}
+}
+
+func TestWithBadRequestErrorDefault400StillWorks(t *testing.T) {
+	api := shiftapi.New() // no WithBadRequestError
+	shiftapi.Post(api, "/test", func(r *http.Request, in struct {
+		Name string `json:"name"`
+	}) (*Empty, error) {
+		return &Empty{}, nil
+	})
+
+	resp := doRequest(t, api, "POST", "/test", "not json")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[struct{ Message string }](t, resp)
+	if body.Message != "bad request" {
+		t.Errorf("expected default message, got %q", body.Message)
+	}
+}
+
+// --- API-level WithGlobalError tests ---
+
+type AuthError struct {
+	Message string `json:"message"`
+	Realm   string `json:"realm"`
+}
+
+func (e *AuthError) Error() string { return e.Message }
+
+func TestWithGlobalErrorRuntime(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+	)
+	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, &AuthError{Message: "unauthorized", Realm: "api"}
+	})
+	shiftapi.Get(api, "/b", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, &AuthError{Message: "unauthorized", Realm: "api"}
+	})
+
+	for _, path := range []string{"/a", "/b"} {
+		resp := doRequest(t, api, "GET", path, "")
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: expected 401, got %d", path, resp.StatusCode)
+		}
+		body := decodeJSON[AuthError](t, resp)
+		if body.Realm != "api" {
+			t.Errorf("%s: expected realm 'api', got %q", path, body.Realm)
+		}
+	}
+}
+
+func TestWithGlobalErrorSpec(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+	)
+	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*Empty, error) { return nil, nil })
+	shiftapi.Post(api, "/b", func(r *http.Request, _ struct{}) (*Empty, error) { return nil, nil })
+
+	spec := api.Spec()
+
+	// AuthError should be in component schemas
+	if _, ok := spec.Components.Schemas["AuthError"]; !ok {
+		t.Error("expected AuthError in component schemas")
+	}
+
+	// Both routes should have 401 response
+	if spec.Paths.Find("/a").Get.Responses.Value("401") == nil {
+		t.Error("GET /a: expected 401 response")
+	}
+	if spec.Paths.Find("/b").Post.Responses.Value("401") == nil {
+		t.Error("POST /b: expected 401 response")
+	}
+}
+
+func TestWithGlobalErrorAndRouteLevelCombined(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+	)
+	shiftapi.Post(api, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	}, shiftapi.WithError[*ConflictError](http.StatusConflict))
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users").Post
+
+	// Should have both API-level (401) and route-level (409) error responses
+	if op.Responses.Value("401") == nil {
+		t.Error("expected 401 response from API-level WithGlobalError")
+	}
+	if op.Responses.Value("409") == nil {
+		t.Error("expected 409 response from route-level WithError")
+	}
+	if op.Responses.Value("422") == nil {
+		t.Error("expected 422 response")
+	}
+	if op.Responses.Value("500") == nil {
+		t.Error("expected 500 response")
 	}
 }

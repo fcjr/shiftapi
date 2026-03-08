@@ -3,27 +3,101 @@ title: Error Handling
 description: Return structured error responses from your API handlers.
 ---
 
-## API errors
+## Custom error types
 
-Return a `shiftapi.Error` to send a structured error response with a specific HTTP status code:
+Use `WithError` to declare that a route may return a specific error type at a given HTTP status code. The error type must implement the `error` interface — its struct fields are reflected into the OpenAPI schema automatically.
+
+### Define an error type
 
 ```go
-shiftapi.Get(api, "/secret", func(r *http.Request, _ struct{}) (*Data, error) {
-    token := r.Header.Get("Authorization")
-    if token == "" {
-        return nil, shiftapi.Error(http.StatusUnauthorized, "missing auth token")
+type ConflictError struct {
+    Code    string `json:"code"`
+    Message string `json:"message"`
+}
+
+func (e *ConflictError) Error() string { return e.Message }
+```
+
+### Register it on a route
+
+```go
+shiftapi.Post(api, "/users", createUser,
+    shiftapi.WithError[*ConflictError](http.StatusConflict),
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+)
+```
+
+### Return it from the handler
+
+```go
+func createUser(r *http.Request, in *CreateUser) (*User, error) {
+    if exists {
+        return nil, &ConflictError{
+            Code:    "EMAIL_TAKEN",
+            Message: "a user with that email already exists",
+        }
     }
-    return getData()
-})
+    return user, nil
+}
 ```
 
 This returns:
 
 ```json
-HTTP/1.1 401 Unauthorized
+HTTP/1.1 409 Conflict
 
-{"message": "missing auth token"}
+{"code": "EMAIL_TAKEN", "message": "a user with that email already exists"}
 ```
+
+At runtime, ShiftAPI checks if the returned error matches a registered type using `errors.As`. Wrapped errors work automatically:
+
+```go
+return nil, fmt.Errorf("db lookup failed: %w", &ConflictError{Code: "EMAIL_TAKEN", Message: "conflict"})
+```
+
+### Multiple error types
+
+A single route can declare multiple error types:
+
+```go
+shiftapi.Post(api, "/users", createUser,
+    shiftapi.WithError[*ConflictError](http.StatusConflict),
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+    shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
+)
+```
+
+Each declared error type appears as a separate response in the generated OpenAPI spec with its own schema.
+
+### API-level errors
+
+Use `WithGlobalError` with `New()` to register an error type on all routes:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+)
+```
+
+This is useful for cross-cutting error types like authentication or rate-limiting errors. API-level and route-level error types are merged — every route gets both.
+
+## Parse errors
+
+When the framework cannot parse the request (malformed JSON, invalid query parameter types, invalid form data), it returns a `400 Bad Request`. By default the response body is `{"message": "bad request"}`.
+
+### Customizing the 400 response
+
+Use `WithBadRequestError` to customize the 400 response body. The function receives the parse error so you can decide what to expose to the client:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithBadRequestError(func(err error) *MyBadRequest {
+        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
+    }),
+)
+```
+
+The return type determines the `BadRequestError` schema in the OpenAPI spec.
 
 ## Validation errors
 
@@ -42,4 +116,30 @@ HTTP/1.1 422 Unprocessable Entity
 
 ## Unhandled errors
 
-If a handler returns a plain `error` (not a `shiftapi.Error`), ShiftAPI returns a `500 Internal Server Error` with a generic message. The original error is not exposed to the client.
+If a handler returns an error that doesn't match `ValidationError` or any type registered with `WithError`, ShiftAPI returns a `500 Internal Server Error` with a generic message. The original error is not exposed to the client.
+
+### Customizing the 500 response
+
+Use `WithInternalServerError` to customize the 500 response body. The function receives the unhandled error so you can log it or extract details:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithInternalServerError(func(err error) *MyServerError {
+        log.Error("unhandled", "err", err)
+        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
+    }),
+)
+```
+
+The return type determines the `InternalServerError` schema in the OpenAPI spec.
+
+## OpenAPI spec
+
+Every route in the generated OpenAPI spec includes:
+
+- **`400`** — `BadRequestError` schema (default: `message` only, customizable via `WithBadRequestError`)
+- **`422`** — `ValidationError` schema (`message` + `errors` array)
+- **`500`** — `InternalServerError` schema (default: `message` only, customizable via `WithInternalServerError`)
+- Any additional status codes declared via `WithError`, each with the custom error type's schema
+
+These schemas are registered as reusable components in `#/components/schemas/` and referenced via `$ref`.

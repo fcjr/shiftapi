@@ -24,7 +24,7 @@ import (
 // parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody, hasForm bool, maxUploadSize int64) http.HandlerFunc {
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
@@ -32,14 +32,14 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 		if hasForm {
 			// Parse multipart form
 			if err := parseFormInto(rv, r, maxUploadSize); err != nil {
-				writeError(w, Error(http.StatusBadRequest, err.Error()))
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
 				return
 			}
 			rv = reflect.ValueOf(&in).Elem()
 		} else if hasBody {
 			// JSON-decode body if there are body fields
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-				writeError(w, Error(http.StatusBadRequest, "invalid request body"))
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
 				return
 			}
 			// Re-point rv after decode (in case In is a pointer that was nil)
@@ -55,19 +55,19 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 		// Parse query params if there are query fields
 		if hasQuery {
 			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
-				writeError(w, Error(http.StatusBadRequest, err.Error()))
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
 				return
 			}
 		}
 
 		if err := validate(in); err != nil {
-			writeError(w, err)
+			handleError(w, internalServerFn, err, errLookup)
 			return
 		}
 
 		resp, err := fn(r, in)
 		if err != nil {
-			writeError(w, err)
+			handleError(w, internalServerFn, err, errLookup)
 			return
 		}
 		writeJSON(w, status, resp)
@@ -82,16 +82,45 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-func writeError(w http.ResponseWriter, err error) {
-	var valErr *ValidationError
-	if errors.As(err, &valErr) {
+// handleError matches the returned error against registered error types and
+// writes the appropriate HTTP response. It checks ValidationError first (always
+// 422), then walks the error chain once checking each error's concrete type
+// against the lookup map, and falls back to a 500 response built by
+// internalServerFn.
+func handleError(w http.ResponseWriter, internalServerFn func(error) any, err error, lookup errorLookup) {
+	// Always check ValidationError first.
+	if valErr, ok := errors.AsType[*ValidationError](err); ok {
 		writeJSON(w, http.StatusUnprocessableEntity, valErr)
 		return
 	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
-		writeJSON(w, apiErr.Status, apiErr)
-		return
+
+	// Walk the error chain once, checking each error's type against the map.
+	if len(lookup) > 0 {
+		if status, matched, ok := matchError(err, lookup); ok {
+			writeJSON(w, status, matched)
+			return
+		}
 	}
-	writeJSON(w, http.StatusInternalServerError, &APIError{Status: http.StatusInternalServerError, Message: "internal server error"})
+
+	// Fallback — 500 with the configured internal server error response.
+	writeJSON(w, http.StatusInternalServerError, internalServerFn(err))
+}
+
+// matchError walks the error chain (including multi-errors) and returns the
+// first error whose concrete type matches the lookup map.
+func matchError(err error, lookup errorLookup) (status int, matched error, ok bool) {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if s, found := lookup[reflect.TypeOf(current)]; found {
+			return s, current, true
+		}
+		// Handle multi-errors (errors.Join, etc.)
+		if multi, isMulti := current.(interface{ Unwrap() []error }); isMulti {
+			for _, inner := range multi.Unwrap() {
+				if s, m, found := matchError(inner, lookup); found {
+					return s, m, true
+				}
+			}
+		}
+	}
+	return 0, nil, false
 }

@@ -143,7 +143,7 @@ type UploadInput struct {
 shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*Result, error) {
     f, err := in.File.Open()
     if err != nil {
-        return nil, shiftapi.Error(http.StatusBadRequest, "failed to open file")
+        return nil, fmt.Errorf("failed to open file: %w", err)
     }
     defer f.Close()
     // read from f, save to disk/S3/etc.
@@ -200,13 +200,71 @@ Supported tags: `required`, `email`, `url`/`uri`, `uuid`, `datetime`, `min`, `ma
 
 ### Error handling
 
-Return `shiftapi.Error` to control the status code:
+Use `WithError` to declare that a specific error type may be returned at a given HTTP status code. The error type must implement the `error` interface — its struct fields are reflected into the OpenAPI schema automatically.
+
+Use `WithGlobalError` at the API level (applies to all routes) or `WithError` at the route level:
 
 ```go
-return nil, shiftapi.Error(http.StatusNotFound, "user not found")
+type AuthError struct {
+    Message string `json:"message"`
+}
+
+func (e *AuthError) Error() string { return e.Message }
+
+type NotFoundError struct {
+    Message string `json:"message"`
+    Detail  string `json:"detail"`
+}
+
+func (e *NotFoundError) Error() string { return e.Message }
+
+// API-level — applies to all routes
+api := shiftapi.New(
+    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+)
+
+// Route-level — applies to this route only
+shiftapi.Get(api, "/users/{id}", getUser,
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+)
 ```
 
-Any non-`APIError` returns `500 Internal Server Error`.
+At runtime, if the handler returns an error matching a registered type (via `errors.As`), it is serialized as JSON with the declared status code:
+
+```go
+func getUser(r *http.Request, _ struct{}) (*User, error) {
+    user, err := db.Find(r.PathValue("id"))
+    if err != nil {
+        return nil, &NotFoundError{Message: "user not found", Detail: "no user with that ID"}
+    }
+    return user, nil
+}
+```
+
+Wrapped errors work automatically — `fmt.Errorf("db: %w", &NotFoundError{...})` still matches. Unrecognized errors return `500 Internal Server Error` to prevent leaking implementation details.
+
+To customize the 400 response for parse errors, use `WithBadRequestError`. The function receives the parse error so you can decide what to expose:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithBadRequestError(func(err error) *MyBadRequest {
+        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
+    }),
+)
+```
+
+To customize the 500 response for unhandled errors, use `WithInternalServerError`:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithInternalServerError(func(err error) *MyServerError {
+        log.Error("unhandled", "err", err)
+        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
+    }),
+)
+```
+
+Both functions receive the original error and return a typed value — the return type determines the schema in the OpenAPI spec. Every route automatically includes `400`, `422` ([ValidationError](https://pkg.go.dev/github.com/fcjr/shiftapi#ValidationError)), and `500` error responses in the generated OpenAPI spec.
 
 ### Route metadata
 

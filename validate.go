@@ -54,8 +54,7 @@ func validateStruct(v *validator.Validate, val any) error {
 	}
 
 	if err := v.Struct(rv.Interface()); err != nil {
-		var ve validator.ValidationErrors
-		if ok := errors.As(err, &ve); ok {
+		if ve, ok := errors.AsType[validator.ValidationErrors](err); ok {
 			fieldErrors := make([]FieldError, len(ve))
 			for i, fe := range ve {
 				fieldErrors[i] = FieldError{

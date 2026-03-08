@@ -47,12 +47,17 @@ func registerRoute[In, Resp any](
 	var resp Resp
 	outType := reflect.TypeOf(resp)
 
-	if err := api.updateSchema(method, path, queryType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status); err != nil {
+	// Merge API-level errors with route-level errors.
+	allErrors := append(api.globalErrors, cfg.errors...)
+
+	if err := api.updateSchema(method, path, queryType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, path, err))
 	}
 
+	errLookup := buildErrorLookup(allErrors)
+
 	pattern := fmt.Sprintf("%s %s", method, path)
-	api.mux.HandleFunc(pattern, adapt(fn, cfg.status, api.validateBody, hasQuery, decodeBody, hasForm, api.maxUploadSize))
+	api.mux.HandleFunc(pattern, adapt(fn, cfg.status, api.validateBody, hasQuery, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn))
 }
 
 // Get registers a handler for GET requests at the given path. The path

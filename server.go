@@ -17,11 +17,14 @@ import (
 // API automatically serves the OpenAPI spec at GET /openapi.json and
 // interactive documentation at GET /docs.
 type API struct {
-	spec          *openapi3.T
-	specGen       *openapi3gen.Generator
-	mux           *http.ServeMux
-	validate      *validator.Validate
-	maxUploadSize int64
+	spec             *openapi3.T
+	specGen          *openapi3gen.Generator
+	mux              *http.ServeMux
+	validate         *validator.Validate
+	maxUploadSize    int64
+	badRequestFn     func(error) any // builds the 400 response body from a parse error
+	internalServerFn func(error) any // builds the 500 response body from an unmatched error
+	globalErrors     []errorEntry    // error types registered at the API level via WithGlobalError
 }
 
 // New creates a new API with the given options. By default the API uses a
@@ -47,6 +50,51 @@ func New(options ...Option) *API {
 	for _, opt := range options {
 		opt(api)
 	}
+
+	// Set defaults for error response functions if not customized.
+	if api.badRequestFn == nil {
+		api.badRequestFn = func(_ error) any {
+			return &defaultMessage{Message: "bad request"}
+		}
+		api.spec.Components.Schemas["BadRequestError"] = messageOnlySchemaRef()
+	}
+	if api.internalServerFn == nil {
+		api.internalServerFn = func(_ error) any {
+			return &defaultMessage{Message: "internal server error"}
+		}
+		api.spec.Components.Schemas["InternalServerError"] = messageOnlySchemaRef()
+	}
+	api.spec.Components.Schemas["ValidationError"] = &openapi3.SchemaRef{
+		Value: &openapi3.Schema{
+			Type: &openapi3.Types{"object"},
+			Properties: openapi3.Schemas{
+				"message": &openapi3.SchemaRef{
+					Value: &openapi3.Schema{Type: &openapi3.Types{"string"}},
+				},
+				"errors": &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						Type: &openapi3.Types{"array"},
+						Items: &openapi3.SchemaRef{
+							Value: &openapi3.Schema{
+								Type: &openapi3.Types{"object"},
+								Properties: openapi3.Schemas{
+									"field": &openapi3.SchemaRef{
+										Value: &openapi3.Schema{Type: &openapi3.Types{"string"}},
+									},
+									"message": &openapi3.SchemaRef{
+										Value: &openapi3.Schema{Type: &openapi3.Types{"string"}},
+									},
+								},
+								Required: []string{"field", "message"},
+							},
+						},
+					},
+				},
+			},
+			Required: []string{"message"},
+		},
+	}
+
 	api.mux.HandleFunc("GET /openapi.json", api.serveSpec)
 	api.mux.HandleFunc("GET /docs", api.serveDocs)
 	api.mux.HandleFunc("GET /", api.redirectTo("/docs"))
@@ -91,5 +139,25 @@ func (a *API) serveDocs(w http.ResponseWriter, r *http.Request) {
 func (a *API) redirectTo(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, path, http.StatusTemporaryRedirect)
+	}
+}
+
+// defaultMessage is the simple JSON body used for default 400 and 500 responses.
+type defaultMessage struct {
+	Message string `json:"message"`
+}
+
+// messageOnlySchemaRef returns a new schema with a single "message" string property.
+func messageOnlySchemaRef() *openapi3.SchemaRef {
+	return &openapi3.SchemaRef{
+		Value: &openapi3.Schema{
+			Type: &openapi3.Types{"object"},
+			Properties: openapi3.Schemas{
+				"message": &openapi3.SchemaRef{
+					Value: &openapi3.Schema{Type: &openapi3.Types{"string"}},
+				},
+			},
+			Required: []string{"message"},
+		},
 	}
 }

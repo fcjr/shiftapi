@@ -82,5 +82,12 @@ shiftapi.Post(api, "/users", createUser,
         Description: "Creates a new user account.",
         Tags:        []string{"users"},
     }),
+    shiftapi.WithError[*ConflictError](http.StatusConflict),
 )
 ```
+
+| Option | Description |
+|--------|-------------|
+| `WithStatus(code)` | Set the success HTTP status code (default: `200`) |
+| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
+| `WithError[T](code)` | Declare an error type `T` at status `code` for this route — see [Error Handling](/docs/guides/error-handling) |
