@@ -27,6 +27,23 @@ When validation fails, ShiftAPI returns a `422 Unprocessable Entity` response wi
 }
 ```
 
+## Required fields
+
+Non-pointer fields (`string`, `int`, etc.) are always marked as `required` in the OpenAPI schema — they can't be absent in Go. Pointer fields (`*string`, `*int`) are optional by default and only marked required if they have `validate:"required"`.
+
+```go
+type CreateUser struct {
+    Name     string  `json:"name"`                       // required in schema (non-pointer)
+    Age      int     `json:"age"`                        // required in schema (non-pointer)
+    Nickname *string `json:"nickname"`                   // optional in schema (pointer)
+    Bio      *string `json:"bio" validate:"required"`    // required in schema (pointer + validate)
+}
+```
+
+This applies to nested structs too — fields inside nested types follow the same rules.
+
+Note that `validate:"required"` on a non-pointer `string` is still useful for request types — it enforces that the value is **non-empty** at runtime, not just present. A `string` field will always be in the JSON, but `validate:"required"` rejects `""`.
+
 ## Supported rules
 
 | Rule | Description | OpenAPI mapping |
@@ -43,6 +60,17 @@ When validation fails, ShiftAPI returns a `422 Unprocessable Entity` response wi
 | `lt=N` | Less than (exclusive) | `exclusiveMaximum` |
 | `len=N` | Exact length | `minLength` + `maxLength` |
 | `oneof=a b c` | Must be one of values | `enum` |
+
+## Response types
+
+Validation is only enforced on **request** input — response types are not validated at runtime. However, `validate` tags on response structs still enrich the generated OpenAPI schema, so your TypeScript types and API docs reflect the constraints.
+
+```go
+type UserResponse struct {
+    Name  string `json:"name"`
+    Email string `json:"email" validate:"email"` // not enforced, but appears in the OpenAPI spec
+}
+```
 
 ## Custom validator
 

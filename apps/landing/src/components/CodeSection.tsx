@@ -30,7 +30,7 @@ const { data } = await client.POST("/greet", {
 });
 
 console.log(data.hello);
-//          ^? (property) hello: string`;
+//              ^? (property) hello: string`;
 
 const highlighter = createHighlighterCoreSync({
   themes: [themeTokyoNight],

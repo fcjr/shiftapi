@@ -248,27 +248,41 @@ func isSliceKind(k reflect.Kind) bool {
 	return k == reflect.Slice || k == reflect.Array
 }
 
-// applyRequired walks struct fields and adds JSON names to schema.Required
-// for fields that have validate:"required".
+// applyRequired walks struct fields and adds JSON names to schema.Required.
+// Non-pointer fields are always required (they can't be null in Go).
+// Pointer fields are only required if they have validate:"required".
+// Recurses into nested struct fields.
 func applyRequired(t reflect.Type, schema *openapi3.Schema) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	if t.Kind() != reflect.Struct {
+	if t.Kind() != reflect.Struct || schema == nil {
 		return
 	}
 
 	for field := range t.Fields() {
-		field := field
-		validateTag := field.Tag.Get("validate")
-		if !hasRule(validateTag, "required") {
-			continue
-		}
 		jsonName := jsonFieldName(field)
 		if jsonName == "" || jsonName == "-" {
 			continue
 		}
-		schema.Required = append(schema.Required, jsonName)
+
+		isPointer := field.Type.Kind() == reflect.Pointer
+		hasRequired := hasRule(field.Tag.Get("validate"), "required")
+
+		if !isPointer || hasRequired {
+			schema.Required = append(schema.Required, jsonName)
+		}
+
+		// Recurse into nested struct fields
+		ft := field.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct {
+			if prop, ok := schema.Properties[jsonName]; ok && prop.Value != nil {
+				applyRequired(ft, prop.Value)
+			}
+		}
 	}
 }
 

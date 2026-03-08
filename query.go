@@ -24,7 +24,6 @@ func partitionFields(t reflect.Type) (hasQuery, hasBody, hasForm bool) {
 		return false, false, false
 	}
 	for f := range t.Fields() {
-		f := f
 		if !f.IsExported() {
 			continue
 		}

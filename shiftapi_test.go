@@ -3023,3 +3023,119 @@ func TestSpecFormNoAcceptNoEncoding(t *testing.T) {
 		t.Error("expected no encoding map when no accept tags")
 	}
 }
+
+// --- Required field inference tests ---
+
+type RequiredInferenceResponse struct {
+	Name    string  `json:"name"`
+	Age     int     `json:"age"`
+	Nickname *string `json:"nickname"`
+	Bio     *string `json:"bio" validate:"required"`
+}
+
+func TestSpecNonPointerFieldsAreRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/user", func(r *http.Request, _ struct{}) (*RequiredInferenceResponse, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schemaRef, ok := spec.Components.Schemas["RequiredInferenceResponse"]
+	if !ok {
+		t.Fatal("expected RequiredInferenceResponse in component schemas")
+	}
+	schema := schemaRef.Value
+
+	// Non-pointer fields should be required
+	if !slices.Contains(schema.Required, "name") {
+		t.Errorf("expected 'name' (string) in required, got %v", schema.Required)
+	}
+	if !slices.Contains(schema.Required, "age") {
+		t.Errorf("expected 'age' (int) in required, got %v", schema.Required)
+	}
+
+	// Pointer field without validate:"required" should NOT be required
+	if slices.Contains(schema.Required, "nickname") {
+		t.Errorf("expected 'nickname' (*string) to not be required, got %v", schema.Required)
+	}
+
+	// Pointer field with validate:"required" should be required
+	if !slices.Contains(schema.Required, "bio") {
+		t.Errorf("expected 'bio' (*string validate:required) in required, got %v", schema.Required)
+	}
+}
+
+type NestedAddress struct {
+	Street string  `json:"street"`
+	Zip    *string `json:"zip"`
+}
+
+type NestedPerson struct {
+	Name    string        `json:"name"`
+	Address NestedAddress `json:"address"`
+}
+
+func TestSpecNestedStructFieldsAreRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/person", func(r *http.Request, _ struct{}) (*NestedPerson, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schemaRef, ok := spec.Components.Schemas["NestedPerson"]
+	if !ok {
+		t.Fatal("expected NestedPerson in component schemas")
+	}
+	schema := schemaRef.Value
+
+	// Top-level non-pointer fields required
+	if !slices.Contains(schema.Required, "name") {
+		t.Errorf("expected 'name' in required, got %v", schema.Required)
+	}
+	if !slices.Contains(schema.Required, "address") {
+		t.Errorf("expected 'address' in required, got %v", schema.Required)
+	}
+
+	// Nested struct fields
+	addrProp := schema.Properties["address"]
+	if addrProp == nil || addrProp.Value == nil {
+		t.Fatal("expected 'address' property with inline schema")
+	}
+	addrSchema := addrProp.Value
+
+	if !slices.Contains(addrSchema.Required, "street") {
+		t.Errorf("expected nested 'street' (string) in required, got %v", addrSchema.Required)
+	}
+	if slices.Contains(addrSchema.Required, "zip") {
+		t.Errorf("expected nested 'zip' (*string) to not be required, got %v", addrSchema.Required)
+	}
+}
+
+type OptionalAddress struct {
+	Home    *NestedAddress `json:"home"`
+	Work    *NestedAddress `json:"work" validate:"required"`
+}
+
+func TestSpecPointerStructFieldRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/addrs", func(r *http.Request, _ struct{}) (*OptionalAddress, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schemaRef, ok := spec.Components.Schemas["OptionalAddress"]
+	if !ok {
+		t.Fatal("expected OptionalAddress in component schemas")
+	}
+	schema := schemaRef.Value
+
+	// *NestedAddress without validate:"required" should NOT be required
+	if slices.Contains(schema.Required, "home") {
+		t.Errorf("expected 'home' (*NestedAddress) to not be required, got %v", schema.Required)
+	}
+
+	// *NestedAddress with validate:"required" should be required
+	if !slices.Contains(schema.Required, "work") {
+		t.Errorf("expected 'work' (*NestedAddress validate:required) in required, got %v", schema.Required)
+	}
+}
