@@ -5,6 +5,8 @@ compatibility_date = "2026-03-07"
 
 [assets]
 not_found_handling = "single-page-application"
+run_worker_first = true
+binding = "ASSETS"
 
 [[routes]]
 pattern = "shiftapi.dev"
