@@ -16,9 +16,9 @@
   <a href="https://pkg.go.dev/github.com/fcjr/shiftapi"><img src="https://pkg.go.dev/badge/github.com/fcjr/shiftapi.svg" alt="Go Reference"></a>
   <a href="https://github.com/fcjr/shiftapi/actions?query=workflow%3Ago-lint"><img src="https://github.com/fcjr/shiftapi/workflows/go-lint/badge.svg" alt="GolangCI"></a>
   <a href="https://goreportcard.com/report/github.com/fcjr/shiftapi"><img src="https://goreportcard.com/badge/github.com/fcjr/shiftapi" alt="Go Report Card"></a>
-  <a href="https://www.npmjs.com/package/shiftapi"><img src="https://img.shields.io/npm/v/shiftapi" alt="npm shiftapi"></a>
-  <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin" alt="npm @shiftapi/vite-plugin"></a>
-  <a href="https://www.npmjs.com/package/@shiftapi/next"><img src="https://img.shields.io/npm/v/@shiftapi/next" alt="npm @shiftapi/next"></a>
+  <a href="https://www.npmjs.com/package/shiftapi"><img src="https://img.shields.io/npm/v/shiftapi?label=shiftapi" alt="npm shiftapi"></a>
+  <a href="https://www.npmjs.com/package/@shiftapi/vite-plugin"><img src="https://img.shields.io/npm/v/@shiftapi/vite-plugin?label=%40shiftapi%2Fvite-plugin" alt="npm @shiftapi/vite-plugin"></a>
+  <a href="https://www.npmjs.com/package/@shiftapi/next"><img src="https://img.shields.io/npm/v/@shiftapi/next?label=%40shiftapi%2Fnext" alt="npm @shiftapi/next"></a>
 </p>
 
 ```
