@@ -58,7 +58,7 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 		}
 		op.Responses.Set(statusStr, &openapi3.ResponseRef{
 			Value: &openapi3.Response{
-				Description: stringPtr(http.StatusText(status)),
+				Description: new(http.StatusText(status)),
 				Content:     content,
 			},
 		})
@@ -70,7 +70,7 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 	// Default error response
 	op.Responses.Set("default", &openapi3.ResponseRef{
 		Value: &openapi3.Response{
-			Description: stringPtr("Error"),
+			Description: new("Error"),
 			Content: map[string]*openapi3.MediaType{
 				"application/json": {
 					Schema: &openapi3.SchemaRef{
