@@ -1,6 +1,8 @@
 ---
 title: Middleware
 description: Apply standard HTTP middleware at the API, group, or route level.
+sidebar:
+  order: 4
 ---
 
 ShiftAPI uses standard `func(http.Handler) http.Handler` middleware — the same signature used by the Go ecosystem. Use `WithMiddleware` to apply middleware at any level.

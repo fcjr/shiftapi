@@ -1,6 +1,8 @@
 ---
 title: Handlers
 description: Learn how to define type-safe API handlers with ShiftAPI.
+sidebar:
+  order: 1
 ---
 
 ShiftAPI uses Go generics to capture request and response types at compile time. Each handler is a plain function that receives an `*http.Request` and a typed input, and returns a typed output.
