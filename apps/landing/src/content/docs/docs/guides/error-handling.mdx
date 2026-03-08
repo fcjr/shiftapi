@@ -1,0 +1,45 @@
+---
+title: Error Handling
+description: Return structured error responses from your API handlers.
+---
+
+## API errors
+
+Return a `shiftapi.Error` to send a structured error response with a specific HTTP status code:
+
+```go
+shiftapi.Get(api, "/secret", func(r *http.Request, _ struct{}) (*Data, error) {
+    token := r.Header.Get("Authorization")
+    if token == "" {
+        return nil, shiftapi.Error(http.StatusUnauthorized, "missing auth token")
+    }
+    return getData()
+})
+```
+
+This returns:
+
+```json
+HTTP/1.1 401 Unauthorized
+
+{"message": "missing auth token"}
+```
+
+## Validation errors
+
+When request validation fails, ShiftAPI automatically returns a `422 Unprocessable Entity` with per-field error details:
+
+```json
+HTTP/1.1 422 Unprocessable Entity
+
+{
+  "message": "validation failed",
+  "errors": [
+    { "field": "Email", "message": "must be a valid email address" }
+  ]
+}
+```
+
+## Unhandled errors
+
+If a handler returns a plain `error` (not a `shiftapi.Error`), ShiftAPI returns a `500 Internal Server Error` with a generic message. The original error is not exposed to the client.

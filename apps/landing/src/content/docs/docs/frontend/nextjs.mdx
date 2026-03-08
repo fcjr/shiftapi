@@ -1,0 +1,59 @@
+---
+title: Next.js Plugin
+description: Set up the ShiftAPI Next.js plugin for automatic TypeScript client generation.
+---
+
+The `@shiftapi/next` plugin integrates ShiftAPI with Next.js, providing the same automatic type generation during development.
+
+## Installation
+
+```bash
+npm install shiftapi @shiftapi/next
+```
+
+## Configuration
+
+Wrap your Next.js config with `withShiftAPI`:
+
+```ts
+// next.config.ts
+import { withShiftAPI } from "@shiftapi/next";
+
+export default withShiftAPI({
+  // your Next.js config here
+});
+```
+
+Then create a `shiftapi.config.ts` in your project root:
+
+```ts
+// shiftapi.config.ts
+import { defineConfig } from "shiftapi";
+
+export default defineConfig({
+  server: "./server/main.go",
+});
+```
+
+### Config options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `server` | — | Path to your Go server entry point (required) |
+| `url` | `"http://localhost:8080"` | Address your Go server listens on |
+| `baseUrl` | `"/"` | Base URL for the generated client |
+
+## Usage
+
+```typescript
+import { client } from "shiftapi/client";
+
+const { data } = await client.POST("/hello", {
+    body: { name: "World" },
+});
+
+console.log(data.message);
+//          ^? (property) message: string
+```
+
+The plugin handles starting your Go server, proxying requests, and regenerating types — just like the Vite plugin.

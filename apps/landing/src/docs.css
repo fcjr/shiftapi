@@ -1,0 +1,44 @@
+:root,
+:root[data-theme="light"] {
+  --sl-font: "Inter", var(--sl-font-system);
+  --sl-font-mono: "JetBrains Mono", var(--sl-font-system-mono);
+
+  --sl-color-bg: #07080a;
+  --sl-color-bg-nav: #07080a;
+  --sl-color-bg-sidebar: #07080a;
+  --sl-color-bg-inline-code: #161920;
+
+  --sl-color-text: #eef0f5;
+  --sl-color-text-accent: #c4f042;
+  --sl-color-text-invert: #07080a;
+
+  --sl-color-accent-low: #1a1e10;
+  --sl-color-accent: #c4f042;
+  --sl-color-accent-high: #e2ff7a;
+
+  --sl-color-hairline: #222630;
+  --sl-color-hairline-light: #161920;
+
+  --sl-color-white: #eef0f5;
+  --sl-color-gray-1: #c0c4d0;
+  --sl-color-gray-2: #8b90a0;
+  --sl-color-gray-3: #52566a;
+  --sl-color-gray-4: #222630;
+  --sl-color-gray-5: #161920;
+  --sl-color-gray-6: #0f1115;
+  --sl-color-black: #07080a;
+}
+
+/* Style the logo to match the landing page nav */
+.site-title {
+  color: var(--sl-color-white) !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  gap: 0.625rem !important;
+}
+
+.site-title img {
+  height: 1.5rem;
+  width: auto;
+}

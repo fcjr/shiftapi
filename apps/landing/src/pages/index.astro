@@ -1,0 +1,26 @@
+---
+import Landing from "../layouts/Landing.astro";
+import { Nav } from "../components/Nav";
+import { Hero } from "../components/Hero";
+import { Pipeline } from "../components/Pipeline";
+import { CodeSection } from "../components/CodeSection";
+import { Contrast } from "../components/Contrast";
+import { Features } from "../components/Features";
+import { CTA } from "../components/CTA";
+import { Footer } from "../components/Footer";
+import "../style.css";
+---
+
+<Landing
+  title="ShiftAPI - End-to-end type safety from Go to TypeScript"
+  description="ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler types at runtime, then uses a Vite or Next.js plugin to turn that spec into a fully-typed TypeScript client."
+>
+  <Nav client:load />
+  <Hero client:load />
+  <Pipeline client:visible />
+  <CodeSection client:visible />
+  <Contrast client:visible />
+  <Features client:visible />
+  <CTA client:visible />
+  <Footer />
+</Landing>

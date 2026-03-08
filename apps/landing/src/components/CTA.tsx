@@ -32,10 +32,8 @@ export function CTA() {
             View on GitHub <ArrowRightIcon />
           </a>
           <a
-            href="https://pkg.go.dev/github.com/fcjr/shiftapi"
+            href="/docs/getting-started/introduction"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-[10px] text-sm font-semibold bg-transparent text-text-secondary border border-border transition-all duration-200 hover:text-text hover:border-border-hover hover:bg-elevated"
-            target="_blank"
-            rel="noopener"
           >
             Read the Docs
           </a>

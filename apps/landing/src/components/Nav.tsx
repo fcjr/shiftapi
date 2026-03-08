@@ -13,9 +13,8 @@ export function Nav() {
           <span>ShiftAPI</span>
         </a>
         <div className="flex items-center gap-6 max-md:gap-3.5">
+          <a href="/docs/getting-started/introduction" className="text-text-secondary text-sm font-medium transition-colors hover:text-text">Docs</a>
           <a href="https://github.com/fcjr/shiftapi" target="_blank" rel="noopener" className="text-text-secondary text-sm font-medium transition-colors hover:text-text">GitHub</a>
-          <a href="https://pkg.go.dev/github.com/fcjr/shiftapi" target="_blank" rel="noopener" className="text-text-secondary text-sm font-medium transition-colors hover:text-text">Docs</a>
-          <a href="https://www.npmjs.com/package/shiftapi" target="_blank" rel="noopener" className="text-text-secondary text-sm font-medium transition-colors hover:text-text">npm</a>
           <a
             href="https://github.com/fcjr/shiftapi"
             className="group hidden md:inline-flex items-center rounded-lg border border-border bg-elevated text-[13px] font-semibold text-text-secondary overflow-hidden transition-[border-color,background] duration-200 hover:border-border-hover hover:bg-surface"

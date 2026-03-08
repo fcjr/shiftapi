@@ -1,0 +1,58 @@
+---
+title: Validation
+description: Validate request data using struct tags.
+---
+
+ShiftAPI uses [go-playground/validator](https://github.com/go-playground/validator) for request validation. Validation rules are specified using `validate` struct tags and are automatically reflected in the generated OpenAPI schema.
+
+## Basic validation
+
+```go
+type CreateUser struct {
+    Name  string `json:"name"  validate:"required"`
+    Email string `json:"email" validate:"required,email"`
+    Age   int    `json:"age"   validate:"gte=0,lte=150"`
+}
+```
+
+When validation fails, ShiftAPI returns a `422 Unprocessable Entity` response with structured errors:
+
+```json
+{
+  "message": "validation failed",
+  "errors": [
+    { "field": "Name", "message": "this field is required" },
+    { "field": "Email", "message": "must be a valid email address" }
+  ]
+}
+```
+
+## Supported rules
+
+| Rule | Description | OpenAPI mapping |
+|------|-------------|-----------------|
+| `required` | Field must be present | `required` array |
+| `email` | Valid email address | `format: "email"` |
+| `url`, `uri` | Valid URI | `format: "uri"` |
+| `uuid` | Valid UUID | `format: "uuid"` |
+| `min=N` | Minimum value/length/items | `minimum` / `minLength` / `minItems` |
+| `max=N` | Maximum value/length/items | `maximum` / `maxLength` / `maxItems` |
+| `gte=N` | Greater than or equal | `minimum` |
+| `lte=N` | Less than or equal | `maximum` |
+| `gt=N` | Greater than (exclusive) | `exclusiveMinimum` |
+| `lt=N` | Less than (exclusive) | `exclusiveMaximum` |
+| `len=N` | Exact length | `minLength` + `maxLength` |
+| `oneof=a b c` | Must be one of values | `enum` |
+
+## Custom validator
+
+You can provide your own validator instance with custom rules:
+
+```go
+import "github.com/go-playground/validator/v10"
+
+v := validator.New()
+v.RegisterValidation("custom_rule", customRuleFunc)
+
+api := shiftapi.New(shiftapi.WithValidator(v))
+```

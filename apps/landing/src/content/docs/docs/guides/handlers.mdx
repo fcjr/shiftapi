@@ -1,0 +1,86 @@
+---
+title: Handlers
+description: Learn how to define type-safe API handlers with ShiftAPI.
+---
+
+ShiftAPI uses Go generics to capture request and response types at compile time. Each handler is a plain function that receives an `*http.Request` and a typed input, and returns a typed output.
+
+## Registering handlers
+
+Use `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options`, `Trace`, or `Connect` to register handlers:
+
+```go
+shiftapi.Get(api, "/users", listUsers)
+shiftapi.Post(api, "/users", createUser)
+shiftapi.Put(api, "/users/{id}", updateUser)
+shiftapi.Delete(api, "/users/{id}", deleteUser)
+```
+
+## Handler signature
+
+Every handler follows the same pattern:
+
+```go
+func handler(r *http.Request, in InputType) (OutputType, error) {
+    // ...
+}
+```
+
+- **`r *http.Request`** — the standard HTTP request, useful for headers, cookies, path parameters, etc.
+- **`in InputType`** — automatically decoded from JSON body, query parameters, or multipart form data
+- **`OutputType`** — serialized as JSON in the response (can be a pointer or value type)
+- **`error`** — return an error to send an error response
+
+Use `struct{}` as the input type when a handler takes no input:
+
+```go
+shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
+    return &Status{OK: true}, nil
+})
+```
+
+## Input decoding
+
+Fields are decoded based on struct tags:
+
+| Tag | Source | Example |
+|-----|--------|---------|
+| `json` | Request body (JSON) | `json:"name"` |
+| `query` | Query parameters | `query:"page"` |
+| `form` | Multipart form data | `form:"file"` |
+
+You can combine tags in a single struct:
+
+```go
+type Request struct {
+    Version string                `query:"v"`
+    Name    string                `json:"name"`
+    Avatar  *multipart.FileHeader `form:"avatar"`
+}
+```
+
+## Path parameters
+
+Use `{param}` syntax in the route pattern and access values via `r.PathValue()`:
+
+```go
+shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
+    id := r.PathValue("id")
+    return findUser(id)
+})
+```
+
+## Route options
+
+Customize routes with options:
+
+```go
+shiftapi.Post(api, "/users", createUser,
+    shiftapi.WithStatus(http.StatusCreated),
+    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+        Summary:     "Create a user",
+        Description: "Creates a new user account.",
+        Tags:        []string{"users"},
+    }),
+)
+```

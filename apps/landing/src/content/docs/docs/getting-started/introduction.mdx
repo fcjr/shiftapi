@@ -1,0 +1,21 @@
+---
+title: Introduction
+description: ShiftAPI gives you end-to-end type safety from Go structs to TypeScript.
+---
+
+ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler types at runtime, then uses a Vite or Next.js plugin to turn that spec into a fully-typed TypeScript client.
+
+## How it works
+
+1. **Define handlers in Go** — generic functions capture request and response types at compile time
+2. **OpenAPI spec generated at runtime** — no separate spec file to maintain
+3. **TypeScript types generated at build time** — Vite or Next.js plugins regenerate types on every save
+4. **Fully-typed client** — your frontend gets auto-complete and compile-time type checking
+
+## Features
+
+- **Type-safe handlers** — Go generics capture request/response types
+- **Validation included** — struct tags like `validate:"required,email"` are enforced and reflected in the OpenAPI schema
+- **File uploads** — declare uploads with `form` tags, get correct `multipart/form-data` types
+- **Interactive docs** — Scalar API reference at `/docs` and OpenAPI spec at `/openapi.json`
+- **Just `net/http`** — implements `http.Handler`, works with any middleware or router

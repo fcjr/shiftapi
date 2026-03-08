@@ -1,0 +1,69 @@
+---
+title: File Uploads
+description: Handle file uploads with type-safe multipart form data.
+---
+
+ShiftAPI supports file uploads via `multipart/form-data`. Use the `form` struct tag with `*multipart.FileHeader` fields.
+
+## Basic file upload
+
+```go
+type UploadInput struct {
+    File *multipart.FileHeader `form:"file" validate:"required"`
+}
+
+type UploadResult struct {
+    Filename string `json:"filename"`
+    Size     int64  `json:"size"`
+}
+
+shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+    return &UploadResult{
+        Filename: in.File.Filename,
+        Size:     in.File.Size,
+    }, nil
+})
+```
+
+The TypeScript client automatically uses `multipart/form-data` content type for this endpoint.
+
+## Multiple files
+
+Use a slice to accept multiple files:
+
+```go
+type MultiUploadInput struct {
+    Files []*multipart.FileHeader `form:"files" validate:"required"`
+}
+```
+
+## Restricting file types
+
+Use the `accept` tag to constrain accepted MIME types:
+
+```go
+type ImageUpload struct {
+    Image *multipart.FileHeader `form:"image" accept:"image/png,image/jpeg"`
+}
+```
+
+## Upload size limits
+
+The default maximum upload size is 32 MB. Configure it with `WithMaxUploadSize`:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithMaxUploadSize(10 << 20), // 10 MB
+)
+```
+
+## Mixed form data and fields
+
+You can combine file uploads with regular form fields:
+
+```go
+type ProfileUpdate struct {
+    Name   string                `form:"name" validate:"required"`
+    Avatar *multipart.FileHeader `form:"avatar"`
+}
+```

@@ -1,0 +1,101 @@
+---
+title: Quick Start
+description: Get up and running with ShiftAPI in under a minute.
+---
+
+## Create a new project
+
+```bash
+npm create shiftapi@latest
+```
+
+This scaffolds a full-stack Go + TypeScript app with end-to-end types.
+
+## Or add to an existing Go project
+
+### Install the Go package
+
+```bash
+go get github.com/fcjr/shiftapi
+```
+
+### Define your API
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/fcjr/shiftapi"
+)
+
+type HelloRequest struct {
+    Name string `json:"name" validate:"required"`
+}
+
+type HelloResponse struct {
+    Message string `json:"message"`
+}
+
+func main() {
+    api := shiftapi.New(shiftapi.WithInfo(shiftapi.Info{
+        Title:   "My API",
+        Version: "1.0.0",
+    }))
+
+    shiftapi.Post(api, "/hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
+        return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
+    })
+
+    log.Fatal(shiftapi.ListenAndServe(":8080", api))
+}
+```
+
+### Add the frontend plugin
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+<Tabs>
+  <TabItem label="Vite">
+    ```bash
+    npm install shiftapi @shiftapi/vite-plugin
+    ```
+
+    ```ts
+    // vite.config.ts
+    import { defineConfig } from "vite";
+    import { shiftapi } from "@shiftapi/vite-plugin";
+
+    export default defineConfig({
+      plugins: [shiftapi()],
+    });
+    ```
+  </TabItem>
+  <TabItem label="Next.js">
+    ```bash
+    npm install shiftapi @shiftapi/next
+    ```
+
+    ```ts
+    // next.config.ts
+    import { withShiftAPI } from "@shiftapi/next";
+
+    export default withShiftAPI({});
+    ```
+  </TabItem>
+</Tabs>
+
+### Use the typed client
+
+```typescript
+import { client } from "shiftapi/client";
+
+const { data } = await client.POST("/hello", {
+    body: { name: "World" },
+});
+
+console.log(data.message);
+//          ^? (property) message: string
+```

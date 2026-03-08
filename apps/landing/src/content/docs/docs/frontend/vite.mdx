@@ -1,0 +1,67 @@
+---
+title: Vite Plugin
+description: Set up the ShiftAPI Vite plugin for automatic TypeScript client generation.
+---
+
+The `@shiftapi/vite-plugin` starts your Go server, proxies API requests, and regenerates TypeScript types on every save.
+
+## Installation
+
+```bash
+npm install shiftapi @shiftapi/vite-plugin
+```
+
+## Configuration
+
+Add the plugin to your Vite config:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { shiftapi } from "@shiftapi/vite-plugin";
+
+export default defineConfig({
+  plugins: [shiftapi()],
+});
+```
+
+Then create a `shiftapi.config.ts` in your project root:
+
+```ts
+// shiftapi.config.ts
+import { defineConfig } from "shiftapi";
+
+export default defineConfig({
+  server: "./server/main.go",
+});
+```
+
+### Config options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `server` | — | Path to your Go server entry point (required) |
+| `url` | `"http://localhost:8080"` | Address your Go server listens on |
+| `baseUrl` | `"/"` | Base URL for the generated client |
+
+## What the plugin does
+
+1. Starts your Go server during development
+2. Proxies API requests to the Go server
+3. Fetches the OpenAPI spec from `/openapi.json`
+4. Generates a fully-typed TypeScript client in `.shiftapi/`
+
+## Usage
+
+```typescript
+import { client } from "shiftapi/client";
+
+const { data } = await client.POST("/hello", {
+    body: { name: "World" },
+});
+
+console.log(data.message);
+//          ^? (property) message: string
+```
+
+Types are regenerated automatically when you save a Go file — changes appear in your editor via Vite's HMR.

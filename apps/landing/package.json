@@ -4,29 +4,30 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite build && vite preview",
-    "ship": "vite build && wrangler deploy"
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro build && astro preview",
+    "ship": "astro build && wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.26.1",
     "@cloudflare/workers-types": "^4.20260307.1",
     "@tailwindcss/vite": "^4.2.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.7.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.9.3",
-    "vite": "^6.4.1",
     "wrangler": "^4.71.0"
   },
   "dependencies": {
+    "@astrojs/react": "^4.4.2",
+    "@astrojs/starlight": "^0.37.7",
     "@shikijs/core": "^4.0.1",
     "@shikijs/engine-javascript": "^4.0.1",
     "@shikijs/langs": "^4.0.1",
-    "@shikijs/themes": "^4.0.1"
+    "@shikijs/themes": "^4.0.1",
+    "astro": "^5.18.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sharp": "^0.34.5"
   }
 }
