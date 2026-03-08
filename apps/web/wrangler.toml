@@ -1,8 +1,10 @@
 name = "shiftapi-web"
+main = "src/worker.ts"
 compatibility_date = "2026-03-07"
 
 [assets]
 directory = "dist"
+binding = "ASSETS"
 
 [[routes]]
 pattern = "shiftapi.dev"
