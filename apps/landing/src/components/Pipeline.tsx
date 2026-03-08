@@ -18,7 +18,7 @@ const variantStyles: Record<string, string> = {
 
 export function Pipeline() {
   return (
-    <Reveal className="px-6 pb-[100px] relative">
+    <Reveal className="px-6 pb-[60px] relative">
       <div className="max-w-[760px] mx-auto flex items-center justify-center gap-5 py-9 px-10 bg-surface border border-border rounded-2xl relative overflow-hidden max-md:flex-col max-md:gap-2 max-md:py-7 max-md:px-6">
         {steps.map((step, i) => (
           <Fragment key={step.variant}>

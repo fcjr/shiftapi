@@ -6,16 +6,16 @@ import langTypescript from "@shikijs/langs/typescript";
 import themeTokyoNight from "@shikijs/themes/tokyo-night";
 import { Reveal } from "./Reveal";
 
-const goCode = `type Person struct {
-    Name string \`json:"name" validate:"required"\`
+const goCode = `type Input struct {
+    Name string \`json:"name"\`
 }
 
-type Greeting struct {
+type Output struct {
     Hello string \`json:"hello"\`
 }
 
-func greet(r *http.Request, in *Person) (*Greeting, error) {
-    return &Greeting{Hello: in.Name}, nil
+func greet(r *http.Request, in Input) (*Output, error) {
+    return &Output{Hello: in.Name}, nil
 }
 
 func main() {
@@ -65,7 +65,7 @@ function CodeBlock({ filename, dotColor, code, lang }: {
   const tokens = useTokens(code, lang);
 
   return (
-    <div className="bg-surface border border-border rounded-2xl overflow-hidden transition-[border-color] duration-300 hover:border-border-hover">
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden transition-[border-color] duration-300 hover:border-border-hover min-w-0">
       <div className="flex items-center gap-2 px-[18px] py-3 border-b border-border bg-elevated">
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: dotColor }} />
         <span className="text-[13px] text-text-secondary font-mono">{filename}</span>
@@ -103,7 +103,7 @@ export function CodeSection() {
           Your Go struct becomes the TypeScript type. Change a field in Go, your frontend knows instantly.
         </p>
       </Reveal>
-      <Reveal className="max-w-[960px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center max-md:grid-cols-1">
+      <Reveal className="max-w-[1060px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center max-md:grid-cols-1">
         <CodeBlock filename="main.go" dotColor="#00ADD8" code={goCode} lang="go" />
         <div className="flex flex-col items-center gap-1.5 px-4 max-md:flex-row max-md:py-3 max-md:px-0">
           <div className="w-px h-10 bg-gradient-to-b from-transparent via-accent-bright to-transparent max-md:w-10 max-md:h-px max-md:bg-gradient-to-r" />
