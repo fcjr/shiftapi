@@ -1,5 +1,3 @@
-import { Reveal } from "./Reveal";
-
 const cards = [
   {
     label: "Without ShiftAPI",
@@ -19,7 +17,7 @@ const cards = [
       "Types are generated directly from your Go code",
       "Changes propagate automatically via Vite/Next.js HMR",
       "Type errors caught at compile time, not production",
-      "OpenAPI spec generated at runtime \u2014 always accurate",
+      "OpenAPI spec generated at runtime — always accurate",
     ],
     icon: "✓",
   },
@@ -32,7 +30,7 @@ const colorStyles = {
 
 export function Contrast() {
   return (
-    <Reveal className="px-6 pb-[120px]">
+    <div className="px-6 pb-[120px]">
       <div className="max-w-[800px] mx-auto grid grid-cols-2 gap-5 max-md:grid-cols-1">
         {cards.map((card) => {
           const styles = colorStyles[card.color];
@@ -51,6 +49,6 @@ export function Contrast() {
           );
         })}
       </div>
-    </Reveal>
+    </div>
   );
 }

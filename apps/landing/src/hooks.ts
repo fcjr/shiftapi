@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export function useStarCount() {
   const [count, setCount] = useState<number | null>(null);
@@ -39,26 +39,4 @@ export function useCountUp(target: number | null, duration = 600) {
   }, [target, duration]);
 
   return display;
-}
-
-export function useReveal() {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          el.classList.add("visible");
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return ref;
 }

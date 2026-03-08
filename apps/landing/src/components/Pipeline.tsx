@@ -1,6 +1,5 @@
 import { Fragment } from "react";
 import { PipelineArrow } from "../icons";
-import { Reveal } from "./Reveal";
 
 const steps = [
   { icon: "Go", label: "Structs", desc: "compile time", variant: "go" },
@@ -18,7 +17,7 @@ const variantStyles: Record<string, string> = {
 
 export function Pipeline() {
   return (
-    <Reveal className="px-6 pb-[60px] relative">
+    <div className="px-6 pb-[60px] relative">
       <div className="max-w-[760px] mx-auto flex items-center justify-center gap-5 py-9 px-10 bg-surface border border-border rounded-2xl relative overflow-hidden max-md:flex-col max-md:gap-2 max-md:py-7 max-md:px-6">
         {steps.map((step, i) => (
           <Fragment key={step.variant}>
@@ -37,6 +36,6 @@ export function Pipeline() {
           style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-go), var(--color-ts), transparent)" }}
         />
       </div>
-    </Reveal>
+    </div>
   );
 }

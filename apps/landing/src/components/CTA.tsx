@@ -1,9 +1,8 @@
 import { ArrowRightIcon } from "../icons";
-import { Reveal } from "./Reveal";
 
 export function CTA() {
   return (
-    <Reveal className="px-6 pb-[120px]">
+    <div className="px-6 pb-[120px]">
       <div
         className="max-w-[680px] mx-auto text-center py-16 px-12 rounded-2xl border border-border relative overflow-hidden max-md:py-12 max-md:px-6"
         style={{ background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(196,240,66,0.04), transparent), radial-gradient(ellipse 60% 40% at 50% 100%, rgba(0,173,216,0.04), transparent), var(--color-surface)" }}
@@ -39,6 +38,6 @@ export function CTA() {
           </a>
         </div>
       </div>
-    </Reveal>
+    </div>
   );
 }
