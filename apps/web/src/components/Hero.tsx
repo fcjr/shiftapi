@@ -14,12 +14,6 @@ export function Hero() {
   return (
     <section className="max-w-[800px] mx-auto px-6 pt-[180px] pb-[100px] text-center max-md:pt-[140px] max-md:pb-20 max-md:px-5">
       <Reveal>
-        <div className="inline-flex items-center gap-2 px-4 py-[5px] rounded-full bg-accent/8 border border-accent/15 text-accent-bright text-[13px] font-medium mb-8">
-          <span className="w-1.5 h-1.5 rounded-full bg-green shadow-[0_0_8px_var(--color-green)] animate-[pulse-dot_2s_ease-in-out_infinite]" />
-          Open Source &mdash; MIT Licensed
-        </div>
-      </Reveal>
-      <Reveal>
         <h1 className="text-[clamp(40px,7vw,72px)] font-black leading-[1.05] tracking-[-0.04em] mb-7">
           Stop writing API<br />types{" "}
           <span className="relative text-text-muted after:content-[''] after:absolute after:-left-1 after:-right-1 after:top-[55%] after:h-[3px] after:bg-red after:rounded-sm after:-rotate-1">
