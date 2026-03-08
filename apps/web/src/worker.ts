@@ -1,5 +1,9 @@
+interface Env {
+	ASSETS: Fetcher;
+}
+
 export default {
-	async fetch(request: Request, env: Record<string, unknown>) {
+	async fetch(request: Request, env: Env) {
 		const url = new URL(request.url);
 		if (url.hostname === "shiftapi.dev") {
 			url.hostname = "www.shiftapi.dev";
@@ -7,4 +11,4 @@ export default {
 		}
 		return env.ASSETS.fetch(request);
 	},
-} satisfies ExportedHandler;
+} satisfies ExportedHandler<Env>;
