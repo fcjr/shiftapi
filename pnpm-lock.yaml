@@ -12,7 +12,7 @@ importers:
         specifier: ^2
         version: 2.8.9
 
-  apps/web:
+  apps/landing:
     dependencies:
       '@shikijs/core':
         specifier: ^4.0.1
