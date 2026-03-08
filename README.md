@@ -98,6 +98,24 @@ shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error
 })
 ```
 
+### Typed path parameters
+
+Use `path` tags to declare typed path parameters. They are parsed from the URL, validated, and documented in the OpenAPI spec automatically:
+
+```go
+type GetUserInput struct {
+    ID int `path:"id" validate:"required,gt=0"`
+}
+
+shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
+    return db.GetUser(r.Context(), in.ID) // in.ID is already an int
+})
+```
+
+Supports the same scalar types as query params: `string`, `bool`, `int*`, `uint*`, `float*`. Use `validate:"uuid"` on a `string` field for UUID path params. Parse errors return `400`; validation failures return `422`.
+
+Path parameters are always required and always scalar — pointers and slices on `path`-tagged fields panic at registration time. You can still use `r.PathValue("id")` directly for routes that don't need typed path params.
+
 ### Typed query parameters
 
 Define a struct with `query` tags. Query params are parsed, validated, and documented in the OpenAPI spec automatically.

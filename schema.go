@@ -12,24 +12,48 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
+func (a *API) updateSchema(method, path string, pathType, queryType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
 	}
 
+	// Build a map from path param name to struct field for typed path params.
+	pathFields := make(map[string]reflect.StructField)
+	if pathType != nil {
+		pt := pathType
+		for pt.Kind() == reflect.Pointer {
+			pt = pt.Elem()
+		}
+		if pt.Kind() == reflect.Struct {
+			for f := range pt.Fields() {
+				if f.IsExported() && hasPathTag(f) {
+					pathFields[pathFieldName(f)] = f
+				}
+			}
+		}
+	}
+
 	// Path parameters
 	for _, match := range pathParamRe.FindAllStringSubmatch(path, -1) {
+		name := match[1]
+		var schema *openapi3.SchemaRef
+		if field, ok := pathFields[name]; ok {
+			schema = scalarToOpenAPISchema(field.Type)
+			_ = validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value)
+		} else {
+			schema = &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					Type: &openapi3.Types{"string"},
+				},
+			}
+		}
 		op.Parameters = append(op.Parameters, &openapi3.ParameterRef{
 			Value: &openapi3.Parameter{
-				Name:     match[1],
+				Name:     name,
 				In:       "path",
 				Required: true,
-				Schema: &openapi3.SchemaRef{
-					Value: &openapi3.Schema{
-						Type: &openapi3.Types{"string"},
-					},
-				},
+				Schema:   schema,
 			},
 		})
 	}
@@ -116,8 +140,9 @@ func (a *API) updateSchema(method, path string, queryType, inType, outType refle
 			return err
 		}
 		if inSchema != nil {
-			// Strip query-tagged fields from the body schema
+			// Strip query-tagged and path-tagged fields from the body schema
 			stripQueryFields(inType, inSchema.Value)
+			stripPathFields(inType, inSchema.Value)
 
 			if len(inSchema.Value.Properties) > 0 {
 				// Named body schema with properties
@@ -423,6 +448,32 @@ func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
 		}
 		delete(schema.Properties, jname)
 		// Remove from Required slice
+		for j, req := range schema.Required {
+			if req == jname {
+				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// stripPathFields removes path-tagged fields from a body schema's Properties and Required.
+func stripPathFields(t reflect.Type, schema *openapi3.Schema) {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || schema == nil {
+		return
+	}
+	for f := range t.Fields() {
+		if !f.IsExported() || !hasPathTag(f) {
+			continue
+		}
+		jname := jsonFieldName(f)
+		if jname == "" || jname == "-" {
+			continue
+		}
+		delete(schema.Properties, jname)
 		for j, req := range schema.Required {
 			if req == jname {
 				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)

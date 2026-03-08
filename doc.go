@@ -28,6 +28,7 @@
 //
 // ShiftAPI discriminates input struct fields by their struct tags:
 //
+//   - path:"name" — parsed from URL path parameters (e.g. /users/{id})
 //   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
 //   - query:"name" — parsed from URL query parameters
 //   - form:"name" — parsed from multipart/form-data (for file uploads)
@@ -35,12 +36,11 @@
 //     rules and reflected into the OpenAPI schema
 //   - accept:"mime/type" — constrains accepted MIME types on form file fields
 //
-// A single input struct can mix query and body fields:
+// A single input struct can mix path, query, and body fields:
 //
-//	type SearchRequest struct {
-//	    Q     string `query:"q" validate:"required"`
-//	    Page  int    `query:"page"`
-//	    Body  Filter `json:"filter"`
+//	type GetUserRequest struct {
+//	    ID     int    `path:"id" validate:"required,gt=0"`
+//	    Fields string `query:"fields"`
 //	}
 //
 // # File uploads

@@ -3818,3 +3818,296 @@ func TestWithErrorGlobalAndRouteLevelCombined(t *testing.T) {
 		t.Error("expected 500 response")
 	}
 }
+
+// --- Typed path parameters ---
+
+func TestPathParamInt(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID int `path:"id"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]int, error) {
+		return &map[string]int{"id": in.ID}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/users/42", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]int](t, resp)
+	if result["id"] != 42 {
+		t.Errorf("expected id=42, got %d", result["id"])
+	}
+}
+
+func TestPathParamString(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		Slug string `path:"slug"`
+	}
+
+	shiftapi.Get(api, "/posts/{slug}", func(r *http.Request, in GetInput) (*map[string]string, error) {
+		return &map[string]string{"slug": in.Slug}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/posts/hello-world", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	if result["slug"] != "hello-world" {
+		t.Errorf("expected slug=hello-world, got %q", result["slug"])
+	}
+}
+
+func TestPathParamInvalidTypeReturns400(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID int `path:"id"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]int, error) {
+		return &map[string]int{"id": in.ID}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/users/notanint", "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPathParamValidation(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID int `path:"id" validate:"required,gt=0"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]int, error) {
+		return &map[string]int{"id": in.ID}, nil
+	})
+
+	// Valid
+	resp := doRequest(t, api, http.MethodGet, "/users/5", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Invalid — gt=0 fails with 0
+	resp = doRequest(t, api, http.MethodGet, "/users/0", "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for validation failure, got %d", resp.StatusCode)
+	}
+}
+
+func TestPathParamWithQuery(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID     int    `path:"id"`
+		Fields string `query:"fields"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]any, error) {
+		return &map[string]any{"id": in.ID, "fields": in.Fields}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/users/42?fields=name,email", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]any](t, resp)
+	if result["fields"] != "name,email" {
+		t.Errorf("expected fields=name,email, got %q", result["fields"])
+	}
+}
+
+func TestPathParamWithBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type UpdateInput struct {
+		ID   int    `path:"id"`
+		Name string `json:"name"`
+	}
+
+	shiftapi.Put(api, "/users/{id}", func(r *http.Request, in UpdateInput) (*map[string]any, error) {
+		return &map[string]any{"id": in.ID, "name": in.Name}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodPut, "/users/42", `{"name":"alice"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]any](t, resp)
+	if int(result["id"].(float64)) != 42 {
+		t.Errorf("expected id=42, got %v", result["id"])
+	}
+	if result["name"] != "alice" {
+		t.Errorf("expected name=alice, got %q", result["name"])
+	}
+}
+
+func TestPathParamMismatchPanics(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID int `path:"missing"`
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for mismatched path tag")
+		}
+		msg := fmt.Sprint(r)
+		if !strings.Contains(msg, "missing") {
+			t.Errorf("expected panic message to mention 'missing', got %q", msg)
+		}
+	}()
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]int, error) {
+		return &map[string]int{"id": in.ID}, nil
+	})
+}
+
+func TestPathParamPointerPanics(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID *int `path:"id"`
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for pointer path field")
+		}
+	}()
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*map[string]int, error) {
+		return &map[string]int{}, nil
+	})
+}
+
+func TestPathParamBackwardCompatible(t *testing.T) {
+	// Routes with _ struct{} and r.PathValue still work
+	api := newTestAPI(t)
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*map[string]string, error) {
+		return &map[string]string{"id": r.PathValue("id")}, nil
+	})
+
+	resp := doRequest(t, api, http.MethodGet, "/users/abc", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	result := decodeJSON[map[string]string](t, resp)
+	if result["id"] != "abc" {
+		t.Errorf("expected id=abc, got %q", result["id"])
+	}
+}
+
+// --- Typed path parameter OpenAPI spec tests ---
+
+func TestSpecPathParamIntType(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID int `path:"id"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users/{id}").Get
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 parameter, got %d", len(op.Parameters))
+	}
+	p := op.Parameters[0].Value
+	if p.Name != "id" {
+		t.Errorf("expected param name=id, got %q", p.Name)
+	}
+	if !p.Required {
+		t.Error("expected path param to be required")
+	}
+	if !p.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected type=integer, got %v", p.Schema.Value.Type)
+	}
+}
+
+func TestSpecPathParamFallbackString(t *testing.T) {
+	// Without path tag, falls back to string type
+	api := newTestAPI(t)
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users/{id}").Get
+	p := op.Parameters[0].Value
+	if !p.Schema.Value.Type.Is("string") {
+		t.Errorf("expected type=string for untagged path param, got %v", p.Schema.Value.Type)
+	}
+}
+
+func TestSpecPathParamWithValidation(t *testing.T) {
+	api := newTestAPI(t)
+
+	type GetInput struct {
+		ID string `path:"id" validate:"uuid"`
+	}
+
+	shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetInput) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users/{id}").Get
+	p := op.Parameters[0].Value
+	if p.Schema.Value.Format != "uuid" {
+		t.Errorf("expected format=uuid, got %q", p.Schema.Value.Format)
+	}
+}
+
+func TestSpecPathParamExcludedFromBody(t *testing.T) {
+	api := newTestAPI(t)
+
+	type UpdateInput struct {
+		ID   int    `path:"id"`
+		Name string `json:"name"`
+	}
+
+	shiftapi.Put(api, "/users/{id}", func(r *http.Request, in UpdateInput) (*Status, error) {
+		return &Status{OK: true}, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/users/{id}").Put
+
+	// Path param should be in parameters
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected 1 path parameter, got %d", len(op.Parameters))
+	}
+	if op.Parameters[0].Value.Name != "id" {
+		t.Errorf("expected path param name=id, got %q", op.Parameters[0].Value.Name)
+	}
+
+	// Body should have "name" but not "ID"
+	body := op.RequestBody.Value.Content["application/json"]
+	ref := body.Schema.Ref
+	schemaName := ref[len("#/components/schemas/"):]
+	schema := spec.Components.Schemas[schemaName].Value
+	if _, ok := schema.Properties["name"]; !ok {
+		t.Error("expected 'name' in body schema")
+	}
+	if _, ok := schema.Properties["ID"]; ok {
+		t.Error("path field 'ID' should not appear in body schema")
+	}
+}

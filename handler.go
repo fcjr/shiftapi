@@ -13,6 +13,7 @@ import (
 // reflected into the OpenAPI schema.
 //
 // The In struct's fields are discriminated by struct tags:
+//   - path:"name" — parsed from URL path parameters (e.g. /users/{id})
 //   - query:"name" — parsed from URL query parameters
 //   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
 //   - form:"name" — parsed from multipart/form-data (for file uploads)
@@ -24,7 +25,7 @@ import (
 // parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasQuery, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
@@ -45,16 +46,27 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 			// Re-point rv after decode (in case In is a pointer that was nil)
 			rv = reflect.ValueOf(&in).Elem()
 
-			// Reset any query-tagged fields that body decode may have
-			// inadvertently set, so they only come from URL query params.
+			// Reset any query/path-tagged fields that body decode may have
+			// inadvertently set, so they only come from their proper source.
 			if hasQuery {
 				resetQueryFields(rv)
+			}
+			if hasPath {
+				resetPathFields(rv)
 			}
 		}
 
 		// Parse query params if there are query fields
 		if hasQuery {
 			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+		}
+
+		// Parse path params if there are path fields
+		if hasPath {
+			if err := parsePathInto(rv, r); err != nil {
 				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
 				return
 			}
