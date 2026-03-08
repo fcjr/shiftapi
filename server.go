@@ -24,14 +24,15 @@ type API struct {
 	maxUploadSize    int64
 	badRequestFn     func(error) any // builds the 400 response body from a parse error
 	internalServerFn func(error) any // builds the 500 response body from an unmatched error
-	globalErrors     []errorEntry    // error types registered at the API level via WithGlobalError
+	globalErrors     []errorEntry                      // error types registered at the API level via WithError
+	middleware       []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
 }
 
 // New creates a new API with the given options. By default the API uses a
 // 32 MB upload limit and the standard [github.com/go-playground/validator/v10]
 // instance. Use [WithInfo], [WithMaxUploadSize], [WithValidator], and
 // [WithExternalDocs] to customize behavior.
-func New(options ...Option) *API {
+func New(options ...APIOption) *API {
 	api := &API{
 		spec: &openapi3.T{
 			OpenAPI: "3.1",
@@ -48,7 +49,7 @@ func New(options ...Option) *API {
 		maxUploadSize: 32 << 20, // 32 MB
 	}
 	for _, opt := range options {
-		opt(api)
+		opt.applyToAPI(api)
 	}
 
 	// Set defaults for error response functions if not customized.
@@ -99,6 +100,23 @@ func New(options ...Option) *API {
 	api.mux.HandleFunc("GET /docs", api.serveDocs)
 	api.mux.HandleFunc("GET /", api.redirectTo("/docs"))
 	return api
+}
+
+func (a *API) addError(e errorEntry) {
+	a.globalErrors = append(a.globalErrors, e)
+}
+
+func (a *API) addMiddleware(mw []func(http.Handler) http.Handler) {
+	a.middleware = append(a.middleware, mw...)
+}
+
+func (a *API) routerImpl() routerData {
+	return routerData{
+		api:        a,
+		prefix:     "",
+		errors:     a.globalErrors,
+		middleware: a.middleware,
+	}
 }
 
 // ServeHTTP implements http.Handler.

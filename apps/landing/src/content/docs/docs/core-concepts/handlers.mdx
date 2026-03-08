@@ -83,6 +83,7 @@ shiftapi.Post(api, "/users", createUser,
         Tags:        []string{"users"},
     }),
     shiftapi.WithError[*ConflictError](http.StatusConflict),
+    shiftapi.WithMiddleware(adminOnly),
 )
 ```
 
@@ -90,4 +91,9 @@ shiftapi.Post(api, "/users", createUser,
 |--------|-------------|
 | `WithStatus(code)` | Set the success HTTP status code (default: `200`) |
 | `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
-| `WithError[T](code)` | Declare an error type `T` at status `code` for this route — see [Error Handling](/docs/guides/error-handling) |
+| `WithError[T](code)` | Declare an error type `T` at status `code` — see [Error Handling](/docs/core-concepts/error-handling) |
+| `WithMiddleware(mw...)` | Apply HTTP middleware to this route |
+
+`WithError` and `WithMiddleware` are `Option` values — they work at all levels (API, group, and route). `WithStatus` and `WithRouteInfo` are route-only options. See [Options](/docs/core-concepts/options) for the full option system and composition.
+
+See also: [Middleware](/docs/core-concepts/middleware), [Error Handling](/docs/core-concepts/error-handling), [Options](/docs/core-concepts/options).

@@ -52,21 +52,49 @@
 //	    Docs []*multipart.FileHeader `form:"docs"`
 //	}
 //
+// # Route groups
+//
+// Use [API.Group] to create a sub-router with a shared path prefix and options.
+// Groups can be nested, and error types and middleware are inherited by child groups:
+//
+//	v1 := api.Group("/api/v1",
+//	    shiftapi.WithMiddleware(auth),
+//	)
+//	shiftapi.Get(v1, "/users", listUsers) // registers GET /api/v1/users
+//
+//	admin := v1.Group("/admin",
+//	    shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
+//	)
+//	shiftapi.Get(admin, "/stats", getStats) // registers GET /api/v1/admin/stats
+//
+// # Middleware
+//
+// Use [WithMiddleware] to apply standard HTTP middleware at any level:
+//
+//	api := shiftapi.New(
+//	    shiftapi.WithMiddleware(cors, logging),          // all routes
+//	)
+//	v1 := api.Group("/api/v1",
+//	    shiftapi.WithMiddleware(auth),                   // group routes
+//	)
+//	shiftapi.Get(v1, "/admin", getAdmin,
+//	    shiftapi.WithMiddleware(adminOnly),               // single route
+//	)
+//
+// Middleware is applied from outermost to innermost in the order:
+// API → parent Group → child Group → Route → handler.
+// Within a single [WithMiddleware] call, the first argument wraps outermost.
+//
 // # Error handling
 //
 // Use [WithError] to declare that a specific error type may be returned at a
 // given HTTP status code. The error type must implement the [error] interface and
-// its struct fields are reflected into the OpenAPI schema.
+// its struct fields are reflected into the OpenAPI schema. [WithError] works at
+// all three levels: [New], [API.Group]/[Group.Group], and route functions.
 //
-// Use [WithGlobalError] at the API level (applies to all routes) or [WithError]
-// at the route level (applies to a single route):
-//
-//	// API-level — applies to all routes
 //	api := shiftapi.New(
-//	    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+//	    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 //	)
-//
-//	// Route-level — applies to this route only
 //	shiftapi.Get(api, "/users/{id}", getUser,
 //	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 //	)
@@ -78,24 +106,30 @@
 // Validation failures automatically return 422 with structured [ValidationError] responses.
 // Unrecognized errors return 500 Internal Server Error to prevent leaking implementation details.
 //
-// Use [WithBadRequestError] to customize the 400 response for parse errors:
+// Use [WithBadRequestError] and [WithInternalServerError] to customize the default
+// 400 and 500 response bodies.
 //
-//	api := shiftapi.New(
-//	    shiftapi.WithBadRequestError(func(err error) *MyBadRequest {
-//	        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
-//	    }),
-//	)
+// # Options
 //
-// Use [WithInternalServerError] to customize the 500 response body and schema:
+// [Option] is the primary option type. It works at all three levels: [New],
+// [API.Group]/[Group.Group], and route registration functions ([Get], [Post], etc.).
+// [WithError] and [WithMiddleware] both return [Option].
 //
-//	api := shiftapi.New(
-//	    shiftapi.WithInternalServerError(func(err error) *MyServerError {
-//	        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
-//	    }),
-//	)
+// Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
+// with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with
+// route registration functions ([RouteOption]).
 //
-// Every route automatically includes 422 ([ValidationError]) and 500 responses
-// in the generated OpenAPI spec.
+// Use [ComposeOptions] to bundle multiple [Option] values into a reusable option:
+//
+//	func WithAuth() shiftapi.Option {
+//	    return shiftapi.ComposeOptions(
+//	        shiftapi.WithMiddleware(authMiddleware),
+//	        shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+//	    )
+//	}
+//
+// [ComposeAPIOptions], [ComposeGroupOptions], and [ComposeRouteOptions] can mix shared and
+// level-specific options at their respective levels.
 //
 // # Built-in endpoints
 //

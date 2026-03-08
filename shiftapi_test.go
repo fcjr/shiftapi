@@ -3517,7 +3517,228 @@ func TestWithBadRequestErrorDefault400StillWorks(t *testing.T) {
 	}
 }
 
-// --- API-level WithGlobalError tests ---
+// --- Group tests ---
+
+type RateLimitError struct {
+	Message string `json:"message"`
+}
+
+func (e *RateLimitError) Error() string { return e.Message }
+
+func TestGroupPrefixRouting(t *testing.T) {
+	api := shiftapi.New()
+	v1 := api.Group("/api/v1")
+
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*struct {
+		Name string `json:"name"`
+	}, error) {
+		return &struct {
+			Name string `json:"name"`
+		}{Name: "alice"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/api/v1/users", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[struct{ Name string }](t, resp)
+	if body.Name != "alice" {
+		t.Errorf("expected 'alice', got %q", body.Name)
+	}
+}
+
+func TestGroupPrefixInSpec(t *testing.T) {
+	api := shiftapi.New()
+	v1 := api.Group("/api/v1")
+
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	if spec.Paths.Find("/api/v1/users") == nil {
+		t.Error("expected /api/v1/users in spec")
+	}
+}
+
+func TestGroupErrorMerge(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+	)
+	v1 := api.Group("/api/v1",
+		shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+	)
+
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	}, shiftapi.WithError[*NotFoundError](http.StatusNotFound))
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/api/v1/users").Get
+
+	if op.Responses.Value("401") == nil {
+		t.Error("expected 401 from API-level WithError")
+	}
+	if op.Responses.Value("429") == nil {
+		t.Error("expected 429 from group-level WithError")
+	}
+	if op.Responses.Value("404") == nil {
+		t.Error("expected 404 from route-level WithError")
+	}
+	if op.Responses.Value("422") == nil {
+		t.Error("expected 422 (ValidationError)")
+	}
+	if op.Responses.Value("500") == nil {
+		t.Error("expected 500 (InternalServerError)")
+	}
+}
+
+func TestGroupErrorRuntime(t *testing.T) {
+	api := shiftapi.New()
+	v1 := api.Group("/api/v1",
+		shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+	)
+
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, &RateLimitError{Message: "slow down"}
+	})
+
+	resp := doRequest(t, api, "GET", "/api/v1/users", "")
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[RateLimitError](t, resp)
+	if body.Message != "slow down" {
+		t.Errorf("expected 'slow down', got %q", body.Message)
+	}
+}
+
+func TestNestedGroups(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+	)
+	v1 := api.Group("/api/v1",
+		shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+	)
+	admin := v1.Group("/admin",
+		shiftapi.WithError[*ConflictError](http.StatusConflict),
+	)
+
+	shiftapi.Get(admin, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	op := spec.Paths.Find("/api/v1/admin/users").Get
+
+	// Should have errors from all three levels
+	if op.Responses.Value("401") == nil {
+		t.Error("expected 401 from API-level")
+	}
+	if op.Responses.Value("429") == nil {
+		t.Error("expected 429 from parent group")
+	}
+	if op.Responses.Value("409") == nil {
+		t.Error("expected 409 from nested group")
+	}
+}
+
+func TestNestedGroupRuntime(t *testing.T) {
+	api := shiftapi.New()
+	v1 := api.Group("/api/v1")
+	admin := v1.Group("/admin")
+
+	shiftapi.Get(admin, "/status", func(r *http.Request, _ struct{}) (*struct {
+		OK bool `json:"ok"`
+	}, error) {
+		return &struct {
+			OK bool `json:"ok"`
+		}{OK: true}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/api/v1/admin/status", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGroupDoesNotAffectOtherRoutes(t *testing.T) {
+	api := shiftapi.New()
+	v1 := api.Group("/api/v1",
+		shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+	)
+
+	// Route on the group
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	// Route directly on the API (should NOT have 429)
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+
+	// Group route should have 429
+	if spec.Paths.Find("/api/v1/users").Get.Responses.Value("429") == nil {
+		t.Error("expected 429 on group route")
+	}
+
+	// Direct API route should NOT have 429
+	if spec.Paths.Find("/health").Get.Responses.Value("429") != nil {
+		t.Error("did not expect 429 on non-group route")
+	}
+}
+
+func TestGroupTrailingSlash(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api/v1/")
+
+	shiftapi.Get(g, "/users", func(r *http.Request, _ struct{}) (*struct {
+		Name string `json:"name"`
+	}, error) {
+		return &struct {
+			Name string `json:"name"`
+		}{Name: "alice"}, nil
+	})
+
+	// Should work at /api/v1/users, not /api/v1//users
+	resp := doRequest(t, api, "GET", "/api/v1/users", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGroupPathParamsInPrefix(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api/v1/{tenant}")
+
+	shiftapi.Get(g, "/users", func(r *http.Request, _ struct{}) (*struct {
+		Tenant string `json:"tenant"`
+	}, error) {
+		return &struct {
+			Tenant string `json:"tenant"`
+		}{Tenant: r.PathValue("tenant")}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/api/v1/acme/users", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := decodeJSON[struct{ Tenant string }](t, resp)
+	if body.Tenant != "acme" {
+		t.Errorf("expected tenant 'acme', got %q", body.Tenant)
+	}
+
+	// Check it appears in the spec too
+	spec := api.Spec()
+	if spec.Paths.Find("/api/v1/{tenant}/users") == nil {
+		t.Error("expected /api/v1/{tenant}/users in spec")
+	}
+}
+
+// --- API-level WithError (global) tests ---
 
 type AuthError struct {
 	Message string `json:"message"`
@@ -3526,9 +3747,9 @@ type AuthError struct {
 
 func (e *AuthError) Error() string { return e.Message }
 
-func TestWithGlobalErrorRuntime(t *testing.T) {
+func TestWithErrorGlobalRuntime(t *testing.T) {
 	api := shiftapi.New(
-		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+		shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 	)
 	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return nil, &AuthError{Message: "unauthorized", Realm: "api"}
@@ -3549,9 +3770,9 @@ func TestWithGlobalErrorRuntime(t *testing.T) {
 	}
 }
 
-func TestWithGlobalErrorSpec(t *testing.T) {
+func TestWithErrorGlobalSpec(t *testing.T) {
 	api := shiftapi.New(
-		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+		shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 	)
 	shiftapi.Get(api, "/a", func(r *http.Request, _ struct{}) (*Empty, error) { return nil, nil })
 	shiftapi.Post(api, "/b", func(r *http.Request, _ struct{}) (*Empty, error) { return nil, nil })
@@ -3572,9 +3793,9 @@ func TestWithGlobalErrorSpec(t *testing.T) {
 	}
 }
 
-func TestWithGlobalErrorAndRouteLevelCombined(t *testing.T) {
+func TestWithErrorGlobalAndRouteLevelCombined(t *testing.T) {
 	api := shiftapi.New(
-		shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+		shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 	)
 	shiftapi.Post(api, "/users", func(r *http.Request, _ struct{}) (*Empty, error) {
 		return nil, nil
@@ -3585,7 +3806,7 @@ func TestWithGlobalErrorAndRouteLevelCombined(t *testing.T) {
 
 	// Should have both API-level (401) and route-level (409) error responses
 	if op.Responses.Value("401") == nil {
-		t.Error("expected 401 response from API-level WithGlobalError")
+		t.Error("expected 401 response from API-level WithError")
 	}
 	if op.Responses.Value("409") == nil {
 		t.Error("expected 409 response from route-level WithError")

@@ -69,17 +69,28 @@ shiftapi.Post(api, "/users", createUser,
 
 Each declared error type appears as a separate response in the generated OpenAPI spec with its own schema.
 
-### API-level errors
+### Scoping errors
 
-Use `WithGlobalError` with `New()` to register an error type on all routes:
+`WithError` is an `Option` that works at all three levels:
 
 ```go
+// API level — applies to all routes
 api := shiftapi.New(
-    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+)
+
+// Group level — applies to all routes in the group
+v1 := api.Group("/api/v1",
+    shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+)
+
+// Route level — applies to this route only
+shiftapi.Get(v1, "/users/{id}", getUser,
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 )
 ```
 
-This is useful for cross-cutting error types like authentication or rate-limiting errors. API-level and route-level error types are merged — every route gets both.
+Error types merge across all three levels. In the example above, `GET /api/v1/users/{id}` has `AuthError` (from API), `RateLimitError` (from group), and `NotFoundError` (from route).
 
 ## Parse errors
 

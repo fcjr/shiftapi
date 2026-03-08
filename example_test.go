@@ -222,6 +222,27 @@ func ExampleWithStatus() {
 	_ = api
 }
 
+func ExampleAPI_Group() {
+	api := shiftapi.New()
+
+	v1 := api.Group("/api/v1")
+
+	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*struct {
+		Name string `json:"name"`
+	}, error) {
+		return &struct {
+			Name string `json:"name"`
+		}{Name: "Alice"}, nil
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/v1/users", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Body.String())
+	// Output:
+	// {"name":"Alice"}
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

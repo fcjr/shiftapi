@@ -198,65 +198,66 @@ Invalid requests return `422` with per-field errors:
 
 Supported tags: `required`, `email`, `url`/`uri`, `uuid`, `datetime`, `min`, `max`, `gte`, `lte`, `gt`, `lt`, `len`, `oneof` — all mapped to their OpenAPI equivalents (`format`, `minimum`, `maxLength`, `enum`, etc.). Use `WithValidator()` to supply a custom validator instance.
 
+### Route groups
+
+Use `Group` to create a sub-router with a shared path prefix and options. Groups can be nested:
+
+```go
+v1 := api.Group("/api/v1",
+    shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+    shiftapi.WithMiddleware(auth),
+)
+
+shiftapi.Get(v1, "/users", listUsers)   // GET /api/v1/users
+shiftapi.Post(v1, "/users", createUser) // POST /api/v1/users
+
+admin := v1.Group("/admin",
+    shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
+    shiftapi.WithMiddleware(adminOnly),
+)
+shiftapi.Get(admin, "/stats", getStats) // GET /api/v1/admin/stats
+```
+
+### Middleware
+
+Use `WithMiddleware` to apply standard HTTP middleware at any level — API, group, or route:
+
+```go
+api := shiftapi.New(
+    shiftapi.WithMiddleware(cors, logging),          // all routes
+)
+v1 := api.Group("/api/v1",
+    shiftapi.WithMiddleware(auth),                   // group routes
+)
+shiftapi.Get(v1, "/admin", getAdmin,
+    shiftapi.WithMiddleware(adminOnly),               // single route
+)
+```
+
+Middleware resolves from outermost to innermost: **API → parent Group → child Group → Route → handler**. Within a single `WithMiddleware(a, b)` call, the first argument wraps outermost.
+
 ### Error handling
 
-Use `WithError` to declare that a specific error type may be returned at a given HTTP status code. The error type must implement the `error` interface — its struct fields are reflected into the OpenAPI schema automatically.
-
-Use `WithGlobalError` at the API level (applies to all routes) or `WithError` at the route level:
+Use `WithError` to declare that a handler may return a specific error type at a given HTTP status code. Works at any level — API, group, or route:
 
 ```go
-type AuthError struct {
-    Message string `json:"message"`
-}
-
-func (e *AuthError) Error() string { return e.Message }
-
-type NotFoundError struct {
-    Message string `json:"message"`
-    Detail  string `json:"detail"`
-}
-
-func (e *NotFoundError) Error() string { return e.Message }
-
-// API-level — applies to all routes
 api := shiftapi.New(
-    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),         // all routes
 )
-
-// Route-level — applies to this route only
 shiftapi.Get(api, "/users/{id}", getUser,
-    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),         // single route
 )
 ```
 
-At runtime, if the handler returns an error matching a registered type (via `errors.As`), it is serialized as JSON with the declared status code:
+The error type must implement `error` — its struct fields are reflected into the OpenAPI schema. At runtime, if the handler returns a matching error (via `errors.As`), it is serialized as JSON with the declared status code. Wrapped errors work automatically. Unrecognized errors return `500`.
 
-```go
-func getUser(r *http.Request, _ struct{}) (*User, error) {
-    user, err := db.Find(r.PathValue("id"))
-    if err != nil {
-        return nil, &NotFoundError{Message: "user not found", Detail: "no user with that ID"}
-    }
-    return user, nil
-}
-```
-
-Wrapped errors work automatically — `fmt.Errorf("db: %w", &NotFoundError{...})` still matches. Unrecognized errors return `500 Internal Server Error` to prevent leaking implementation details.
-
-To customize the 400 response for parse errors, use `WithBadRequestError`. The function receives the parse error so you can decide what to expose:
+Customize the default 400/500 responses with `WithBadRequestError` and `WithInternalServerError`:
 
 ```go
 api := shiftapi.New(
     shiftapi.WithBadRequestError(func(err error) *MyBadRequest {
         return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
     }),
-)
-```
-
-To customize the 500 response for unhandled errors, use `WithInternalServerError`:
-
-```go
-api := shiftapi.New(
     shiftapi.WithInternalServerError(func(err error) *MyServerError {
         log.Error("unhandled", "err", err)
         return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
@@ -264,7 +265,30 @@ api := shiftapi.New(
 )
 ```
 
-Both functions receive the original error and return a typed value — the return type determines the schema in the OpenAPI spec. Every route automatically includes `400`, `422` ([ValidationError](https://pkg.go.dev/github.com/fcjr/shiftapi#ValidationError)), and `500` error responses in the generated OpenAPI spec.
+Every route automatically includes `400`, `422` ([ValidationError](https://pkg.go.dev/github.com/fcjr/shiftapi#ValidationError)), and `500` responses in the generated OpenAPI spec.
+
+### Option composition
+
+`WithError` and `WithMiddleware` are `Option` values — they work at all three levels. Use `ComposeOptions` to bundle them into reusable options:
+
+```go
+func WithAuth() shiftapi.Option {
+    return shiftapi.ComposeOptions(
+        shiftapi.WithMiddleware(authMiddleware),
+        shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+    )
+}
+```
+
+For level-specific composition (mixing shared and level-specific options), use `ComposeAPIOptions`, `ComposeGroupOptions`, or `ComposeRouteOptions`:
+
+```go
+createOpts := shiftapi.ComposeRouteOptions(
+    shiftapi.WithStatus(http.StatusCreated),
+    shiftapi.WithError[*ConflictError](http.StatusConflict),
+)
+shiftapi.Post(api, "/users", createUser, createOpts)
+```
 
 ### Route metadata
 

@@ -1,0 +1,69 @@
+---
+title: Middleware
+description: Apply standard HTTP middleware at the API, group, or route level.
+---
+
+ShiftAPI uses standard `func(http.Handler) http.Handler` middleware — the same signature used by the Go ecosystem. Use `WithMiddleware` to apply middleware at any level.
+
+## Applying middleware
+
+```go
+// API level — applies to all routes
+api := shiftapi.New(
+    shiftapi.WithMiddleware(cors, logging),
+)
+
+// Group level — applies to all routes in the group
+v1 := api.Group("/api/v1",
+    shiftapi.WithMiddleware(auth),
+)
+
+// Route level — applies to this route only
+shiftapi.Get(v1, "/admin", getAdmin,
+    shiftapi.WithMiddleware(adminOnly),
+)
+```
+
+## Resolution order
+
+Middleware resolves from outermost to innermost:
+
+**API → parent Group → child Group → Route → handler**
+
+In the example above, a request to `GET /api/v1/admin` passes through:
+
+`cors` → `logging` → `auth` → `adminOnly` → handler
+
+Within a single `WithMiddleware(a, b, c)` call, the first argument wraps outermost: `a` runs first, then `b`, then `c`.
+
+## Example: CORS + auth
+
+```go
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        next.ServeHTTP(w, r)
+    })
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        token := r.Header.Get("Authorization")
+        if token == "" {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+
+api := shiftapi.New(
+    shiftapi.WithMiddleware(corsMiddleware),
+)
+
+authed := api.Group("/api",
+    shiftapi.WithMiddleware(authMiddleware),
+)
+
+shiftapi.Get(authed, "/me", getMe)
+```

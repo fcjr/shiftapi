@@ -7,9 +7,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3gen"
 )
 
-// Option configures an [API] created with [New].
-type Option func(*API)
-
 // Info describes the API and is rendered into the OpenAPI spec's info object.
 type Info struct {
 	Title          string
@@ -46,7 +43,7 @@ type ExternalDocs struct {
 //	    Title:   "My API",
 //	    Version: "1.0.0",
 //	}))
-func WithInfo(info Info) Option {
+func WithInfo(info Info) apiOptionFunc {
 	return func(api *API) {
 		api.spec.Info = &openapi3.Info{
 			Title:          info.Title,
@@ -72,7 +69,7 @@ func WithInfo(info Info) Option {
 
 // WithMaxUploadSize sets the maximum memory used for parsing multipart form data.
 // The default is 32 MB.
-func WithMaxUploadSize(size int64) Option {
+func WithMaxUploadSize(size int64) apiOptionFunc {
 	return func(api *API) {
 		api.maxUploadSize = size
 	}
@@ -89,7 +86,7 @@ func WithMaxUploadSize(size int64) Option {
 //	        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
 //	    }),
 //	)
-func WithBadRequestError[T any](fn func(error) T) Option {
+func WithBadRequestError[T any](fn func(error) T) apiOptionFunc {
 	return func(api *API) {
 		api.badRequestFn = func(err error) any { return fn(err) }
 		registerErrorSchema[T](api, "BadRequestError")
@@ -108,7 +105,7 @@ func WithBadRequestError[T any](fn func(error) T) Option {
 //	        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
 //	    }),
 //	)
-func WithInternalServerError[T any](fn func(error) T) Option {
+func WithInternalServerError[T any](fn func(error) T) apiOptionFunc {
 	return func(api *API) {
 		api.internalServerFn = func(err error) any { return fn(err) }
 		registerErrorSchema[T](api, "InternalServerError")
@@ -133,32 +130,8 @@ func registerErrorSchema[T any](api *API, name string) {
 	}
 }
 
-// WithGlobalError declares that an error of type T may be returned at the given
-// HTTP status code on all routes. T must implement [error] and its struct fields
-// are reflected into the OpenAPI schema. At runtime, if a handler returns an
-// error matching T (via [errors.As]), it is serialized as JSON with the declared
-// status code.
-//
-// Use [WithError] to register an error type on a single route instead.
-//
-//	api := shiftapi.New(
-//	    shiftapi.WithGlobalError[*AuthError](http.StatusUnauthorized),
-//	)
-func WithGlobalError[T error](status int) Option {
-	t := reflect.TypeFor[T]()
-	if t.Kind() != reflect.Pointer {
-		t = reflect.PointerTo(t)
-	}
-	return func(api *API) {
-		api.globalErrors = append(api.globalErrors, errorEntry{
-			status: status,
-			typ:    t,
-		})
-	}
-}
-
 // WithExternalDocs links to external documentation.
-func WithExternalDocs(docs ExternalDocs) Option {
+func WithExternalDocs(docs ExternalDocs) apiOptionFunc {
 	return func(api *API) {
 		api.spec.ExternalDocs = &openapi3.ExternalDocs{
 			Description: docs.Description,
