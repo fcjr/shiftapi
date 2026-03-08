@@ -18,7 +18,7 @@ export function useStarCount() {
 }
 
 export function useCountUp(target: number | null, duration = 600) {
-  const [display, setDisplay] = useState<string>("");
+  const [display, setDisplay] = useState<string>("0");
 
   useEffect(() => {
     if (target === null) return;
