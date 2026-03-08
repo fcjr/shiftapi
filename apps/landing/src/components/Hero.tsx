@@ -15,16 +15,13 @@ export function Hero() {
     <section className="max-w-[800px] mx-auto px-6 pt-[140px] pb-[100px] text-center max-md:pt-[110px] max-md:pb-20 max-md:px-5">
       <Reveal>
         <h1 className="text-[clamp(40px,7vw,72px)] font-black leading-[1.05] tracking-[-0.04em] mb-7">
-          Stop writing API<br />types{" "}
-          <span className="relative text-text-muted after:content-[''] after:absolute after:-left-1 after:-right-1 after:top-[55%] after:h-[3px] after:bg-red after:rounded-sm after:-rotate-1">
-            twice
-          </span>
+          Write <span className="text-go">Go</span>.<br /><span className="text-ts">TypeScript</span> keeps up.
         </h1>
       </Reveal>
       <Reveal>
         <p className="text-[19px] text-text-secondary max-w-[560px] mx-auto mb-11 leading-[1.7]">
-          Define your API once in Go. ShiftAPI generates a fully-typed TypeScript client
-          that stays in sync automatically. No codegen CLI. No drift. No glue code.
+          Define your API once in Go. Every time you save, your TypeScript types
+          regenerate through HMR — no codegen step, no drift, no glue code.
         </p>
       </Reveal>
       <Reveal className="flex items-center justify-center gap-3.5 flex-wrap max-md:flex-col">
