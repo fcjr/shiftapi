@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -56,10 +57,8 @@ func checkFileContentType(fh *multipart.FileHeader, name string, allowed []strin
 		return nil
 	}
 	ct := fh.Header.Get("Content-Type")
-	for _, a := range allowed {
-		if ct == a {
-			return nil
-		}
+	if slices.Contains(allowed, ct) {
+		return nil
 	}
 	return &formParseError{
 		Field: name,

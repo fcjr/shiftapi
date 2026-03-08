@@ -23,8 +23,8 @@ func partitionFields(t reflect.Type) (hasQuery, hasBody, hasForm bool) {
 	if t.Kind() != reflect.Struct {
 		return false, false, false
 	}
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
+		f := f
 		if !f.IsExported() {
 			continue
 		}

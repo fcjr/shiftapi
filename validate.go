@@ -258,8 +258,8 @@ func applyRequired(t reflect.Type, schema *openapi3.Schema) {
 		return
 	}
 
-	for i := range t.NumField() {
-		field := t.Field(i)
+	for field := range t.Fields() {
+		field := field
 		validateTag := field.Tag.Get("validate")
 		if !hasRule(validateTag, "required") {
 			continue
