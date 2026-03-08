@@ -274,7 +274,6 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 
 	var params []*openapi3.ParameterRef
 	for field := range t.Fields() {
-		field := field
 		if !field.IsExported() {
 			continue
 		}
@@ -318,7 +317,6 @@ func generateFormSchema(t reflect.Type) (*openapi3.Schema, map[string]*openapi3.
 	var encoding map[string]*openapi3.Encoding
 
 	for field := range t.Fields() {
-		field := field
 		if !field.IsExported() || !hasFormTag(field) {
 			continue
 		}
@@ -424,7 +422,6 @@ func stripQueryFields(t reflect.Type, schema *openapi3.Schema) {
 		return
 	}
 	for f := range t.Fields() {
-		f := f
 		if !f.IsExported() || !hasQueryTag(f) {
 			continue
 		}
