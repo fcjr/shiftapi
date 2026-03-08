@@ -1,10 +1,10 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
 name = "shiftapi-web"
-main = "src/worker.ts"
+main = "./worker/index.ts"
 compatibility_date = "2026-03-07"
 
 [assets]
-directory = "dist"
-binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[routes]]
 pattern = "shiftapi.dev"

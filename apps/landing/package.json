@@ -4,12 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "ship": "wrangler deploy"
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite build && vite preview",
+    "ship": "vite build && wrangler deploy"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.26.1",
     "@cloudflare/workers-types": "^4.20260307.1",
     "@tailwindcss/vite": "^4.2.1",
     "@types/react": "^19.2.14",
