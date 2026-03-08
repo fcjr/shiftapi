@@ -12,7 +12,7 @@ export function Hero() {
   };
 
   return (
-    <section className="max-w-[800px] mx-auto px-6 pt-[180px] pb-[100px] text-center max-md:pt-[140px] max-md:pb-20 max-md:px-5">
+    <section className="max-w-[800px] mx-auto px-6 pt-[140px] pb-[100px] text-center max-md:pt-[110px] max-md:pb-20 max-md:px-5">
       <Reveal>
         <h1 className="text-[clamp(40px,7vw,72px)] font-black leading-[1.05] tracking-[-0.04em] mb-7">
           Stop writing API<br />types{" "}
