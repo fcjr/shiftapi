@@ -31,6 +31,8 @@
 //   - path:"name" — parsed from URL path parameters (e.g. /users/{id})
 //   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
 //   - query:"name" — parsed from URL query parameters
+//   - header:"name" — parsed from HTTP request headers (input) or set as HTTP
+//     response headers (output)
 //   - form:"name" — parsed from multipart/form-data (for file uploads)
 //   - validate:"rules" — validated using [github.com/go-playground/validator/v10]
 //     rules and reflected into the OpenAPI schema
@@ -51,6 +53,32 @@
 //	    File *multipart.FileHeader   `form:"file" validate:"required"`
 //	    Docs []*multipart.FileHeader `form:"docs"`
 //	}
+//
+// # Response headers
+//
+// Use the header tag on the Resp struct to set HTTP response headers.
+// Header-tagged fields are written as response headers and automatically
+// excluded from the JSON response body. They are also documented as response
+// headers in the OpenAPI spec.
+//
+//	type CachedResponse struct {
+//	    CacheControl string  `header:"Cache-Control"`
+//	    ETag         *string `header:"ETag"`            // optional — omitted when nil
+//	    Items        []Item  `json:"items"`
+//	}
+//
+// Non-pointer fields are always sent, even with a zero value. Use a pointer
+// field for optional headers that should only be sent when set. Supported
+// types are the same scalars as request headers (string, bool, int*, uint*,
+// float*).
+//
+// For static response headers, use [WithResponseHeader]. Headers are applied
+// in the following order — later sources override earlier ones for the same
+// header name:
+//
+//  1. Middleware-set headers (outermost, applied before the handler)
+//  2. Static headers via [WithResponseHeader] (API → Group → Route)
+//  3. Dynamic headers via header struct tags (innermost, applied last)
 //
 // # Route groups
 //
@@ -113,7 +141,7 @@
 //
 // [Option] is the primary option type. It works at all three levels: [New],
 // [API.Group]/[Group.Group], and route registration functions ([Get], [Post], etc.).
-// [WithError] and [WithMiddleware] both return [Option].
+// [WithError], [WithMiddleware], and [WithResponseHeader] all return [Option].
 //
 // Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
 // with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with

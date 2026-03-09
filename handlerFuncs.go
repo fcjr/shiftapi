@@ -65,24 +65,31 @@ func registerRoute[In, Resp any](
 
 	var resp Resp
 	outType := reflect.TypeOf(resp)
+	hasRespHeader := hasRespHeaderFields(outType)
 
-	// Merge: rd.errors already contains API globals + group errors.
-	// Append route-level errors on top.
+	var respEnc *respEncoder
+	if hasRespHeader {
+		respEnc = newRespEncoder(outType)
+	}
+
+	// Merge: rd already contains API globals + group chain.
+	// Append route-level entries on top.
 	allErrors := append(rd.errors, cfg.errors...)
+	allStaticHeaders := append(rd.staticRespHeaders, cfg.staticRespHeaders...)
 
 	var pathType reflect.Type
 	if hasPath {
 		pathType = rawInType
 	}
 
-	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasForm, rawInType, cfg.info, cfg.status, allErrors); err != nil {
+	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
 	}
 
 	errLookup := buildErrorLookup(allErrors)
 
 	pattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
+	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, respEnc, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
 	// Apply route-level middleware (innermost), then group-level (outermost).
 	// Reverse order so the first middleware in the slice wraps outermost.
 	for i := len(cfg.middleware) - 1; i >= 0; i-- {

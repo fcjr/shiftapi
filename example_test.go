@@ -243,6 +243,59 @@ func ExampleAPI_Group() {
 	// {"name":"Alice"}
 }
 
+func ExampleGet_responseHeaders() {
+	api := shiftapi.New()
+
+	type CachedItem struct {
+		CacheControl string  `header:"Cache-Control"`
+		ETag         *string `header:"ETag"`
+		Name         string  `json:"name"`
+	}
+
+	shiftapi.Get(api, "/item", func(r *http.Request, _ struct{}) (*CachedItem, error) {
+		etag := `"v1"`
+		return &CachedItem{
+			CacheControl: "max-age=3600",
+			ETag:         &etag,
+			Name:         "Widget",
+		}, nil
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/item", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Header().Get("Cache-Control"))
+	fmt.Println(w.Header().Get("ETag"))
+	fmt.Println(w.Body.String())
+	// Output:
+	// max-age=3600
+	// "v1"
+	// {"name":"Widget"}
+}
+
+func ExampleWithResponseHeader() {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+	)
+
+	shiftapi.Get(api, "/item", func(r *http.Request, _ struct{}) (*struct {
+		Name string `json:"name"`
+	}, error) {
+		return &struct {
+			Name string `json:"name"`
+		}{Name: "Widget"}, nil
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/item", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Header().Get("X-Content-Type-Options"))
+	fmt.Println(w.Body.String())
+	// Output:
+	// nosniff
+	// {"name":"Widget"}
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

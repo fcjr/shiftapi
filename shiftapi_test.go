@@ -4605,3 +4605,582 @@ func TestSpecHeaderParamEnum(t *testing.T) {
 	}
 	t.Error("Accept header param not found")
 }
+
+// --- Response header tests ---
+
+type RespWithHeader struct {
+	CacheControl string `header:"Cache-Control"`
+	Message      string `json:"message"`
+}
+
+func TestResponseHeaderIsSet(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/cached", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{CacheControl: "max-age=3600", Message: "hello"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/cached", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "max-age=3600" {
+		t.Errorf("expected Cache-Control header %q, got %q", "max-age=3600", got)
+	}
+}
+
+func TestResponseHeaderStrippedFromBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/cached", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{CacheControl: "max-age=3600", Message: "hello"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/cached", "")
+	body := decodeJSON[map[string]any](t, resp)
+	if _, exists := body["CacheControl"]; exists {
+		t.Error("CacheControl should not appear in response body")
+	}
+	if _, exists := body["cache-control"]; exists {
+		t.Error("cache-control should not appear in response body")
+	}
+	if msg, ok := body["message"]; !ok || msg != "hello" {
+		t.Errorf("expected message %q, got %v", "hello", msg)
+	}
+}
+
+type RespWithOptionalHeader struct {
+	ETag    *string `header:"ETag"`
+	Message string  `json:"message"`
+}
+
+func TestResponseHeaderOptionalNil(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/item", func(r *http.Request, in struct{}) (RespWithOptionalHeader, error) {
+		return RespWithOptionalHeader{Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/item", "")
+	if got := resp.Header.Get("ETag"); got != "" {
+		t.Errorf("expected no ETag header, got %q", got)
+	}
+}
+
+func TestResponseHeaderOptionalSet(t *testing.T) {
+	api := newTestAPI(t)
+	etag := `"abc123"`
+	shiftapi.Get(api, "/item", func(r *http.Request, in struct{}) (RespWithOptionalHeader, error) {
+		return RespWithOptionalHeader{ETag: &etag, Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/item", "")
+	if got := resp.Header.Get("ETag"); got != etag {
+		t.Errorf("expected ETag header %q, got %q", etag, got)
+	}
+}
+
+type RespWithIntHeader struct {
+	RateLimit int    `header:"X-Rate-Limit"`
+	Message   string `json:"message"`
+}
+
+func TestResponseHeaderIntType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/rate", func(r *http.Request, in struct{}) (RespWithIntHeader, error) {
+		return RespWithIntHeader{RateLimit: 100, Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/rate", "")
+	if got := resp.Header.Get("X-Rate-Limit"); got != "100" {
+		t.Errorf("expected X-Rate-Limit header %q, got %q", "100", got)
+	}
+}
+
+type RespHeaderOnly struct {
+	Location string `header:"Location"`
+}
+
+func TestResponseHeaderOnlyNoBody(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Post(api, "/create", func(r *http.Request, in struct{}) (RespHeaderOnly, error) {
+		return RespHeaderOnly{Location: "/items/42"}, nil
+	}, shiftapi.WithStatus(http.StatusCreated))
+
+	resp := doRequest(t, api, "POST", "/create", "{}")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/items/42" {
+		t.Errorf("expected Location header %q, got %q", "/items/42", got)
+	}
+}
+
+func TestResponseHeaderOpenAPISchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/cached", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{}, nil
+	})
+
+	spec := api.Spec()
+	pathItem := spec.Paths.Find("/cached")
+	if pathItem == nil || pathItem.Get == nil {
+		t.Fatal("expected GET /cached in spec")
+	}
+
+	respRef := pathItem.Get.Responses.Value("200")
+	if respRef == nil || respRef.Value == nil {
+		t.Fatal("expected 200 response in spec")
+	}
+
+	// Check response header is declared
+	if respRef.Value.Headers == nil {
+		t.Fatal("expected response headers in spec")
+	}
+	hdr := respRef.Value.Headers["Cache-Control"]
+	if hdr == nil || hdr.Value == nil {
+		t.Fatal("expected Cache-Control response header in spec")
+	}
+	if !hdr.Value.Required {
+		t.Error("expected non-pointer response header to be required")
+	}
+	if hdr.Value.Schema == nil || !hdr.Value.Schema.Value.Type.Is("string") {
+		t.Error("expected Cache-Control schema type to be string")
+	}
+
+	// Check response body schema does not contain header field
+	if respRef.Value.Content != nil {
+		jsonMedia := respRef.Value.Content["application/json"]
+		if jsonMedia != nil && jsonMedia.Schema != nil && jsonMedia.Schema.Ref != "" {
+			// Find the schema in components
+			refName := jsonMedia.Schema.Ref[len("#/components/schemas/"):]
+			schema := spec.Components.Schemas[refName]
+			if schema != nil && schema.Value != nil {
+				if _, exists := schema.Value.Properties["CacheControl"]; exists {
+					t.Error("CacheControl should not be in response body schema")
+				}
+			}
+		}
+	}
+}
+
+func TestResponseHeaderOpenAPIOptionalNotRequired(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/item", func(r *http.Request, in struct{}) (RespWithOptionalHeader, error) {
+		return RespWithOptionalHeader{}, nil
+	})
+
+	spec := api.Spec()
+	pathItem := spec.Paths.Find("/item")
+	respRef := pathItem.Get.Responses.Value("200")
+	hdr := respRef.Value.Headers["Etag"]
+	if hdr == nil || hdr.Value == nil {
+		t.Fatal("expected ETag response header in spec")
+	}
+	if hdr.Value.Required {
+		t.Error("expected pointer response header to not be required")
+	}
+}
+
+type RespWithMultipleHeaders struct {
+	CacheControl string `header:"Cache-Control"`
+	XRequestID   string `header:"X-Request-Id"`
+	Message      string `json:"message"`
+}
+
+func TestResponseHeaderMultiple(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/multi", func(r *http.Request, in struct{}) (RespWithMultipleHeaders, error) {
+		return RespWithMultipleHeaders{
+			CacheControl: "no-store",
+			XRequestID:   "req-123",
+			Message:      "ok",
+		}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/multi", "")
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("expected Cache-Control %q, got %q", "no-store", got)
+	}
+	if got := resp.Header.Get("X-Request-Id"); got != "req-123" {
+		t.Errorf("expected X-Request-Id %q, got %q", "req-123", got)
+	}
+	body := decodeJSON[map[string]any](t, resp)
+	if _, exists := body["CacheControl"]; exists {
+		t.Error("CacheControl should not appear in body")
+	}
+	if _, exists := body["XRequestID"]; exists {
+		t.Error("XRequestID should not appear in body")
+	}
+	if msg, ok := body["message"]; !ok || msg != "ok" {
+		t.Errorf("expected message %q, got %v", "ok", msg)
+	}
+}
+
+func TestResponseHeaderMultipleOpenAPISchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/multi", func(r *http.Request, in struct{}) (RespWithMultipleHeaders, error) {
+		return RespWithMultipleHeaders{}, nil
+	})
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/multi").Get.Responses.Value("200")
+	if respRef.Value.Headers == nil {
+		t.Fatal("expected response headers in spec")
+	}
+	for _, name := range []string{"Cache-Control", "X-Request-Id"} {
+		hdr := respRef.Value.Headers[name]
+		if hdr == nil || hdr.Value == nil {
+			t.Errorf("expected %s response header in spec", name)
+		}
+	}
+}
+
+type RespWithBoolHeader struct {
+	Debug   bool   `header:"X-Debug"`
+	Message string `json:"message"`
+}
+
+func TestResponseHeaderBoolType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/debug", func(r *http.Request, in struct{}) (RespWithBoolHeader, error) {
+		return RespWithBoolHeader{Debug: true, Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/debug", "")
+	if got := resp.Header.Get("X-Debug"); got != "true" {
+		t.Errorf("expected X-Debug header %q, got %q", "true", got)
+	}
+}
+
+func TestResponseHeaderBoolFalseAlwaysSent(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/debug", func(r *http.Request, in struct{}) (RespWithBoolHeader, error) {
+		return RespWithBoolHeader{Debug: false, Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/debug", "")
+	// Non-pointer fields are always sent, even when zero.
+	if got := resp.Header.Get("X-Debug"); got != "false" {
+		t.Errorf("expected X-Debug header %q, got %q", "false", got)
+	}
+}
+
+func TestResponseHeaderPointerResp(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/ptr", func(r *http.Request, in struct{}) (*RespWithHeader, error) {
+		return &RespWithHeader{CacheControl: "private", Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/ptr", "")
+	if got := resp.Header.Get("Cache-Control"); got != "private" {
+		t.Errorf("expected Cache-Control %q, got %q", "private", got)
+	}
+	body := decodeJSON[map[string]any](t, resp)
+	if _, exists := body["CacheControl"]; exists {
+		t.Error("CacheControl should not appear in body")
+	}
+}
+
+func TestResponseHeaderWithInputHeaders(t *testing.T) {
+	type ReqWithHeader struct {
+		Auth string `header:"Authorization"`
+	}
+
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/echo", func(r *http.Request, in ReqWithHeader) (RespWithHeader, error) {
+		return RespWithHeader{CacheControl: "no-cache", Message: "auth=" + in.Auth}, nil
+	})
+
+	req := httptest.NewRequest("GET", "/echo", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	result := rec.Result()
+
+	if got := result.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("expected Cache-Control %q, got %q", "no-cache", got)
+	}
+	body := decodeJSON[map[string]any](t, result)
+	if msg, ok := body["message"]; !ok || msg != "auth=Bearer tok" {
+		t.Errorf("expected message %q, got %v", "auth=Bearer tok", msg)
+	}
+}
+
+func TestResponseHeaderZeroStringAlwaysSent(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/empty", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{Message: "ok"}, nil
+	})
+
+	req := httptest.NewRequest("GET", "/empty", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+	// Non-pointer fields are always sent, even when zero.
+	// Use the header map directly since Get("") and "not present" both return "".
+	if _, exists := rec.Header()["Cache-Control"]; !exists {
+		t.Error("expected Cache-Control header to be present (even with empty value)")
+	}
+}
+
+func TestResponseHeaderWithGroup(t *testing.T) {
+	api := newTestAPI(t)
+	g := api.Group("/api")
+	shiftapi.Get(g, "/item", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{CacheControl: "public", Message: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/api/item", "")
+	if got := resp.Header.Get("Cache-Control"); got != "public" {
+		t.Errorf("expected Cache-Control %q, got %q", "public", got)
+	}
+}
+
+func TestResponseHeaderOnlyOpenAPINoContent(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/redir", func(r *http.Request, in struct{}) (RespHeaderOnly, error) {
+		return RespHeaderOnly{Location: "/new"}, nil
+	})
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/redir").Get.Responses.Value("200")
+	if respRef.Value.Headers == nil {
+		t.Fatal("expected response headers in spec")
+	}
+	hdr := respRef.Value.Headers["Location"]
+	if hdr == nil || hdr.Value == nil {
+		t.Fatal("expected Location response header in spec")
+	}
+}
+
+func TestResponseHeaderOpenAPIIntegerType(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/rate", func(r *http.Request, in struct{}) (RespWithIntHeader, error) {
+		return RespWithIntHeader{}, nil
+	})
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/rate").Get.Responses.Value("200")
+	hdr := respRef.Value.Headers["X-Rate-Limit"]
+	if hdr == nil || hdr.Value == nil {
+		t.Fatal("expected X-Rate-Limit response header in spec")
+	}
+	if !hdr.Value.Schema.Value.Type.Is("integer") {
+		t.Errorf("expected integer type for X-Rate-Limit, got %v", hdr.Value.Schema.Value.Type)
+	}
+}
+
+func TestResponseHeaderNoHeaderResp(t *testing.T) {
+	// Verify that a response without header tags works normally (no regression).
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/plain", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "world"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/plain", "")
+	body := decodeJSON[Greeting](t, resp)
+	if body.Hello != "world" {
+		t.Errorf("expected Hello %q, got %q", "world", body.Hello)
+	}
+}
+
+type RespWithOmitempty struct {
+	XRequestID string `header:"X-Request-Id"`
+	Name       string `json:"name"`
+	Nickname   string `json:"nickname,omitempty"`
+}
+
+func TestResponseHeaderPreservesOmitempty(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/omit", func(r *http.Request, in struct{}) (RespWithOmitempty, error) {
+		return RespWithOmitempty{XRequestID: "req-1", Name: "Alice"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/omit", "")
+	if got := resp.Header.Get("X-Request-Id"); got != "req-1" {
+		t.Errorf("expected X-Request-Id %q, got %q", "req-1", got)
+	}
+	raw := readBody(t, resp)
+	// omitempty should suppress the zero-value Nickname field.
+	if strings.Contains(raw, "nickname") {
+		t.Errorf("expected nickname to be omitted via omitempty, got body: %s", raw)
+	}
+	if !strings.Contains(raw, `"name":"Alice"`) {
+		t.Errorf("expected name in body, got: %s", raw)
+	}
+	// Header field should not leak into JSON body.
+	if strings.Contains(raw, "XRequestID") || strings.Contains(raw, "X-Request-Id") {
+		t.Errorf("expected header field stripped from body, got: %s", raw)
+	}
+}
+
+type respWithCustomMarshal struct {
+	XReq    string `header:"X-Req"`
+	Message string `json:"message"`
+}
+
+func (r respWithCustomMarshal) MarshalJSON() ([]byte, error) {
+	return []byte(`{"custom":true}`), nil
+}
+
+func TestResponseHeaderWithCustomMarshalJSON(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/custom", func(r *http.Request, in struct{}) (respWithCustomMarshal, error) {
+		return respWithCustomMarshal{XReq: "abc", Message: "hello"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/custom", "")
+
+	// Header should still be extracted and set.
+	if got := resp.Header.Get("X-Req"); got != "abc" {
+		t.Errorf("expected X-Req header %q, got %q", "abc", got)
+	}
+
+	// Custom MarshalJSON should be preserved — body is {"custom":true}.
+	raw := readBody(t, resp)
+	if !strings.Contains(raw, `"custom":true`) {
+		t.Errorf("expected custom MarshalJSON output, got: %s", raw)
+	}
+}
+
+// --- WithResponseHeader tests ---
+
+func TestWithResponseHeaderRoute(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/secure", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "world"}, nil
+	}, shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"))
+
+	resp := doRequest(t, api, "GET", "/secure", "")
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected X-Content-Type-Options %q, got %q", "nosniff", got)
+	}
+	// Body should be unaffected.
+	body := decodeJSON[Greeting](t, resp)
+	if body.Hello != "world" {
+		t.Errorf("expected Hello %q, got %q", "world", body.Hello)
+	}
+}
+
+func TestWithResponseHeaderAPI(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Frame-Options", "DENY"),
+	)
+	shiftapi.Get(api, "/a", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "a"}, nil
+	})
+	shiftapi.Get(api, "/b", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "b"}, nil
+	})
+
+	for _, path := range []string{"/a", "/b"} {
+		resp := doRequest(t, api, "GET", path, "")
+		if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s: expected X-Frame-Options %q, got %q", path, "DENY", got)
+		}
+	}
+}
+
+func TestWithResponseHeaderGroup(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api",
+		shiftapi.WithResponseHeader("X-API-Version", "2"),
+	)
+	shiftapi.Get(g, "/item", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "ok"}, nil
+	})
+	// Route outside the group should NOT have the header.
+	shiftapi.Get(api, "/health", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/api/item", "")
+	if got := resp.Header.Get("X-API-Version"); got != "2" {
+		t.Errorf("expected X-API-Version %q, got %q", "2", got)
+	}
+
+	resp2 := doRequest(t, api, "GET", "/health", "")
+	if got := resp2.Header.Get("X-API-Version"); got != "" {
+		t.Errorf("expected no X-API-Version on /health, got %q", got)
+	}
+}
+
+func TestWithResponseHeaderInheritsFromAPIAndGroup(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Global", "yes"),
+	)
+	g := api.Group("/v1",
+		shiftapi.WithResponseHeader("X-Group", "yes"),
+	)
+	shiftapi.Get(g, "/item", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "ok"}, nil
+	}, shiftapi.WithResponseHeader("X-Route", "yes"))
+
+	resp := doRequest(t, api, "GET", "/v1/item", "")
+	for _, name := range []string{"X-Global", "X-Group", "X-Route"} {
+		if got := resp.Header.Get(name); got != "yes" {
+			t.Errorf("expected %s %q, got %q", name, "yes", got)
+		}
+	}
+}
+
+func TestWithResponseHeaderCombinedWithStructTag(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/combo", func(r *http.Request, in struct{}) (RespWithHeader, error) {
+		return RespWithHeader{CacheControl: "private", Message: "ok"}, nil
+	}, shiftapi.WithResponseHeader("X-Extra", "value"))
+
+	resp := doRequest(t, api, "GET", "/combo", "")
+	if got := resp.Header.Get("Cache-Control"); got != "private" {
+		t.Errorf("expected Cache-Control %q, got %q", "private", got)
+	}
+	if got := resp.Header.Get("X-Extra"); got != "value" {
+		t.Errorf("expected X-Extra %q, got %q", "value", got)
+	}
+}
+
+func TestWithResponseHeaderOpenAPISchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/secure", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{}, nil
+	}, shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"))
+
+	spec := api.Spec()
+	pathItem := spec.Paths.Find("/secure")
+	if pathItem == nil || pathItem.Get == nil {
+		t.Fatal("expected GET /secure in spec")
+	}
+	respRef := pathItem.Get.Responses.Value("200")
+	if respRef == nil || respRef.Value == nil {
+		t.Fatal("expected 200 response in spec")
+	}
+	if respRef.Value.Headers == nil {
+		t.Fatal("expected response headers in spec")
+	}
+	hdr := respRef.Value.Headers["X-Content-Type-Options"]
+	if hdr == nil || hdr.Value == nil {
+		t.Fatal("expected X-Content-Type-Options response header in spec")
+	}
+	if !hdr.Value.Required {
+		t.Error("expected static response header to be required")
+	}
+	if !hdr.Value.Schema.Value.Type.Is("string") {
+		t.Error("expected string type for static response header")
+	}
+}
+
+func TestWithResponseHeaderNestedGroups(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Level", "api"),
+	)
+	g1 := api.Group("/g1",
+		shiftapi.WithResponseHeader("X-Level", "group"),
+	)
+	g2 := g1.Group("/g2")
+	shiftapi.Get(g2, "/item", func(r *http.Request, in struct{}) (Greeting, error) {
+		return Greeting{Hello: "ok"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/g1/g2/item", "")
+	// Last set wins for same header name (group overrides api).
+	if got := resp.Header.Get("X-Level"); got != "group" {
+		t.Errorf("expected X-Level %q, got %q", "group", got)
+	}
+}

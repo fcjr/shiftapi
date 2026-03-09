@@ -5,10 +5,11 @@ import (
 )
 
 type routeConfig struct {
-	info       *RouteInfo
-	status     int
-	errors     []errorEntry
-	middleware []func(http.Handler) http.Handler
+	info              *RouteInfo
+	status            int
+	errors            []errorEntry
+	middleware         []func(http.Handler) http.Handler
+	staticRespHeaders []staticResponseHeader
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -17,6 +18,10 @@ func (c *routeConfig) addError(e errorEntry) {
 
 func (c *routeConfig) addMiddleware(mw []func(http.Handler) http.Handler) {
 	c.middleware = append(c.middleware, mw...)
+}
+
+func (c *routeConfig) addStaticResponseHeader(h staticResponseHeader) {
+	c.staticRespHeaders = append(c.staticRespHeaders, h)
 }
 
 func applyRouteOptions(opts []RouteOption) routeConfig {

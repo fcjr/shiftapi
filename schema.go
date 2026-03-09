@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry) error {
+func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -82,22 +82,63 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	if err != nil {
 		return err
 	}
-	if outSchema != nil {
-		content := make(map[string]*openapi3.MediaType)
-		content["application/json"] = &openapi3.MediaType{
-			Schema: &openapi3.SchemaRef{
-				Ref: fmt.Sprintf("#/components/schemas/%s", outSchema.Ref),
+
+	// Build response header definitions from header-tagged fields on the output type
+	// and static response headers from WithResponseHeader.
+	var respHeaders openapi3.Headers
+	if hasRespHeader && outType != nil {
+		respHeaders = generateRespHeaders(outType)
+		if outSchema != nil {
+			stripRespHeaderFields(outType, outSchema.Value)
+		}
+	}
+	for _, h := range staticHeaders {
+		if respHeaders == nil {
+			respHeaders = make(openapi3.Headers)
+		}
+		respHeaders[h.name] = &openapi3.HeaderRef{
+			Value: &openapi3.Header{
+				Parameter: openapi3.Parameter{
+					Name:     h.name,
+					In:       "header",
+					Required: true,
+					Schema: &openapi3.SchemaRef{
+						Value: &openapi3.Schema{
+							Type: &openapi3.Types{"string"},
+						},
+					},
+				},
 			},
 		}
+	}
+
+	if outSchema != nil {
+		resp := &openapi3.Response{
+			Description: new(http.StatusText(status)),
+		}
+		if len(outSchema.Value.Properties) > 0 {
+			resp.Content = map[string]*openapi3.MediaType{
+				"application/json": {
+					Schema: &openapi3.SchemaRef{
+						Ref: fmt.Sprintf("#/components/schemas/%s", outSchema.Ref),
+					},
+				},
+			}
+			a.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
+				Value: outSchema.Value,
+			}
+		}
+		if len(respHeaders) > 0 {
+			resp.Headers = respHeaders
+		}
+		op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
+	} else if len(respHeaders) > 0 {
 		op.Responses.Set(statusStr, &openapi3.ResponseRef{
 			Value: &openapi3.Response{
 				Description: new(http.StatusText(status)),
-				Content:     content,
+				Headers:     respHeaders,
 			},
 		})
-		a.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
-			Value: outSchema.Value,
-		}
 	}
 
 	// Error responses — always include 400, 422, and 500.

@@ -30,7 +30,7 @@ func handler(r *http.Request, in InputType) (OutputType, error) {
 
 - **`r *http.Request`** — the standard HTTP request, useful for cookies, path parameters, and other request metadata
 - **`in InputType`** — automatically decoded from JSON body, query parameters, HTTP headers, or multipart form data
-- **`OutputType`** — serialized as JSON in the response (can be a pointer or value type)
+- **`OutputType`** — serialized as JSON in the response (can be a pointer or value type). Fields with `header` tags are sent as HTTP response headers instead.
 - **`error`** — return an error to send an error response
 
 Use `struct{}` as the input type when a handler takes no input:
@@ -50,7 +50,7 @@ Fields are decoded based on struct tags:
 | `path` | URL path parameters | `path:"id"` |
 | `json` | Request body (JSON) | `json:"name"` |
 | `query` | Query parameters | `query:"page"` |
-| `header` | HTTP headers | `header:"Authorization"` |
+| `header` | HTTP headers (request) or response headers (output) | `header:"Authorization"` |
 | `form` | Multipart form data | `form:"file"` |
 
 You can combine tags in a single struct — `path`, `query`, `header`, and `json` fields can be freely mixed. The only restriction is that `form` and `json` tags cannot coexist on the same struct.
@@ -92,6 +92,79 @@ shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error
 })
 ```
 
+## Response headers
+
+Use `header` tags on the **output** struct to set HTTP response headers. Header-tagged fields are written as response headers and automatically excluded from the JSON body.
+
+```go
+type CachedResponse struct {
+    CacheControl string  `header:"Cache-Control"`
+    ETag         *string `header:"ETag"`
+    Items        []Item  `json:"items"`
+}
+
+shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) (*CachedResponse, error) {
+    etag := `"v1"`
+    return &CachedResponse{
+        CacheControl: "max-age=3600",
+        ETag:         &etag,
+        Items:        items,
+    }, nil
+})
+```
+
+The response above sends:
+- `Cache-Control: max-age=3600` and `ETag: "v1"` as HTTP headers
+- `{"items": [...]}` as the JSON body (header fields are stripped)
+
+Non-pointer fields are always sent — even with a zero value like `""` or `0`. Use a pointer field (`*string`, `*int`, etc.) for optional headers that should only be sent when set. Supported types are the same scalars as request headers: `string`, `bool`, `int*`, `uint*`, `float*`.
+
+Response headers are automatically documented in the OpenAPI spec. Non-pointer fields appear as `required`, pointer fields as optional.
+
+JSON struct tags like `omitempty` on non-header fields are fully preserved. If your response type implements `json.Marshaler`, headers are still extracted and set, but your custom `MarshalJSON` controls the body — header fields won't be automatically stripped in that case. Use `json:"-"` on header fields to exclude them from your custom encoding:
+
+```go
+type CustomResp struct {
+    XReq    string `header:"X-Request-Id" json:"-"`
+    Message string `json:"message"`
+}
+
+func (r CustomResp) MarshalJSON() ([]byte, error) {
+    // XReq won't appear in the output thanks to json:"-"
+    return json.Marshal(struct {
+        Message string `json:"message"`
+    }{Message: r.Message})
+}
+```
+
+### Static response headers
+
+Use `WithResponseHeader` to set a fixed header on every response. It works at all three levels — API, group, and route — and is documented in the OpenAPI spec.
+
+```go
+api := shiftapi.New(
+    shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),  // all routes
+)
+v1 := api.Group("/api/v1",
+    shiftapi.WithResponseHeader("X-API-Version", "1"),                 // group routes
+)
+shiftapi.Get(v1, "/items", listItems,
+    shiftapi.WithResponseHeader("Cache-Control", "max-age=3600"),      // single route
+)
+```
+
+Static headers are inherited: a route in a group receives headers from the API, the group, and any route-level options. Use `header` struct tags (above) for dynamic headers that depend on the response value, and `WithResponseHeader` for fixed values.
+
+### Header application order
+
+When a response is written, headers are applied in this order:
+
+1. **Static headers** (`WithResponseHeader`) — applied first, in API → Group → Route order. If the same header name is declared at multiple levels, the later level wins (Route overrides Group, Group overrides API).
+2. **Dynamic headers** (`header` struct tags) — applied second. If a dynamic header uses the same name as a static header, the dynamic value takes precedence.
+3. **Middleware-set headers** — middleware runs before the handler, so headers set by middleware can be overridden by both static and dynamic headers.
+
+This means the most specific source always wins: handler struct tags override `WithResponseHeader`, which overrides middleware.
+
 ## Route options
 
 Customize routes with options:
@@ -115,7 +188,8 @@ shiftapi.Post(api, "/users", createUser,
 | `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
 | `WithError[T](code)` | Declare an error type `T` at status `code` — see [Error Handling](/docs/core-concepts/error-handling) |
 | `WithMiddleware(mw...)` | Apply HTTP middleware to this route |
+| `WithResponseHeader(name, value)` | Set a static response header — see [Response headers](#response-headers) |
 
-`WithError` and `WithMiddleware` are `Option` values — they work at all levels (API, group, and route). `WithStatus` and `WithRouteInfo` are route-only options. See [Options](/docs/core-concepts/options) for the full option system and composition.
+`WithError`, `WithMiddleware`, and `WithResponseHeader` are `Option` values — they work at all levels (API, group, and route). `WithStatus` and `WithRouteInfo` are route-only options. See [Options](/docs/core-concepts/options) for the full option system and composition.
 
 See also: [Middleware](/docs/core-concepts/middleware), [Error Handling](/docs/core-concepts/error-handling), [Options](/docs/core-concepts/options).

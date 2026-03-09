@@ -9,8 +9,9 @@ type Router interface {
 }
 
 type routerData struct {
-	api        *API
-	prefix     string
-	errors     []errorEntry             // accumulated errors from API globals + group chain
-	middleware []func(http.Handler) http.Handler // accumulated middleware from group chain
+	api               *API
+	prefix            string
+	errors            []errorEntry                      // accumulated errors from API globals + group chain
+	middleware         []func(http.Handler) http.Handler // accumulated middleware from group chain
+	staticRespHeaders []staticResponseHeader             // accumulated static response headers from group chain
 }

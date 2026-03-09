@@ -7,10 +7,17 @@ import (
 
 // sharedConfig is the common interface implemented by [*API], [*groupConfig],
 // and [*routeConfig]. It provides the operations that are meaningful at all
-// three levels: adding errors and middleware.
+// three levels: adding errors, middleware, and static response headers.
 type sharedConfig interface {
 	addError(errorEntry)
 	addMiddleware([]func(http.Handler) http.Handler)
+	addStaticResponseHeader(staticResponseHeader)
+}
+
+// staticResponseHeader is a fixed name/value pair set on every response.
+type staticResponseHeader struct {
+	name  string
+	value string
 }
 
 // Option is the primary option type. It works at all levels: [New],
@@ -128,6 +135,34 @@ func WithError[T error](status int) Option {
 func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 	return func(c sharedConfig) {
 		c.addMiddleware(mw)
+	}
+}
+
+// WithResponseHeader sets a static response header on every response. The
+// header is also documented in the OpenAPI spec for each affected route.
+//
+// WithResponseHeader returns an [Option] that works at any level:
+//   - [New] — applies to all routes (API-level)
+//   - [API.Group] / [Group.Group] — applies to all routes in the group
+//   - [Get], [Post], etc. — applies to a single route
+//
+// Static headers are applied in API → Group → Route order. If the same header
+// name is declared at multiple levels, the later level wins. Dynamic headers
+// (header struct tags on the response type) are applied after static headers
+// and take precedence for the same name.
+//
+//	api := shiftapi.New(
+//	    shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+//	)
+//	v1 := api.Group("/api/v1",
+//	    shiftapi.WithResponseHeader("X-API-Version", "1"),
+//	)
+//	shiftapi.Get(v1, "/users", listUsers,
+//	    shiftapi.WithResponseHeader("Cache-Control", "max-age=3600"),
+//	)
+func WithResponseHeader(name, value string) Option {
+	return func(c sharedConfig) {
+		c.addStaticResponseHeader(staticResponseHeader{name: http.CanonicalHeaderKey(name), value: value})
 	}
 }
 

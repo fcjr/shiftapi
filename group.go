@@ -9,18 +9,20 @@ import (
 // with shared error types and middleware. Create one with [API.Group] or
 // nest with [Group.Group].
 type Group struct {
-	api        *API
-	prefix     string
-	errors     []errorEntry
-	middleware []func(http.Handler) http.Handler
+	api               *API
+	prefix            string
+	errors            []errorEntry
+	middleware         []func(http.Handler) http.Handler
+	staticRespHeaders []staticResponseHeader
 }
 
 func (g *Group) routerImpl() routerData {
 	return routerData{
-		api:        g.api,
-		prefix:     g.prefix,
-		errors:     g.errors,
-		middleware: g.middleware,
+		api:               g.api,
+		prefix:            g.prefix,
+		errors:            g.errors,
+		middleware:         g.middleware,
+		staticRespHeaders: g.staticRespHeaders,
 	}
 }
 
@@ -40,10 +42,11 @@ func (a *API) Group(prefix string, opts ...GroupOption) *Group {
 		opt.applyToGroup(&cfg)
 	}
 	return &Group{
-		api:        a,
-		prefix:     prefix,
-		errors:     append(slices.Clone(a.globalErrors), cfg.errors...),
-		middleware: append(slices.Clone(a.middleware), cfg.middleware...),
+		api:               a,
+		prefix:            prefix,
+		errors:            append(slices.Clone(a.globalErrors), cfg.errors...),
+		middleware:         append(slices.Clone(a.middleware), cfg.middleware...),
+		staticRespHeaders: append(slices.Clone(a.staticRespHeaders), cfg.staticRespHeaders...),
 	}
 }
 
@@ -55,16 +58,18 @@ func (g *Group) Group(prefix string, opts ...GroupOption) *Group {
 		opt.applyToGroup(&cfg)
 	}
 	return &Group{
-		api:        g.api,
-		prefix:     g.prefix + prefix,
-		errors:     append(slices.Clone(g.errors), cfg.errors...),
-		middleware: append(slices.Clone(g.middleware), cfg.middleware...),
+		api:               g.api,
+		prefix:            g.prefix + prefix,
+		errors:            append(slices.Clone(g.errors), cfg.errors...),
+		middleware:         append(slices.Clone(g.middleware), cfg.middleware...),
+		staticRespHeaders: append(slices.Clone(g.staticRespHeaders), cfg.staticRespHeaders...),
 	}
 }
 
 type groupConfig struct {
-	errors     []errorEntry
-	middleware []func(http.Handler) http.Handler
+	errors            []errorEntry
+	middleware         []func(http.Handler) http.Handler
+	staticRespHeaders []staticResponseHeader
 }
 
 func (c *groupConfig) addError(e errorEntry) {
@@ -73,4 +78,8 @@ func (c *groupConfig) addError(e errorEntry) {
 
 func (c *groupConfig) addMiddleware(mw []func(http.Handler) http.Handler) {
 	c.middleware = append(c.middleware, mw...)
+}
+
+func (c *groupConfig) addStaticResponseHeader(h staticResponseHeader) {
+	c.staticRespHeaders = append(c.staticRespHeaders, h)
 }

@@ -11,7 +11,7 @@ ShiftAPI uses a layered option system. Options configure the API, groups, and in
 
 | Type | Where it works | Examples |
 |------|---------------|----------|
-| `Option` | API, Group, and Route | `WithError`, `WithMiddleware` |
+| `Option` | API, Group, and Route | `WithError`, `WithMiddleware`, `WithResponseHeader` |
 | `APIOption` | API only (`New`) | `WithInfo`, `WithBadRequestError`, `WithInternalServerError` |
 | `RouteOption` | Route only (`Get`, `Post`, etc.) | `WithStatus`, `WithRouteInfo` |
 

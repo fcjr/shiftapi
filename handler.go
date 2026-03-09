@@ -15,9 +15,16 @@ import (
 // The In struct's fields are discriminated by struct tags:
 //   - path:"name" — parsed from URL path parameters (e.g. /users/{id})
 //   - query:"name" — parsed from URL query parameters
-//   - header:"name" — parsed from HTTP headers
+//   - header:"name" — parsed from HTTP request headers
 //   - json:"name" — parsed from the JSON request body (default for POST/PUT/PATCH)
 //   - form:"name" — parsed from multipart/form-data (for file uploads)
+//
+// The Resp struct's fields may also use the header tag to set response headers:
+//   - header:"name" — written as an HTTP response header (excluded from JSON body)
+//
+// Header-tagged fields on the response are automatically stripped from the JSON
+// body and documented as response headers in the OpenAPI spec. Use a pointer
+// field (e.g. *string) for optional response headers that may not always be set.
 //
 // Use struct{} as In for routes that take no input, or as Resp for routes
 // that return no body (e.g. health checks that only need a status code).
@@ -26,7 +33,7 @@ import (
 // parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, respEnc *respEncoder, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
@@ -92,6 +99,14 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 		resp, err := fn(r, in)
 		if err != nil {
 			handleError(w, internalServerFn, err, errLookup)
+			return
+		}
+		for _, h := range staticHeaders {
+			w.Header().Set(h.name, h.value)
+		}
+		if respEnc != nil {
+			writeResponseHeaders(w, resp)
+			writeJSON(w, status, respEnc.encode(resp))
 			return
 		}
 		writeJSON(w, status, resp)

@@ -24,8 +24,9 @@ type API struct {
 	maxUploadSize    int64
 	badRequestFn     func(error) any // builds the 400 response body from a parse error
 	internalServerFn func(error) any // builds the 500 response body from an unmatched error
-	globalErrors     []errorEntry                      // error types registered at the API level via WithError
-	middleware       []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
+	globalErrors          []errorEntry                      // error types registered at the API level via WithError
+	middleware            []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
+	staticRespHeaders     []staticResponseHeader            // static response headers registered at the API level
 }
 
 // New creates a new API with the given options. By default the API uses a
@@ -110,12 +111,17 @@ func (a *API) addMiddleware(mw []func(http.Handler) http.Handler) {
 	a.middleware = append(a.middleware, mw...)
 }
 
+func (a *API) addStaticResponseHeader(h staticResponseHeader) {
+	a.staticRespHeaders = append(a.staticRespHeaders, h)
+}
+
 func (a *API) routerImpl() routerData {
 	return routerData{
-		api:        a,
-		prefix:     "",
-		errors:     a.globalErrors,
-		middleware: a.middleware,
+		api:               a,
+		prefix:            "",
+		errors:            a.globalErrors,
+		middleware:         a.middleware,
+		staticRespHeaders: a.staticRespHeaders,
 	}
 }
 
