@@ -8,6 +8,42 @@ import (
 	"reflect"
 )
 
+// RawHandlerFunc is a handler function that writes directly to the
+// [http.ResponseWriter]. Unlike [HandlerFunc] it has only one type parameter
+// for the input — the handler owns the response lifecycle entirely, which
+// makes it suitable for streaming (SSE), file downloads, WebSocket upgrades,
+// and other use cases where JSON encoding is inappropriate.
+//
+// The input struct In is parsed and validated identically to [HandlerFunc]:
+// path, query, header, json, and form tags all work as expected. For
+// POST/PUT/PATCH methods the body is decoded only when the input struct
+// contains json or form-tagged fields, leaving r.Body available otherwise.
+type RawHandlerFunc[In any] func(w http.ResponseWriter, r *http.Request, in In) error
+
+// writeTracker wraps an http.ResponseWriter and records whether Write or
+// WriteHeader has been called. It implements Unwrap() so that callers can
+// reach the underlying ResponseWriter for http.Flusher, http.Hijacker, etc.
+type writeTracker struct {
+	http.ResponseWriter
+	written bool
+}
+
+func (wt *writeTracker) WriteHeader(code int) {
+	wt.written = true
+	wt.ResponseWriter.WriteHeader(code)
+}
+
+func (wt *writeTracker) Write(b []byte) (int, error) {
+	wt.written = true
+	return wt.ResponseWriter.Write(b)
+}
+
+// Unwrap returns the underlying ResponseWriter so that callers can type-assert
+// to http.Flusher, http.Hijacker, etc.
+func (wt *writeTracker) Unwrap() http.ResponseWriter {
+	return wt.ResponseWriter
+}
+
 // HandlerFunc is a typed handler function for API routes. The type parameters
 // In and Resp are the request and response types — both are automatically
 // reflected into the OpenAPI schema.
@@ -122,6 +158,73 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 			return
 		}
 		writeJSON(w, status, resp)
+	}
+}
+
+func adaptRaw[In any](fn RawHandlerFunc[In], validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in In
+		rv := reflect.ValueOf(&in).Elem()
+
+		if hasForm {
+			if err := parseFormInto(rv, r, maxUploadSize); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+			rv = reflect.ValueOf(&in).Elem()
+		} else if hasBody {
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+			rv = reflect.ValueOf(&in).Elem()
+			if hasQuery {
+				resetQueryFields(rv)
+			}
+			if hasPath {
+				resetPathFields(rv)
+			}
+			if hasHeader {
+				resetHeaderFields(rv)
+			}
+		}
+
+		if hasQuery {
+			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+		}
+		if hasPath {
+			if err := parsePathInto(rv, r); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+		}
+		if hasHeader {
+			if err := parseHeadersInto(rv, r.Header); err != nil {
+				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
+				return
+			}
+		}
+
+		if err := validate(in); err != nil {
+			handleError(w, internalServerFn, err, errLookup)
+			return
+		}
+
+		for _, h := range staticHeaders {
+			w.Header().Set(h.name, h.value)
+		}
+
+		wt := &writeTracker{ResponseWriter: w}
+		if err := fn(wt, r, in); err != nil {
+			if !wt.written {
+				handleError(w, internalServerFn, err, errLookup)
+			} else {
+				log.Printf("shiftapi: raw handler error after response started: %v", err)
+			}
+		}
 	}
 }
 

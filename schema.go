@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, noBody, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader) error {
+func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, noBody, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader, contentType string, responseSchema *openapi3.SchemaRef) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -110,6 +110,38 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		// and optional headers, but no content.
 		resp := &openapi3.Response{
 			Description: new(http.StatusText(status)),
+		}
+		if len(respHeaders) > 0 {
+			resp.Headers = respHeaders
+		}
+		op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
+	} else if contentType != "" {
+		// Custom content type (from WithContentType).
+		resp := &openapi3.Response{
+			Description: new(http.StatusText(status)),
+		}
+		if responseSchema != nil {
+			mediaType := &openapi3.MediaType{}
+			if responseSchema.Ref != "" && responseSchema.Value != nil && len(responseSchema.Value.Properties) > 0 {
+				a.spec.Components.Schemas[responseSchema.Ref] = &openapi3.SchemaRef{
+					Value: responseSchema.Value,
+				}
+				mediaType.Schema = &openapi3.SchemaRef{
+					Ref: fmt.Sprintf("#/components/schemas/%s", responseSchema.Ref),
+				}
+			} else {
+				if responseSchema.Value != nil {
+					a.registerNestedSchemas(responseSchema)
+				}
+				mediaType.Schema = responseSchema
+			}
+			resp.Content = map[string]*openapi3.MediaType{
+				contentType: mediaType,
+			}
+		} else {
+			resp.Content = map[string]*openapi3.MediaType{
+				contentType: {},
+			}
 		}
 		if len(respHeaders) > 0 {
 			resp.Headers = respHeaders

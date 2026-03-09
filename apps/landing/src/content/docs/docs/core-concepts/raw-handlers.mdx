@@ -1,0 +1,250 @@
+---
+title: Raw Handlers
+description: Use HandleRaw for streaming, file downloads, WebSockets, and other responses that need direct control over the HTTP response.
+sidebar:
+  order: 7
+---
+
+ShiftAPI's `Handle` function owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: Server-Sent Events, file downloads, WebSocket upgrades, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
+
+## Registering raw handlers
+
+```go
+shiftapi.HandleRaw(api, "GET /events", sseHandler)
+shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler)
+shiftapi.HandleRaw(api, "GET /ws", wsHandler)
+```
+
+## Handler signature
+
+A raw handler has a single type parameter for the input:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request, in InputType) error
+```
+
+- **`w http.ResponseWriter`** — you write the response directly (status code, headers, body)
+- **`r *http.Request`** — the standard HTTP request
+- **`in InputType`** — automatically decoded from path, query, header, body, or form — identical to `Handle`
+- **`error`** — return an error to let the framework send an error response (only if you haven't started writing)
+
+Use `struct{}` when the handler takes no input:
+
+```go
+shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.WriteHeader(http.StatusOK)
+    // stream events...
+    return nil
+})
+```
+
+## Input parsing
+
+Input decoding works identically to `Handle` — all struct tags (`path`, `query`, `header`, `json`, `form`) and validation rules apply:
+
+```go
+type DownloadInput struct {
+    ID     string `path:"id" validate:"required,uuid"`
+    Format string `query:"format"`
+}
+
+shiftapi.HandleRaw(api, "GET /files/{id}", func(w http.ResponseWriter, r *http.Request, in DownloadInput) error {
+    file, err := store.Get(in.ID)
+    if err != nil {
+        return err
+    }
+    w.Header().Set("Content-Type", "application/octet-stream")
+    w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.%s"`, in.ID, in.Format))
+    _, err = io.Copy(w, file)
+    return err
+})
+```
+
+### Body passthrough for POST/PUT/PATCH
+
+With `Handle`, POST/PUT/PATCH methods always decode the request body — even when the input is `struct{}`. With `HandleRaw`, the body is only decoded when the input struct has `json` or `form`-tagged fields. This lets you consume `r.Body` directly:
+
+```go
+shiftapi.HandleRaw(api, "POST /upload", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+    data, err := io.ReadAll(r.Body)
+    if err != nil {
+        return err
+    }
+    // process raw body...
+    w.WriteHeader(http.StatusAccepted)
+    return nil
+}, shiftapi.WithContentType("application/octet-stream"))
+```
+
+## Error handling
+
+Error behavior depends on whether the handler has started writing the response:
+
+- **Before writing** — if your handler returns an error and hasn't called `Write` or `WriteHeader`, the framework handles it normally: matching `WithError` types, returning `422` for validation errors, or falling back to `500`.
+- **After writing** — if the response has already started (you called `WriteHeader` or `Write`), it's too late to send an error response. The error is logged but the response is not modified. The client receives whatever was already written.
+
+```go
+shiftapi.HandleRaw(api, "GET /stream", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+    // Error before writing → framework sends proper error response
+    data, err := loadData()
+    if err != nil {
+        return err // 500 Internal Server Error (or matched WithError type)
+    }
+
+    w.Header().Set("Content-Type", "text/plain")
+    w.WriteHeader(http.StatusOK)
+
+    // Error after writing → logged, but response already started
+    _, err = w.Write(data)
+    return err
+})
+```
+
+`WithError` works the same way as with `Handle`:
+
+```go
+shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler,
+    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+)
+```
+
+## Flushing and streaming
+
+The `ResponseWriter` passed to your handler is wrapped to track writes. Use `http.NewResponseController` to access `Flush`, `Hijack`, `SetReadDeadline`, and other optional interfaces — it walks through wrappers automatically:
+
+```go
+shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+    rc := http.NewResponseController(w)
+
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.WriteHeader(http.StatusOK)
+
+    for event := range events {
+        fmt.Fprintf(w, "data: %s\n\n", event)
+        if err := rc.Flush(); err != nil {
+            return err
+        }
+    }
+    return nil
+}, shiftapi.WithContentType("text/event-stream"))
+```
+
+## OpenAPI: WithContentType
+
+By default, a `HandleRaw` route produces an OpenAPI response with only a description and no `content` section. Use `WithContentType` to declare the response media type in the spec.
+
+### Content type only (no schema)
+
+Use this for binary downloads, opaque streams, or any response where a schema isn't meaningful:
+
+```go
+shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler,
+    shiftapi.WithContentType("application/octet-stream"),
+)
+```
+
+Produces:
+
+```yaml
+responses:
+  '200':
+    description: OK
+    content:
+      application/octet-stream: {}
+```
+
+### Content type with a response schema
+
+Use `ResponseSchema[T]()` to document the shape of responses even when the handler writes them manually. This is especially useful for SSE, where the individual event payload has a defined structure:
+
+```go
+type SSEEvent struct {
+    Type string `json:"type"`
+    Data string `json:"data"`
+}
+
+shiftapi.HandleRaw(api, "GET /events", sseHandler,
+    shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[SSEEvent]()),
+)
+```
+
+Produces:
+
+```yaml
+responses:
+  '200':
+    description: OK
+    content:
+      text/event-stream:
+        schema:
+          $ref: '#/components/schemas/SSEEvent'
+```
+
+The schema is generated using the same reflection logic as typed handlers — struct tags, validation rules, and enums all apply to `T`.
+
+### No WithContentType (default)
+
+A `HandleRaw` route with no `WithContentType` produces a response with only a description. This is appropriate for WebSocket upgrades or other routes where the response format isn't meaningful to document:
+
+```go
+shiftapi.HandleRaw(api, "GET /ws", wsHandler)
+```
+
+Produces:
+
+```yaml
+responses:
+  '200':
+    description: OK
+```
+
+### Using WithContentType on Handle
+
+`WithContentType` also works with `Handle` to override the default `application/json` media type key. This is a niche feature but useful if your handler returns a non-JSON content type while still using the typed response:
+
+```go
+shiftapi.Handle(api, "GET /config", getConfig,
+    shiftapi.WithContentType("application/yaml"),
+)
+```
+
+## Route options
+
+All standard route options work with `HandleRaw`:
+
+```go
+shiftapi.HandleRaw(api, "GET /events", sseHandler,
+    shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[SSEEvent]()),
+    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+        Summary: "Subscribe to events",
+        Tags:    []string{"events"},
+    }),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithMiddleware(auth),
+    shiftapi.WithResponseHeader("X-Stream-ID", "events"),
+)
+```
+
+| Option | Description |
+|--------|-------------|
+| `WithContentType(ct)` | Set the response media type in the OpenAPI spec |
+| `WithContentType(ct, ResponseSchema[T]())` | Set the media type and include a typed schema |
+| `WithStatus(code)` | Set the success status code in the OpenAPI spec (default: `200`) |
+| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
+| `WithError[T](code)` | Declare an error type at a status code |
+| `WithMiddleware(mw...)` | Apply HTTP middleware |
+| `WithResponseHeader(name, value)` | Set a static response header |
+
+## When to use HandleRaw vs Handle
+
+| Use case | Recommendation |
+|----------|---------------|
+| JSON API endpoint | `Handle` — let the framework encode the response |
+| Server-Sent Events (SSE) | `HandleRaw` + `WithContentType("text/event-stream")` |
+| File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
+| WebSocket upgrade | `HandleRaw` (no `WithContentType` needed) |
+| Streaming response | `HandleRaw` with `Flusher` access |
+| Proxy / passthrough | `HandleRaw` with `struct{}` input to preserve `r.Body` |
+| JSON but custom content type | `Handle` + `WithContentType("application/vnd.api+json")` |

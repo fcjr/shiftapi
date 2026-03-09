@@ -5567,3 +5567,245 @@ func TestPointerValidateRequiredIsRequired(t *testing.T) {
 		t.Error("age should be required (pointer + validate:required)")
 	}
 }
+
+// --- HandleRaw tests ---
+
+func TestHandleRawReceivesParsedInput(t *testing.T) {
+	api := newTestAPI(t)
+	type Input struct {
+		Name string `query:"name"`
+	}
+	shiftapi.HandleRaw(api, "GET /raw", func(w http.ResponseWriter, r *http.Request, in Input) error {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, err := fmt.Fprintf(w, "hello %s", in.Name)
+		return err
+	})
+
+	req := httptest.NewRequest("GET", "/raw?name=alice", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := readBody(t, resp)
+	if body != "hello alice" {
+		t.Errorf("expected 'hello alice', got %q", body)
+	}
+}
+
+func TestHandleRawErrorWhenNothingWritten(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /fail", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		return errors.New("something broke")
+	})
+
+	resp := doRequest(t, api, "GET", "/fail", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleRawErrorAfterWriteDoesNotCorruptResponse(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /partial", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("partial"))
+		return errors.New("late error")
+	})
+
+	req := httptest.NewRequest("GET", "/partial", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	// Status should be 200 (already written), not 500.
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := readBody(t, resp)
+	if body != "partial" {
+		t.Errorf("expected 'partial', got %q", body)
+	}
+}
+
+func TestHandleRawPostEmptyInputLeavesBodyUnconsumed(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "POST /upload", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		// Handler should be able to read r.Body itself.
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			return err
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+		return nil
+	})
+
+	req := httptest.NewRequest("POST", "/upload", strings.NewReader("raw body data"))
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := readBody(t, resp)
+	if body != "raw body data" {
+		t.Errorf("expected 'raw body data', got %q", body)
+	}
+}
+
+func TestHandleRawFlusherAccessible(t *testing.T) {
+	api := newTestAPI(t)
+	flushed := false
+	shiftapi.HandleRaw(api, "GET /flush", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		rc := http.NewResponseController(w)
+		w.WriteHeader(http.StatusOK)
+		if err := rc.Flush(); err != nil {
+			return err
+		}
+		flushed = true
+		return nil
+	})
+
+	req := httptest.NewRequest("GET", "/flush", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	if !flushed {
+		t.Error("expected Flush via ResponseController to succeed through writeTracker")
+	}
+}
+
+func TestHandleRawSpecNoOptions(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /ws", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		return nil
+	})
+
+	spec := api.Spec()
+	pathItem := spec.Paths.Find("/ws")
+	if pathItem == nil || pathItem.Get == nil {
+		t.Fatal("expected path item for /ws")
+	}
+	resp := pathItem.Get.Responses.Value("200")
+	// With no WithContentType, outType is nil and contentType is "" — no content section.
+	if resp != nil && resp.Value.Content != nil {
+		t.Error("expected no content section for HandleRaw without WithContentType")
+	}
+}
+
+func TestHandleRawSpecWithContentTypeNoSchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		return nil
+	}, shiftapi.WithContentType("text/event-stream"))
+
+	spec := api.Spec()
+	resp := spec.Paths.Find("/events").Get.Responses.Value("200")
+	if resp == nil {
+		t.Fatal("expected 200 response")
+	}
+	ct := resp.Value.Content["text/event-stream"]
+	if ct == nil {
+		t.Fatal("expected text/event-stream content type")
+	}
+	if ct.Schema != nil {
+		t.Error("expected no schema for content type without ResponseSchema")
+	}
+}
+
+type SSEEvent struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
+func TestHandleRawSpecWithContentTypeAndSchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		return nil
+	}, shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[SSEEvent]()))
+
+	spec := api.Spec()
+	resp := spec.Paths.Find("/events").Get.Responses.Value("200")
+	if resp == nil {
+		t.Fatal("expected 200 response")
+	}
+	ct := resp.Value.Content["text/event-stream"]
+	if ct == nil {
+		t.Fatal("expected text/event-stream content type")
+	}
+	if ct.Schema == nil {
+		t.Fatal("expected schema for content type with ResponseSchema")
+	}
+	if ct.Schema.Ref == "" {
+		t.Error("expected $ref for SSEEvent schema")
+	}
+	if !strings.Contains(ct.Schema.Ref, "SSEEvent") {
+		t.Errorf("expected ref to contain SSEEvent, got %q", ct.Schema.Ref)
+	}
+}
+
+func TestHandleWithContentTypeOverridesJSON(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Handle(api, "GET /health", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	}, shiftapi.WithContentType("application/yaml"))
+
+	spec := api.Spec()
+	resp := spec.Paths.Find("/health").Get.Responses.Value("200")
+	if resp == nil {
+		t.Fatal("expected 200 response")
+	}
+	if resp.Value.Content["application/json"] != nil {
+		t.Error("expected application/json to be absent when WithContentType overrides it")
+	}
+	if resp.Value.Content["application/yaml"] == nil {
+		t.Error("expected application/yaml content type")
+	}
+}
+
+func TestHandleRawWithPathParams(t *testing.T) {
+	api := newTestAPI(t)
+	type Input struct {
+		ID string `path:"id"`
+	}
+	shiftapi.HandleRaw(api, "GET /files/{id}", func(w http.ResponseWriter, r *http.Request, in Input) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "file:%s", in.ID)
+		return nil
+	}, shiftapi.WithContentType("application/octet-stream"))
+
+	req := httptest.NewRequest("GET", "/files/abc123", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body := readBody(t, resp)
+	if body != "file:abc123" {
+		t.Errorf("expected 'file:abc123', got %q", body)
+	}
+}
+
+func TestHandleRawStaticHeaders(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.HandleRaw(api, "GET /download", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}, shiftapi.WithResponseHeader("X-Custom", "test-value"))
+
+	req := httptest.NewRequest("GET", "/download", nil)
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	if got := resp.Header.Get("X-Custom"); got != "test-value" {
+		t.Errorf("expected X-Custom header 'test-value', got %q", got)
+	}
+}
