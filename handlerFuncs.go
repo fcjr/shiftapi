@@ -99,8 +99,10 @@ func registerRoute[In, Resp any](
 		pathType = rawInType
 	}
 
-	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, noBody, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders); err != nil {
-		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
+	if !cfg.hidden {
+		if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, noBody, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders); err != nil {
+			panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
+		}
 	}
 
 	errLookup := buildErrorLookup(allErrors)

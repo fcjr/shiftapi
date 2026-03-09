@@ -13,7 +13,7 @@ ShiftAPI uses a layered option system. Options configure the API, groups, and in
 |------|---------------|----------|
 | `Option` | API, Group, and Route | `WithError`, `WithMiddleware`, `WithResponseHeader` |
 | `APIOption` | API only (`New`) | `WithInfo`, `WithBadRequestError`, `WithInternalServerError` |
-| `RouteOption` | Route only (`Get`, `Post`, etc.) | `WithStatus`, `WithRouteInfo` |
+| `RouteOption` | Route only (`Get`, `Post`, etc.) | `WithStatus`, `WithRouteInfo`, `WithHidden` |
 
 `Option` implements all three level interfaces, so `WithError` and `WithMiddleware` work everywhere. Level-specific options like `WithStatus` are restricted to their level at compile time.
 
@@ -84,3 +84,13 @@ shiftapi.Get(admin, "/stats", getStats) // GET /api/v1/admin/stats
 ```
 
 Options merge across all three levels: `New()` (API-wide) → `Group()` (group-level) → route registration (route-level).
+
+## Hiding routes from the spec
+
+Use `WithHidden()` to exclude a route from the generated OpenAPI schema (and therefore from any generated client). The route is still registered and serves requests normally — it just won't appear in the spec or docs.
+
+```go
+shiftapi.Get(api, "/internal/health", healthCheck, shiftapi.WithHidden())
+```
+
+This is useful for internal endpoints, health checks, or debug routes that shouldn't be part of the public API surface.

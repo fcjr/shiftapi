@@ -10,6 +10,7 @@ type routeConfig struct {
 	errors            []errorEntry
 	middleware         []func(http.Handler) http.Handler
 	staticRespHeaders []staticResponseHeader
+	hidden            bool
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -49,6 +50,17 @@ type RouteInfo struct {
 func WithRouteInfo(info RouteInfo) routeOptionFunc {
 	return func(cfg *routeConfig) {
 		cfg.info = &info
+	}
+}
+
+// WithHidden excludes the route from the generated OpenAPI schema (and
+// therefore from any generated client). The route is still registered and
+// serves requests normally.
+//
+//	shiftapi.Get(api, "/internal/health", healthCheck, shiftapi.WithHidden())
+func WithHidden() routeOptionFunc {
+	return func(cfg *routeConfig) {
+		cfg.hidden = true
 	}
 }
 
