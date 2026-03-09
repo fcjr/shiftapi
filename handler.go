@@ -47,7 +47,7 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 			// Re-point rv after decode (in case In is a pointer that was nil)
 			rv = reflect.ValueOf(&in).Elem()
 
-			// Reset any query/path-tagged fields that body decode may have
+			// Reset any query/path/header-tagged fields that body decode may have
 			// inadvertently set, so they only come from their proper source.
 			if hasQuery {
 				resetQueryFields(rv)
@@ -55,12 +55,9 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 			if hasPath {
 				resetPathFields(rv)
 			}
-		}
-
-		// Reset any header-tagged fields that body decode may have
-		// inadvertently set, so they only come from HTTP headers.
-		if hasBody && hasHeader {
-			resetHeaderFields(rv)
+			if hasHeader {
+				resetHeaderFields(rv)
+			}
 		}
 
 		// Parse query params if there are query fields
