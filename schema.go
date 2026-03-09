@@ -128,7 +128,8 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 			resp := &openapi3.Response{
 				Description: new(http.StatusText(status)),
 			}
-			if len(outSchema.Value.Properties) > 0 {
+			if outSchema.Ref != "" && len(outSchema.Value.Properties) > 0 {
+				// Named object schema — reference by $ref.
 				resp.Content = map[string]*openapi3.MediaType{
 					"application/json": {
 						Schema: &openapi3.SchemaRef{
@@ -138,6 +139,15 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 				}
 				a.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
 					Value: outSchema.Value,
+				}
+			} else if outSchema.Value.Type != nil && !outSchema.Value.Type.Is("object") {
+				// Non-object schema (array, primitive) — inline directly.
+				// Register any nested object schemas (e.g. array items) in components.
+				a.registerNestedSchemas(outSchema)
+				resp.Content = map[string]*openapi3.MediaType{
+					"application/json": {
+						Schema: outSchema,
+					},
 				}
 			}
 			if len(respHeaders) > 0 {
@@ -610,6 +620,29 @@ func stripPathFields(t reflect.Type, schema *openapi3.Schema) {
 				schema.Required = append(schema.Required[:j], schema.Required[j+1:]...)
 				break
 			}
+		}
+	}
+}
+
+// registerNestedSchemas walks a schema tree and registers any object schemas
+// that have a bare Ref (name only) into components/schemas, replacing the bare
+// name with a full JSON Pointer reference.
+func (a *API) registerNestedSchemas(s *openapi3.SchemaRef) {
+	if s == nil || s.Value == nil {
+		return
+	}
+	// If this is an object with a bare ref, register it.
+	if s.Ref != "" && s.Value.Type != nil && s.Value.Type.Is("object") {
+		a.spec.Components.Schemas[s.Ref] = &openapi3.SchemaRef{Value: s.Value}
+		s.Ref = fmt.Sprintf("#/components/schemas/%s", s.Ref)
+		s.Value = nil // use $ref only
+	}
+	if s.Value != nil {
+		if s.Value.Items != nil {
+			a.registerNestedSchemas(s.Value.Items)
+		}
+		for _, p := range s.Value.Properties {
+			a.registerNestedSchemas(p)
 		}
 	}
 }

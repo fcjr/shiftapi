@@ -5342,3 +5342,135 @@ func TestNoBody_PanicsOnBodyWith204(t *testing.T) {
 		return Greeting{}, nil
 	}, shiftapi.WithStatus(http.StatusNoContent))
 }
+
+// --- Slice/array response tests ---
+
+type SliceItem struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+func TestSliceResponse_Runtime(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) ([]SliceItem, error) {
+		return []SliceItem{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/items", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var items []SliceItem
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if items[0].ID != 1 || items[1].Name != "b" {
+		t.Errorf("unexpected items: %+v", items)
+	}
+}
+
+func TestSliceResponse_NilSlice(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) ([]SliceItem, error) {
+		return nil, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/items", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// encoding/json encodes nil slices as "null"
+	got := strings.TrimSpace(string(body))
+	if got != "null" {
+		t.Errorf("expected null, got %q", got)
+	}
+}
+
+func TestSliceResponse_EmptySlice(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) ([]SliceItem, error) {
+		return []SliceItem{}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/items", "")
+	body, _ := io.ReadAll(resp.Body)
+	got := strings.TrimSpace(string(body))
+	if got != "[]" {
+		t.Errorf("expected [], got %q", got)
+	}
+}
+
+func TestSliceResponse_StringSlice(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/tags", func(r *http.Request, _ struct{}) ([]string, error) {
+		return []string{"go", "api"}, nil
+	})
+
+	resp := doRequest(t, api, "GET", "/tags", "")
+	var tags []string
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(tags) != 2 || tags[0] != "go" {
+		t.Errorf("unexpected tags: %v", tags)
+	}
+}
+
+func TestSliceResponse_OpenAPI_ArraySchema(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/items", func(r *http.Request, _ struct{}) ([]SliceItem, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/items").Get.Responses.Value("200")
+	if respRef == nil || respRef.Value == nil {
+		t.Fatal("expected 200 response in spec")
+	}
+	ct := respRef.Value.Content["application/json"]
+	if ct == nil || ct.Schema == nil {
+		t.Fatal("expected application/json content with schema")
+	}
+	if ct.Schema.Value == nil || !ct.Schema.Value.Type.Is("array") {
+		t.Fatal("expected array type in response schema")
+	}
+	items := ct.Schema.Value.Items
+	if items == nil {
+		t.Fatal("expected items in array schema")
+	}
+	if items.Ref != "#/components/schemas/SliceItem" {
+		t.Errorf("expected $ref to SliceItem, got %q", items.Ref)
+	}
+	// Verify SliceItem is in components
+	si := spec.Components.Schemas["SliceItem"]
+	if si == nil || si.Value == nil {
+		t.Fatal("expected SliceItem in components/schemas")
+	}
+	if si.Value.Properties["id"] == nil || si.Value.Properties["name"] == nil {
+		t.Error("expected id and name properties on SliceItem schema")
+	}
+}
+
+func TestSliceResponse_OpenAPI_StringSlice(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/tags", func(r *http.Request, _ struct{}) ([]string, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/tags").Get.Responses.Value("200")
+	ct := respRef.Value.Content["application/json"]
+	if ct == nil || ct.Schema == nil || ct.Schema.Value == nil {
+		t.Fatal("expected schema")
+	}
+	if !ct.Schema.Value.Type.Is("array") {
+		t.Fatal("expected array type")
+	}
+	if ct.Schema.Value.Items == nil || !ct.Schema.Value.Items.Value.Type.Is("string") {
+		t.Error("expected string items type")
+	}
+}
