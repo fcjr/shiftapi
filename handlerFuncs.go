@@ -33,13 +33,35 @@ func parsePattern(pattern string) (method, path string) {
 	return method, path
 }
 
-func registerRoute[In, Resp any](
-	router Router,
-	method string,
-	path string,
-	fn HandlerFunc[In, Resp],
-	options ...RouteOption,
-) {
+// routeSetup holds the computed values from input type reflection that are
+// shared between registerRoute and registerRawRoute.
+type routeSetup struct {
+	api             *API
+	cfg             routeConfig
+	fullPath        string
+	inType          reflect.Type
+	rawInType       reflect.Type
+	hasPath         bool
+	hasQuery        bool
+	hasHeader       bool
+	hasBody         bool
+	hasForm         bool
+	queryType       reflect.Type
+	headerType      reflect.Type
+	pathType        reflect.Type
+	bodyType        reflect.Type
+	allErrors       []errorEntry
+	allStaticHeaders []staticResponseHeader
+	errLookup       errorLookup
+	muxPattern      string
+}
+
+// prepareRoute performs the input type reflection, path validation, and schema
+// setup shared by both registerRoute and registerRawRoute. The decodeBody and
+// bodyType fields depend on whether the caller forces body decode for
+// POST/PUT/PATCH (Handle does, HandleRaw does not), so they are computed here
+// based on the forceMethodBody flag.
+func prepareRoute[In any](router Router, method, path string, forceMethodBody bool, options []RouteOption) routeSetup {
 	rd := router.routerImpl()
 	api := rd.api
 	fullPath := strings.TrimRight(rd.prefix, "/") + path
@@ -48,7 +70,6 @@ func registerRoute[In, Resp any](
 
 	var in In
 	inType := reflect.TypeOf(in)
-	// Dereference pointer to get the underlying struct type
 	rawInType := inType
 	for rawInType != nil && rawInType.Kind() == reflect.Pointer {
 		rawInType = rawInType.Elem()
@@ -56,7 +77,6 @@ func registerRoute[In, Resp any](
 
 	hasPath, hasQuery, hasHeader, hasBody, hasForm := partitionFields(rawInType)
 
-	// Validate path-tagged fields match the route pattern.
 	if hasPath {
 		matches := pathParamRe.FindAllStringSubmatch(fullPath, -1)
 		routeParams := make(map[string]bool, len(matches))
@@ -74,11 +94,8 @@ func registerRoute[In, Resp any](
 	if hasHeader {
 		headerType = rawInType
 	}
-	// POST/PUT/PATCH conventionally carry a request body, so always attempt
-	// body decode for these methods — even when the input is struct{}.
-	// This means Handle(api, "POST /path", func(r, _ struct{}) ...) requires at least "{}".
-	methodRequiresBody := method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
-	decodeBody := !hasForm && (hasBody || methodRequiresBody)
+
+	methodRequiresBody := forceMethodBody && (method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch)
 
 	var bodyType reflect.Type
 	if !hasForm {
@@ -89,6 +106,113 @@ func registerRoute[In, Resp any](
 		}
 	}
 
+	allErrors := append(rd.errors, cfg.errors...)
+	allStaticHeaders := append(rd.staticRespHeaders, cfg.staticRespHeaders...)
+
+	var pathType reflect.Type
+	if hasPath {
+		pathType = rawInType
+	}
+
+	errLookup := buildErrorLookup(allErrors)
+	muxPattern := fmt.Sprintf("%s %s", method, fullPath)
+
+	// Apply middleware chain: route-level (innermost), then group-level (outermost).
+	// Stored in cfg/rd for wrapHandler to apply.
+
+	return routeSetup{
+		api:              api,
+		cfg:              cfg,
+		fullPath:         fullPath,
+		inType:           inType,
+		rawInType:        rawInType,
+		hasPath:          hasPath,
+		hasQuery:         hasQuery,
+		hasHeader:        hasHeader,
+		hasBody:          hasBody,
+		hasForm:          hasForm,
+		queryType:        queryType,
+		headerType:       headerType,
+		pathType:         pathType,
+		bodyType:         bodyType,
+		allErrors:        allErrors,
+		allStaticHeaders: allStaticHeaders,
+		errLookup:        errLookup,
+		muxPattern:       muxPattern,
+	}
+}
+
+// schemaInput builds the parameters for updateSchema from the route setup.
+func (s *routeSetup) schemaInput(method string, outType reflect.Type, hasRespHeader, noBody bool) schemaInput {
+	return schemaInput{
+		method:             method,
+		path:               s.fullPath,
+		pathType:           s.pathType,
+		queryType:          s.queryType,
+		headerType:         s.headerType,
+		bodyType:           s.bodyType,
+		outType:            outType,
+		hasRespHeader:      hasRespHeader,
+		noBody:             noBody,
+		hasForm:            s.hasForm,
+		formType:           s.rawInType,
+		info:               s.cfg.info,
+		status:             s.cfg.status,
+		errors:             s.allErrors,
+		staticHeaders:      s.allStaticHeaders,
+		contentType:        s.cfg.contentType,
+		responseSchemaType: s.cfg.responseSchemaType,
+	}
+}
+
+// wrapAndRegister applies middleware and registers the handler on the mux.
+func (s *routeSetup) wrapAndRegister(router Router, h http.Handler) {
+	rd := router.routerImpl()
+	for i := len(s.cfg.middleware) - 1; i >= 0; i-- {
+		h = s.cfg.middleware[i](h)
+	}
+	for i := len(rd.middleware) - 1; i >= 0; i-- {
+		h = rd.middleware[i](h)
+	}
+	s.api.mux.Handle(s.muxPattern, h)
+}
+
+// handlerCfg builds the per-request handler configuration from the route setup
+// and API. The forceMethodBody flag controls whether POST/PUT/PATCH methods
+// force body decode even without json-tagged fields (true for Handle, false for
+// HandleRaw).
+func (s *routeSetup) handlerCfg(method string, forceMethodBody bool) *handlerConfig {
+	decodeBody := s.hasBody
+	if !decodeBody && !s.hasForm && forceMethodBody {
+		decodeBody = method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
+	}
+	if s.hasForm {
+		decodeBody = false
+	}
+	return &handlerConfig{
+		hasPath:          s.hasPath,
+		hasQuery:         s.hasQuery,
+		hasHeader:        s.hasHeader,
+		decodeBody:       decodeBody,
+		hasForm:          s.hasForm,
+		maxUploadSize:    s.api.maxUploadSize,
+		staticHeaders:    s.allStaticHeaders,
+		errLookup:        s.errLookup,
+		validate:         s.api.validateBody,
+		badRequestFn:     s.api.badRequestFn,
+		internalServerFn: s.api.internalServerFn,
+	}
+}
+
+func registerRoute[In, Resp any](
+	router Router,
+	method string,
+	path string,
+	fn HandlerFunc[In, Resp],
+	options ...RouteOption,
+) {
+	s := prepareRoute[In](router, method, path, true, options)
+
 	var resp Resp
 	outType := reflect.TypeOf(resp)
 	hasRespHeader := hasRespHeaderFields(outType)
@@ -98,7 +222,7 @@ func registerRoute[In, Resp any](
 		respEnc = newRespEncoder(outType)
 	}
 
-	noBody := isNoBodyStatus(cfg.status)
+	noBody := isNoBodyStatus(s.cfg.status)
 
 	// Panic if a no-body status code is used with a response type that has JSON body fields.
 	if noBody && outType != nil {
@@ -109,39 +233,20 @@ func registerRoute[In, Resp any](
 		if ot.Kind() == reflect.Struct {
 			for f := range ot.Fields() {
 				if f.IsExported() && !hasHeaderTag(f) {
-					panic(fmt.Sprintf("shiftapi: status %d must not have a response body; response type %s has JSON body field %q — use struct{} or a header-only struct", cfg.status, ot.Name(), f.Name))
+					panic(fmt.Sprintf("shiftapi: status %d must not have a response body; response type %s has JSON body field %q — use struct{} or a header-only struct", s.cfg.status, ot.Name(), f.Name))
 				}
 			}
 		}
 	}
 
-	// Merge: rd already contains API globals + group chain.
-	// Append route-level entries on top.
-	allErrors := append(rd.errors, cfg.errors...)
-	allStaticHeaders := append(rd.staticRespHeaders, cfg.staticRespHeaders...)
-
-	var pathType reflect.Type
-	if hasPath {
-		pathType = rawInType
+	si := s.schemaInput(method, outType, hasRespHeader, noBody)
+	if err := s.api.updateSchema(si); err != nil {
+		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, s.fullPath, err))
 	}
 
-	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, noBody, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders, cfg.contentType, cfg.responseSchema); err != nil {
-		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
-	}
-
-	errLookup := buildErrorLookup(allErrors)
-
-	muxPattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, noBody, respEnc, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
-	// Apply route-level middleware (innermost), then group-level (outermost).
-	// Reverse order so the first middleware in the slice wraps outermost.
-	for i := len(cfg.middleware) - 1; i >= 0; i-- {
-		h = cfg.middleware[i](h)
-	}
-	for i := len(rd.middleware) - 1; i >= 0; i-- {
-		h = rd.middleware[i](h)
-	}
-	api.mux.Handle(muxPattern, h)
+	hc := s.handlerCfg(method, true)
+	h := adapt(fn, hc, s.cfg.status, noBody, respEnc)
+	s.wrapAndRegister(router, h)
 }
 
 // Handle registers a typed handler for the given pattern. The pattern follows
@@ -171,71 +276,16 @@ func registerRawRoute[In any](
 	fn RawHandlerFunc[In],
 	options ...RouteOption,
 ) {
-	rd := router.routerImpl()
-	api := rd.api
-	fullPath := strings.TrimRight(rd.prefix, "/") + path
+	s := prepareRoute[In](router, method, path, false, options)
 
-	cfg := applyRouteOptions(options)
-
-	var in In
-	inType := reflect.TypeOf(in)
-	rawInType := inType
-	for rawInType != nil && rawInType.Kind() == reflect.Pointer {
-		rawInType = rawInType.Elem()
+	si := s.schemaInput(method, nil, false, false)
+	if err := s.api.updateSchema(si); err != nil {
+		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, s.fullPath, err))
 	}
 
-	hasPath, hasQuery, hasHeader, hasBody, hasForm := partitionFields(rawInType)
-
-	if hasPath {
-		matches := pathParamRe.FindAllStringSubmatch(fullPath, -1)
-		routeParams := make(map[string]bool, len(matches))
-		for _, m := range matches {
-			routeParams[m[1]] = true
-		}
-		validatePathFields(rawInType, routeParams)
-	}
-
-	var queryType reflect.Type
-	if hasQuery {
-		queryType = rawInType
-	}
-	var headerType reflect.Type
-	if hasHeader {
-		headerType = rawInType
-	}
-	// For raw handlers, only decode body if the input struct actually has
-	// body fields (json/form tags). Do NOT force decode for POST/PUT/PATCH —
-	// the handler may want to read r.Body itself.
-	decodeBody := !hasForm && hasBody
-
-	var bodyType reflect.Type
-	if !hasForm && hasBody {
-		bodyType = inType
-	}
-
-	allErrors := append(rd.errors, cfg.errors...)
-	allStaticHeaders := append(rd.staticRespHeaders, cfg.staticRespHeaders...)
-
-	var pathType reflect.Type
-	if hasPath {
-		pathType = rawInType
-	}
-
-	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, nil, false, false, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders, cfg.contentType, cfg.responseSchema); err != nil {
-		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
-	}
-
-	errLookup := buildErrorLookup(allErrors)
-
-	muxPattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adaptRaw(fn, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
-	for i := len(cfg.middleware) - 1; i >= 0; i-- {
-		h = cfg.middleware[i](h)
-	}
-	for i := len(rd.middleware) - 1; i >= 0; i-- {
-		h = rd.middleware[i](h)
-	}
-	api.mux.Handle(muxPattern, h)
+	hc := s.handlerCfg(method, false)
+	h := adaptRaw(fn, hc)
+	s.wrapAndRegister(router, h)
 }
 
 // HandleRaw registers a raw handler for the given pattern. Unlike [Handle],

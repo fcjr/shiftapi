@@ -1,22 +1,18 @@
 package shiftapi
 
 import (
-	"fmt"
 	"net/http"
 	"reflect"
-
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3gen"
 )
 
 type routeConfig struct {
-	info              *RouteInfo
-	status            int
-	errors            []errorEntry
-	middleware         []func(http.Handler) http.Handler
-	staticRespHeaders []staticResponseHeader
-	contentType       string              // custom response media type
-	responseSchema    *openapi3.SchemaRef // optional schema for the content type
+	info               *RouteInfo
+	status             int
+	errors             []errorEntry
+	middleware          []func(http.Handler) http.Handler
+	staticRespHeaders  []staticResponseHeader
+	contentType        string       // custom response media type
+	responseSchemaType reflect.Type // optional type for schema generation under the content type
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -67,24 +63,17 @@ func WithStatus(status int) routeOptionFunc {
 	}
 }
 
-// ResponseSchemaOption carries an OpenAPI schema for use with [WithContentType].
+// ResponseSchemaOption carries a type for deferred OpenAPI schema generation
+// with [WithContentType].
 type ResponseSchemaOption struct {
-	schema *openapi3.SchemaRef
+	typ reflect.Type
 }
 
-// ResponseSchema generates an OpenAPI schema from T for use as the optional
-// second argument to [WithContentType]. T is reflected into a schema using
-// the same logic as typed handler responses.
+// ResponseSchema captures the type T for OpenAPI schema generation. The actual
+// schema is generated at registration time using the API's configured schema
+// customizer, so enum lookups and validation constraints are applied correctly.
 func ResponseSchema[T any]() ResponseSchemaOption {
-	t := reflect.TypeFor[T]()
-	gen := openapi3gen.NewGenerator()
-	schema, err := gen.GenerateSchemaRef(t)
-	if err != nil {
-		panic(fmt.Sprintf("shiftapi: failed to generate response schema for %s: %v", t, err))
-	}
-	scrubRefs(schema)
-	applyRequired(t, schema.Value)
-	return ResponseSchemaOption{schema: schema}
+	return ResponseSchemaOption{typ: reflect.TypeFor[T]()}
 }
 
 // WithContentType sets a custom response content type for the route's OpenAPI
@@ -105,7 +94,7 @@ func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOpti
 	return func(cfg *routeConfig) {
 		cfg.contentType = contentType
 		if len(opts) > 0 {
-			cfg.responseSchema = opts[0].schema
+			cfg.responseSchemaType = opts[0].typ
 		}
 	}
 }

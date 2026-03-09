@@ -75,75 +75,93 @@ func isNoBodyStatus(status int) bool {
 	return status == http.StatusNoContent || status == http.StatusNotModified
 }
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, noBody bool, respEnc *respEncoder, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+// handlerConfig holds the registration-time configuration that adapt and
+// adaptRaw capture in their closures. It replaces the long positional
+// parameter lists that were previously passed to parseInput, adapt, and
+// adaptRaw.
+type handlerConfig struct {
+	hasPath      bool
+	hasQuery     bool
+	hasHeader    bool
+	decodeBody   bool
+	hasForm      bool
+	maxUploadSize int64
+	staticHeaders []staticResponseHeader
+	errLookup     errorLookup
+	validate      func(any) error
+	badRequestFn  func(error) any
+	internalServerFn func(error) any
+}
+
+// parseInput decodes and validates the typed input from the request. It returns
+// the parsed value and true on success. On failure it writes an error response
+// and returns the zero value and false.
+func parseInput[In any](w http.ResponseWriter, r *http.Request, hc *handlerConfig) (In, bool) {
+	var in In
+	rv := reflect.ValueOf(&in).Elem()
+
+	if hc.hasForm {
+		if err := parseFormInto(rv, r, hc.maxUploadSize); err != nil {
+			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
+			return in, false
+		}
+		rv = reflect.ValueOf(&in).Elem()
+	} else if hc.decodeBody {
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
+			return in, false
+		}
+		rv = reflect.ValueOf(&in).Elem()
+		if hc.hasQuery {
+			resetQueryFields(rv)
+		}
+		if hc.hasPath {
+			resetPathFields(rv)
+		}
+		if hc.hasHeader {
+			resetHeaderFields(rv)
+		}
+	}
+
+	if hc.hasQuery {
+		if err := parseQueryInto(rv, r.URL.Query()); err != nil {
+			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
+			return in, false
+		}
+	}
+	if hc.hasPath {
+		if err := parsePathInto(rv, r); err != nil {
+			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
+			return in, false
+		}
+	}
+	if hc.hasHeader {
+		if err := parseHeadersInto(rv, r.Header); err != nil {
+			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
+			return in, false
+		}
+	}
+
+	if err := hc.validate(in); err != nil {
+		handleError(w, hc.internalServerFn, err, hc.errLookup)
+		return in, false
+	}
+	return in, true
+}
+
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int, noBody bool, respEnc *respEncoder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var in In
-		rv := reflect.ValueOf(&in).Elem()
-
-		if hasForm {
-			// Parse multipart form
-			if err := parseFormInto(rv, r, maxUploadSize); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-			rv = reflect.ValueOf(&in).Elem()
-		} else if hasBody {
-			// JSON-decode body if there are body fields
-			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-			// Re-point rv after decode (in case In is a pointer that was nil)
-			rv = reflect.ValueOf(&in).Elem()
-
-			// Reset any query/path/header-tagged fields that body decode may have
-			// inadvertently set, so they only come from their proper source.
-			if hasQuery {
-				resetQueryFields(rv)
-			}
-			if hasPath {
-				resetPathFields(rv)
-			}
-			if hasHeader {
-				resetHeaderFields(rv)
-			}
-		}
-
-		// Parse query params if there are query fields
-		if hasQuery {
-			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-
-		// Parse path params if there are path fields
-		if hasPath {
-			if err := parsePathInto(rv, r); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-
-		// Parse headers if there are header fields
-		if hasHeader {
-			if err := parseHeadersInto(rv, r.Header); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-
-		if err := validate(in); err != nil {
-			handleError(w, internalServerFn, err, errLookup)
+		in, ok := parseInput[In](w, r, hc)
+		if !ok {
 			return
 		}
 
 		resp, err := fn(r, in)
 		if err != nil {
-			handleError(w, internalServerFn, err, errLookup)
+			handleError(w, hc.internalServerFn, err, hc.errLookup)
 			return
 		}
-		for _, h := range staticHeaders {
+		for _, h := range hc.staticHeaders {
 			w.Header().Set(h.name, h.value)
 		}
 		if respEnc != nil {
@@ -161,66 +179,21 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 	}
 }
 
-func adaptRaw[In any](fn RawHandlerFunc[In], validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var in In
-		rv := reflect.ValueOf(&in).Elem()
-
-		if hasForm {
-			if err := parseFormInto(rv, r, maxUploadSize); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-			rv = reflect.ValueOf(&in).Elem()
-		} else if hasBody {
-			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-			rv = reflect.ValueOf(&in).Elem()
-			if hasQuery {
-				resetQueryFields(rv)
-			}
-			if hasPath {
-				resetPathFields(rv)
-			}
-			if hasHeader {
-				resetHeaderFields(rv)
-			}
-		}
-
-		if hasQuery {
-			if err := parseQueryInto(rv, r.URL.Query()); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-		if hasPath {
-			if err := parsePathInto(rv, r); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-		if hasHeader {
-			if err := parseHeadersInto(rv, r.Header); err != nil {
-				writeJSON(w, http.StatusBadRequest, badRequestFn(err))
-				return
-			}
-		}
-
-		if err := validate(in); err != nil {
-			handleError(w, internalServerFn, err, errLookup)
+		in, ok := parseInput[In](w, r, hc)
+		if !ok {
 			return
 		}
 
-		for _, h := range staticHeaders {
+		for _, h := range hc.staticHeaders {
 			w.Header().Set(h.name, h.value)
 		}
 
 		wt := &writeTracker{ResponseWriter: w}
 		if err := fn(wt, r, in); err != nil {
 			if !wt.written {
-				handleError(w, internalServerFn, err, errLookup)
+				handleError(wt, hc.internalServerFn, err, hc.errLookup)
 			} else {
 				log.Printf("shiftapi: raw handler error after response started: %v", err)
 			}

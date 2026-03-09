@@ -12,16 +12,38 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, noBody, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader, contentType string, responseSchema *openapi3.SchemaRef) error {
+// schemaInput holds all the parameters needed to generate the OpenAPI schema
+// for a single route. Built by routeSetup.schemaInput().
+type schemaInput struct {
+	method             string
+	path               string
+	pathType           reflect.Type
+	queryType          reflect.Type
+	headerType         reflect.Type
+	bodyType           reflect.Type
+	outType            reflect.Type
+	hasRespHeader      bool
+	noBody             bool
+	hasForm            bool
+	formType           reflect.Type
+	info               *RouteInfo
+	status             int
+	errors             []errorEntry
+	staticHeaders      []staticResponseHeader
+	contentType        string
+	responseSchemaType reflect.Type
+}
+
+func (a *API) updateSchema(si schemaInput) error {
 	op := &openapi3.Operation{
-		OperationID: operationID(method, path),
+		OperationID: operationID(si.method, si.path),
 		Responses:   openapi3.NewResponses(),
 	}
 
 	// Build a map from path param name to struct field for typed path params.
 	pathFields := make(map[string]reflect.StructField)
-	if pathType != nil {
-		pt := pathType
+	if si.pathType != nil {
+		pt := si.pathType
 		for pt.Kind() == reflect.Pointer {
 			pt = pt.Elem()
 		}
@@ -35,7 +57,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	}
 
 	// Path parameters
-	for _, match := range pathParamRe.FindAllStringSubmatch(path, -1) {
+	for _, match := range pathParamRe.FindAllStringSubmatch(si.path, -1) {
 		name := match[1]
 		var schema *openapi3.SchemaRef
 		if field, ok := pathFields[name]; ok {
@@ -59,8 +81,8 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	}
 
 	// Query parameters
-	if queryType != nil {
-		queryParams, err := a.generateQueryParams(queryType)
+	if si.queryType != nil {
+		queryParams, err := a.generateQueryParams(si.queryType)
 		if err != nil {
 			return err
 		}
@@ -68,8 +90,8 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	}
 
 	// Header parameters
-	if headerType != nil {
-		headerParams, err := a.generateHeaderParams(headerType)
+	if si.headerType != nil {
+		headerParams, err := a.generateHeaderParams(si.headerType)
 		if err != nil {
 			return err
 		}
@@ -77,15 +99,15 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	}
 
 	// Response schema
-	statusStr := fmt.Sprintf("%d", status)
+	statusStr := fmt.Sprintf("%d", si.status)
 
 	// Build response header definitions from header-tagged fields on the output type
 	// and static response headers from WithResponseHeader.
 	var respHeaders openapi3.Headers
-	if hasRespHeader && outType != nil {
-		respHeaders = generateRespHeaders(outType)
+	if si.hasRespHeader && si.outType != nil {
+		respHeaders = generateRespHeaders(si.outType)
 	}
-	for _, h := range staticHeaders {
+	for _, h := range si.staticHeaders {
 		if respHeaders == nil {
 			respHeaders = make(openapi3.Headers)
 		}
@@ -105,42 +127,44 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		}
 	}
 
-	if noBody {
+	if si.noBody {
 		// No-body status codes (204, 304) — emit response with description
 		// and optional headers, but no content.
 		resp := &openapi3.Response{
-			Description: new(http.StatusText(status)),
+			Description: new(http.StatusText(si.status)),
 		}
 		if len(respHeaders) > 0 {
 			resp.Headers = respHeaders
 		}
 		op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
-	} else if contentType != "" {
+	} else if si.contentType != "" {
 		// Custom content type (from WithContentType).
 		resp := &openapi3.Response{
-			Description: new(http.StatusText(status)),
+			Description: new(http.StatusText(si.status)),
 		}
-		if responseSchema != nil {
+		if si.responseSchemaType != nil {
+			responseSchema, err := a.generateSchemaRef(si.responseSchemaType)
+			if err != nil {
+				return err
+			}
 			mediaType := &openapi3.MediaType{}
-			if responseSchema.Ref != "" && responseSchema.Value != nil && len(responseSchema.Value.Properties) > 0 {
+			if responseSchema != nil && responseSchema.Ref != "" && len(responseSchema.Value.Properties) > 0 {
 				a.spec.Components.Schemas[responseSchema.Ref] = &openapi3.SchemaRef{
 					Value: responseSchema.Value,
 				}
 				mediaType.Schema = &openapi3.SchemaRef{
 					Ref: fmt.Sprintf("#/components/schemas/%s", responseSchema.Ref),
 				}
-			} else {
-				if responseSchema.Value != nil {
-					a.registerNestedSchemas(responseSchema)
-				}
+			} else if responseSchema != nil {
+				a.registerNestedSchemas(responseSchema)
 				mediaType.Schema = responseSchema
 			}
 			resp.Content = map[string]*openapi3.MediaType{
-				contentType: mediaType,
+				si.contentType: mediaType,
 			}
 		} else {
 			resp.Content = map[string]*openapi3.MediaType{
-				contentType: {},
+				si.contentType: {},
 			}
 		}
 		if len(respHeaders) > 0 {
@@ -148,17 +172,17 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		}
 		op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
 	} else {
-		outSchema, err := a.generateSchemaRef(outType)
+		outSchema, err := a.generateSchemaRef(si.outType)
 		if err != nil {
 			return err
 		}
-		if hasRespHeader && outSchema != nil {
-			stripRespHeaderFields(outType, outSchema.Value)
+		if si.hasRespHeader && outSchema != nil {
+			stripRespHeaderFields(si.outType, outSchema.Value)
 		}
 
 		if outSchema != nil {
 			resp := &openapi3.Response{
-				Description: new(http.StatusText(status)),
+				Description: new(http.StatusText(si.status)),
 			}
 			if outSchema.Ref != "" && len(outSchema.Value.Properties) > 0 {
 				// Named object schema — reference by $ref.
@@ -189,7 +213,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		} else if len(respHeaders) > 0 {
 			op.Responses.Set(statusStr, &openapi3.ResponseRef{
 				Value: &openapi3.Response{
-					Description: new(http.StatusText(status)),
+					Description: new(http.StatusText(si.status)),
 					Headers:     respHeaders,
 				},
 			})
@@ -202,7 +226,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	op.Responses.Set("500", errorResponseRef("Internal Server Error", "InternalServerError"))
 
 	// Add user-declared error responses from WithError.
-	for _, e := range errors {
+	for _, e := range si.errors {
 		codeStr := fmt.Sprintf("%d", e.status)
 		errSchema, err := a.generateSchemaRef(e.typ)
 		if err != nil {
@@ -220,9 +244,9 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	}
 
 	// Request body schema
-	if hasForm {
+	if si.hasForm {
 		// multipart/form-data request body
-		formSchema, formEncoding := a.generateFormSchema(formType)
+		formSchema, formEncoding := a.generateFormSchema(si.formType)
 		mediaType := &openapi3.MediaType{
 			Schema: &openapi3.SchemaRef{
 				Value: formSchema,
@@ -239,16 +263,16 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 				},
 			},
 		}
-	} else if inType != nil {
-		inSchema, err := a.generateSchemaRef(inType)
+	} else if si.bodyType != nil {
+		inSchema, err := a.generateSchemaRef(si.bodyType)
 		if err != nil {
 			return err
 		}
 		if inSchema != nil {
 			// Strip query-tagged, header-tagged, and path-tagged fields from the body schema
-			stripQueryFields(inType, inSchema.Value)
-			stripHeaderFields(inType, inSchema.Value)
-			stripPathFields(inType, inSchema.Value)
+			stripQueryFields(si.bodyType, inSchema.Value)
+			stripHeaderFields(si.bodyType, inSchema.Value)
+			stripPathFields(si.bodyType, inSchema.Value)
 
 			if len(inSchema.Value.Properties) > 0 {
 				// Named body schema with properties
@@ -289,19 +313,19 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		}
 	}
 
-	if info != nil {
-		op.Summary = info.Summary
-		op.Description = info.Description
-		op.Tags = info.Tags
+	if si.info != nil {
+		op.Summary = si.info.Summary
+		op.Description = si.info.Description
+		op.Tags = si.info.Tags
 	}
 
-	pathItem := a.spec.Paths.Find(path)
+	pathItem := a.spec.Paths.Find(si.path)
 	if pathItem == nil {
 		pathItem = &openapi3.PathItem{}
-		a.spec.Paths.Set(path, pathItem)
+		a.spec.Paths.Set(si.path, pathItem)
 	}
 
-	switch method {
+	switch si.method {
 	case http.MethodGet:
 		pathItem.Get = op
 	case http.MethodPost:
@@ -321,7 +345,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	case http.MethodConnect:
 		pathItem.Connect = op
 	default:
-		return fmt.Errorf("method '%s' not supported", method)
+		return fmt.Errorf("method '%s' not supported", si.method)
 	}
 
 	return nil
