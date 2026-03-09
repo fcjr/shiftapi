@@ -67,3 +67,33 @@ console.log(data.message);
 ```
 
 Types are regenerated automatically when you save a Go file — changes appear in your editor via Vite's HMR.
+
+### Server-Sent Events
+
+The generated client includes a `subscribe` function for SSE endpoints registered with `HandleSSE`. It returns a typed async iterable:
+
+```typescript
+import { subscribe } from "@shiftapi/client";
+
+const stream = subscribe("/events");
+
+for await (const event of stream) {
+    console.log(event); // fully typed from your Go Event struct
+}
+```
+
+For Svelte projects, use the `createSSE` store from your API package:
+
+```svelte
+<script>
+  import { createSSE } from "$lib/api";
+
+  const events = createSSE("/events");
+</script>
+
+{#if $events.data}
+  <p>{$events.data.message}</p>
+{/if}
+```
+
+See [Server-Sent Events](/docs/core-concepts/server-sent-events) for full details.

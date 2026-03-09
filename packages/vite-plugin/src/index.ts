@@ -143,6 +143,9 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
       if (id === "openapi-fetch" && importer === RESOLVED_MODULE_ID) {
         return createRequire(import.meta.url).resolve("openapi-fetch");
       }
+      if (id === "shiftapi/internal" && importer === RESOLVED_MODULE_ID) {
+        return createRequire(import.meta.url).resolve("shiftapi/internal");
+      }
     },
 
     load(id) {

@@ -1,0 +1,430 @@
+---
+title: Server-Sent Events
+description: Use HandleSSE for type-safe Server-Sent Events with automatic OpenAPI spec generation and typed TypeScript clients.
+sidebar:
+  order: 8
+---
+
+`HandleSSE` is a dedicated handler for Server-Sent Events that gives you a typed writer, automatic SSE headers, and end-to-end type safety from Go to TypeScript — including a generated `subscribe` helper and framework-specific hooks.
+
+## Registering SSE handlers
+
+```go
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Message]) error {
+    for msg := range messages(r.Context()) {
+        if err := sse.Send(msg); err != nil {
+            return err
+        }
+    }
+    return nil
+})
+```
+
+## Handler signature
+
+An SSE handler has two type parameters — input and event:
+
+```go
+func handler(r *http.Request, in InputType, sse *shiftapi.SSEWriter[EventType]) error
+```
+
+- **`r *http.Request`** — the standard HTTP request
+- **`in InputType`** — automatically decoded from path, query, header, body, or form — identical to `Handle`
+- **`sse *shiftapi.SSEWriter[EventType]`** — typed writer for sending events
+- **`error`** — return an error to stop the stream
+
+Use `struct{}` when the handler takes no input:
+
+```go
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Event]) error {
+    // ...
+})
+```
+
+## SSEWriter
+
+`SSEWriter[Event]` provides two methods for sending events:
+
+### Send
+
+Writes a data-only event:
+
+```go
+sse.Send(Message{Text: "hello"})
+```
+
+Produces:
+
+```
+data: {"text":"hello"}
+
+```
+
+### SendEvent
+
+Writes a named event:
+
+```go
+sse.SendEvent("chat", Message{Text: "hello"})
+```
+
+Produces:
+
+```
+event: chat
+data: {"text":"hello"}
+
+```
+
+Both methods JSON-encode the value, write it in SSE format, and flush the response. On the first call, SSEWriter automatically sets the required headers:
+
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache`
+- `Connection: keep-alive`
+
+## Input parsing
+
+Input decoding works identically to `Handle` — all struct tags (`path`, `query`, `header`, `json`, `form`) and validation rules apply:
+
+```go
+type EventInput struct {
+    Channel string `query:"channel" validate:"required"`
+    After   int    `query:"after"`
+}
+
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in EventInput, sse *shiftapi.SSEWriter[Event]) error {
+    for event := range subscribe(r.Context(), in.Channel, in.After) {
+        if err := sse.Send(event); err != nil {
+            return err
+        }
+    }
+    return nil
+})
+```
+
+Path parameters work too:
+
+```go
+type StreamInput struct {
+    RoomID string `path:"room_id" validate:"required"`
+}
+
+shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter[Event]) error {
+    // in.RoomID is parsed and validated
+})
+```
+
+## Error handling
+
+Error behavior depends on whether the handler has started sending events:
+
+- **Before sending** — if your handler returns an error and hasn't called `Send` or `SendEvent`, the framework handles it normally: matching `WithError` types, returning `422` for validation errors, or falling back to `500`.
+- **After sending** — if events have already been sent, it's too late to send an error response. The error is logged and the stream ends.
+
+```go
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Event]) error {
+    data, err := loadInitialData()
+    if err != nil {
+        return err // 500 (no events sent yet)
+    }
+
+    if err := sse.Send(Event{Data: data}); err != nil {
+        return err // logged, stream already started
+    }
+    return nil
+}, shiftapi.WithError[*AuthError](http.StatusUnauthorized))
+```
+
+## OpenAPI spec
+
+`HandleSSE` automatically generates the correct OpenAPI spec with `text/event-stream` as the response content type. The `Event` type parameter is reflected into the schema:
+
+```go
+type ChatEvent struct {
+    User    string `json:"user"`
+    Message string `json:"message"`
+}
+
+shiftapi.HandleSSE(api, "GET /chat", chatHandler)
+```
+
+Produces:
+
+```yaml
+paths:
+  /chat:
+    get:
+      responses:
+        '200':
+          description: OK
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ChatEvent'
+```
+
+You don't need to use `WithContentType` or `ResponseSchema` — `HandleSSE` sets both automatically.
+
+## TypeScript client
+
+`shiftapi prepare` generates a fully-typed `subscribe` function constrained to SSE paths only — calling `subscribe` on a non-SSE path is a compile-time error.
+
+### subscribe
+
+`subscribe` returns an async iterable stream with a `close()` method:
+
+```typescript
+import { subscribe } from "@shiftapi/client";
+
+const stream = subscribe("/events", {
+  params: { query: { channel: "general" } },
+});
+
+for await (const event of stream) {
+  console.log(event);
+  //          ^? ChatEvent — fully typed
+}
+```
+
+To stop the stream:
+
+```typescript
+stream.close();
+```
+
+You can also pass an `AbortSignal`:
+
+```typescript
+const controller = new AbortController();
+const stream = subscribe("/events", { signal: controller.signal });
+
+// later...
+controller.abort();
+```
+
+### Path parameters and headers
+
+Path parameters and request headers are type-checked. If your Go handler declares `path:"room_id"` or `header:"X-Token"` on the input struct, the generated types require them:
+
+```typescript
+const stream = subscribe("/rooms/{room_id}/events", {
+  params: {
+    path: { room_id: "abc" },
+    header: { "X-Token": "secret" },
+  },
+});
+```
+
+### React
+
+Use `subscribe` with React state. You control how events are accumulated:
+
+```tsx
+import { subscribe } from "@myapp/api";
+import { useEffect, useState } from "react";
+
+function ChatFeed() {
+  const [messages, setMessages] = useState<ChatEvent[]>([]);
+
+  useEffect(() => {
+    const stream = subscribe("/chat");
+    (async () => {
+      for await (const event of stream) {
+        setMessages((prev) => [...prev, event]);
+      }
+    })();
+    return () => stream.close();
+  }, []);
+
+  return (
+    <ul>
+      {messages.map((msg, i) => (
+        <li key={i}>{msg.user}: {msg.message}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+For a "latest value" pattern (dashboards, tickers):
+
+```tsx
+function TickerDisplay() {
+  const [tick, setTick] = useState<Tick | null>(null);
+
+  useEffect(() => {
+    const stream = subscribe("/ticks");
+    (async () => {
+      for await (const event of stream) setTick(event);
+    })();
+    return () => stream.close();
+  }, []);
+
+  if (!tick) return <div>Connecting...</div>;
+  return <div>Last tick: {tick.time}</div>;
+}
+```
+
+### Svelte
+
+```svelte
+<script>
+  import { subscribe } from "$lib/api";
+
+  let messages = [];
+
+  const stream = subscribe("/chat");
+  (async () => {
+    for await (const event of stream) {
+      messages = [...messages, event];
+    }
+  })();
+</script>
+
+<ul>
+  {#each messages as msg}
+    <li>{msg.user}: {msg.message}</li>
+  {/each}
+</ul>
+```
+
+## Route options
+
+All standard route options work with `HandleSSE`:
+
+```go
+shiftapi.HandleSSE(api, "GET /events", handler,
+    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+        Summary: "Subscribe to events",
+        Tags:    []string{"events"},
+    }),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithMiddleware(auth),
+)
+```
+
+| Option | Description |
+|--------|-------------|
+| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
+| `WithError[T](code)` | Declare an error type at a status code |
+| `WithMiddleware(mw...)` | Apply HTTP middleware |
+| `WithResponseHeader(name, value)` | Set a static response header |
+| `WithEvents(variants...)` | Declare discriminated union event types (see above) |
+
+## Discriminated union events
+
+For endpoints that emit multiple event types, use `WithEvents` to declare each variant. This generates a `oneOf` schema with a `discriminator` in the OpenAPI spec, which produces **TypeScript discriminated unions** in the generated client.
+
+### Define a marker interface
+
+Use a Go marker interface to constrain the SSE writer's type parameter:
+
+```go
+type ChatEvent interface{ chatEvent() }
+
+type MessageData struct {
+    User string `json:"user"`
+    Text string `json:"text"`
+}
+func (MessageData) chatEvent() {}
+
+type JoinData struct {
+    User string `json:"user"`
+}
+func (JoinData) chatEvent() {}
+```
+
+### Register with WithEvents
+
+Pass `EventType[T]` descriptors to `WithEvents` to declare each named event:
+
+```go
+shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+    if err := sse.SendEvent("message", MessageData{User: "alice", Text: "hi"}); err != nil {
+        return err
+    }
+    return sse.SendEvent("join", JoinData{User: "bob"})
+}, shiftapi.WithEvents(
+    shiftapi.EventType[MessageData]("message"),
+    shiftapi.EventType[JoinData]("join"),
+))
+```
+
+### Generated OpenAPI schema
+
+`WithEvents` produces a `oneOf` + `discriminator` schema:
+
+```yaml
+paths:
+  /chat:
+    get:
+      responses:
+        '200':
+          content:
+            text/event-stream:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [event, data]
+                    properties:
+                      event:
+                        type: string
+                        enum: [message]
+                      data:
+                        $ref: '#/components/schemas/MessageData'
+                  - type: object
+                    required: [event, data]
+                    properties:
+                      event:
+                        type: string
+                        enum: [join]
+                      data:
+                        $ref: '#/components/schemas/JoinData'
+                discriminator:
+                  propertyName: event
+```
+
+### TypeScript discriminated unions
+
+The generated TypeScript client automatically narrows event types based on the `event` field:
+
+```typescript
+import { subscribe } from "@shiftapi/client";
+
+const stream = subscribe("/chat");
+
+for await (const msg of stream) {
+  if (msg.event === "message") {
+    console.log(msg.data.text);
+    //                  ^? string — narrowed to MessageData
+  } else if (msg.event === "join") {
+    console.log(msg.data.user);
+    //                  ^? string — narrowed to JoinData
+  }
+}
+```
+
+### Single vs multi-event
+
+Without `WithEvents`, `HandleSSE` uses the `Event` type parameter directly as the schema — no `oneOf`, no discriminator. This is the simple case for endpoints with a single event shape:
+
+```go
+// Single event type — no WithEvents needed
+shiftapi.HandleSSE(api, "GET /ticks", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Tick]) error {
+    return sse.Send(Tick{Time: time.Now()})
+})
+```
+
+Use `WithEvents` only when your endpoint emits multiple distinct event types.
+
+## When to use HandleSSE vs HandleRaw
+
+| Use case | Recommendation |
+|----------|---------------|
+| SSE with typed events | `HandleSSE` — typed writer, auto headers, typed TS client |
+| SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
+| File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
+| WebSocket upgrade | `HandleRaw` |
+| JSON API endpoint | `Handle` |
+
+`HandleSSE` is the recommended approach for SSE. Use [`HandleRaw`](/docs/core-concepts/raw-handlers) only when you need custom SSE framing or non-standard behavior.

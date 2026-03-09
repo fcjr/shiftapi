@@ -119,6 +119,65 @@
 // Registering a route with status 204 or 304 and a response type that has JSON body
 // fields panics at startup — this catches misconfigurations early.
 //
+// # Server-Sent Events
+//
+// Use [HandleSSE] for Server-Sent Events with a typed event writer:
+//
+//	type ChatEvent struct {
+//	    User    string `json:"user"`
+//	    Message string `json:"message"`
+//	}
+//
+//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+//	    for event := range events(r.Context()) {
+//	        if err := sse.Send(event); err != nil {
+//	            return err
+//	        }
+//	    }
+//	    return nil
+//	})
+//
+// [SSEWriter] automatically sets Content-Type, Cache-Control, and Connection
+// headers on the first write. Use [SSEWriter.Send] for data-only events or
+// [SSEWriter.SendEvent] for named events. The Event type parameter is reflected
+// into the OpenAPI spec under text/event-stream.
+//
+// For endpoints that emit multiple event types, use [WithEvents] to declare
+// each variant. Define a marker interface and use [SSEWriter.SendEvent] with
+// named events:
+//
+//	type ChatEvent interface{ chatEvent() }
+//
+//	type MessageData struct {
+//	    User string `json:"user"`
+//	    Text string `json:"text"`
+//	}
+//	func (MessageData) chatEvent() {}
+//
+//	type JoinData struct {
+//	    User string `json:"user"`
+//	}
+//	func (JoinData) chatEvent() {}
+//
+//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+//	    sse.SendEvent("message", MessageData{User: "alice", Text: "hi"})
+//	    return sse.SendEvent("join", JoinData{User: "bob"})
+//	}, shiftapi.WithEvents(
+//	    shiftapi.EventType[MessageData]("message"),
+//	    shiftapi.EventType[JoinData]("join"),
+//	))
+//
+// [WithEvents] generates a oneOf schema with a discriminator in the OpenAPI spec,
+// which produces TypeScript discriminated unions in the generated client.
+//
+// The generated TypeScript client includes a typed subscribe function
+// constrained to SSE paths. It handles path/query/header parameter
+// substitution, SSE stream parsing, and yields typed events as an async
+// iterable.
+//
+// For custom SSE framing or non-standard behavior, use [HandleRaw] with
+// [WithContentType]("text/event-stream") instead.
+//
 // # Route groups
 //
 // Use [API.Group] to create a sub-router with a shared path prefix and options.

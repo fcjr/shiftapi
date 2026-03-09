@@ -341,6 +341,74 @@ func ExampleFromContext() {
 	// {"user":"alice"}
 }
 
+func ExampleHandleSSE() {
+	api := shiftapi.New()
+
+	type Message struct {
+		Text string `json:"text"`
+	}
+
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Message]) error {
+		for _, msg := range []string{"hello", "world"} {
+			if err := sse.Send(Message{Text: msg}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/events", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Body.String())
+	// Output:
+	// data: {"text":"hello"}
+	//
+	// data: {"text":"world"}
+	//
+}
+
+type exChatEvent interface{ exChatEvent() }
+
+type exMessageData struct {
+	User string `json:"user"`
+	Text string `json:"text"`
+}
+
+func (exMessageData) exChatEvent() {}
+
+type exJoinData struct {
+	User string `json:"user"`
+}
+
+func (exJoinData) exChatEvent() {}
+
+func ExampleWithEvents() {
+	api := shiftapi.New()
+
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[exChatEvent]) error {
+		if err := sse.SendEvent("message", exMessageData{User: "alice", Text: "hi"}); err != nil {
+			return err
+		}
+		return sse.SendEvent("join", exJoinData{User: "bob"})
+	}, shiftapi.WithEvents(
+		shiftapi.EventType[exMessageData]("message"),
+		shiftapi.EventType[exJoinData]("join"),
+	))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/chat", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Body.String())
+	// Output:
+	// event: message
+	// data: {"user":"alice","text":"hi"}
+	//
+	// event: join
+	// data: {"user":"bob"}
+	//
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

@@ -59,3 +59,22 @@ console.log(data.message);
 ```
 
 The plugin handles starting your Go server, proxying requests, and regenerating types — just like the Vite plugin.
+
+### Server-Sent Events
+
+The generated client includes a `subscribe` function for SSE endpoints registered with `HandleSSE`. Use it directly or with the `useSSE` hook from your API package:
+
+```tsx
+import { useSSE } from "@/api";
+
+function EventFeed() {
+    const { data, error } = useSSE("/events");
+
+    if (error) return <div>Error: {error.message}</div>;
+    if (!data) return <div>Connecting...</div>;
+
+    return <div>{data.message}</div>;
+}
+```
+
+See [Server-Sent Events](/docs/core-concepts/server-sent-events) for full details.

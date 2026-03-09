@@ -32,6 +32,7 @@ type schemaInput struct {
 	staticHeaders      []staticResponseHeader
 	contentType        string
 	responseSchemaType reflect.Type
+	eventVariants      []EventVariant // SSE event variants for oneOf schema
 }
 
 func (a *API) updateSchema(si schemaInput) error {
@@ -142,7 +143,60 @@ func (a *API) updateSchema(si schemaInput) error {
 		resp := &openapi3.Response{
 			Description: new(http.StatusText(si.status)),
 		}
-		if si.responseSchemaType != nil {
+		if len(si.eventVariants) > 0 {
+			// SSE with multiple event types — generate oneOf + discriminator.
+			var oneOf openapi3.SchemaRefs
+			for _, ev := range si.eventVariants {
+				payloadSchema, err := a.generateSchemaRef(ev.eventPayloadType())
+				if err != nil {
+					return err
+				}
+				var dataRef *openapi3.SchemaRef
+				if payloadSchema != nil && payloadSchema.Ref != "" && len(payloadSchema.Value.Properties) > 0 {
+					a.spec.Components.Schemas[payloadSchema.Ref] = &openapi3.SchemaRef{
+						Value: payloadSchema.Value,
+					}
+					dataRef = &openapi3.SchemaRef{
+						Ref: fmt.Sprintf("#/components/schemas/%s", payloadSchema.Ref),
+					}
+				} else if payloadSchema != nil {
+					a.registerNestedSchemas(payloadSchema)
+					dataRef = payloadSchema
+				} else {
+					dataRef = &openapi3.SchemaRef{
+						Value: &openapi3.Schema{Type: &openapi3.Types{"object"}},
+					}
+				}
+				wrapper := &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						Type:     &openapi3.Types{"object"},
+						Required: []string{"event", "data"},
+						Properties: openapi3.Schemas{
+							"event": &openapi3.SchemaRef{
+								Value: &openapi3.Schema{
+									Type: &openapi3.Types{"string"},
+									Enum: []any{ev.eventName()},
+								},
+							},
+							"data": dataRef,
+						},
+					},
+				}
+				oneOf = append(oneOf, wrapper)
+			}
+			resp.Content = map[string]*openapi3.MediaType{
+				si.contentType: {
+					Schema: &openapi3.SchemaRef{
+						Value: &openapi3.Schema{
+							OneOf: oneOf,
+							Discriminator: &openapi3.Discriminator{
+								PropertyName: "event",
+							},
+						},
+					},
+				},
+			}
+		} else if si.responseSchemaType != nil {
 			responseSchema, err := a.generateSchemaRef(si.responseSchemaType)
 			if err != nil {
 				return err
