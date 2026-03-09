@@ -106,6 +106,25 @@ func fieldErrorMessage(fe validator.FieldError) string {
 	}
 }
 
+// schemaCustomizer wraps validateSchemaCustomizer and also applies enum
+// values from the API's enum registry when no oneof tag is present.
+func (a *API) schemaCustomizer(name string, t reflect.Type, tag reflect.StructTag, schema *openapi3.Schema) error {
+	if err := validateSchemaCustomizer(name, t, tag, schema); err != nil {
+		return err
+	}
+	// If no enum was set by oneof, check the enum registry.
+	if schema.Enum == nil {
+		ft := t
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if vals := a.lookupEnum(ft); vals != nil {
+			schema.Enum = vals
+		}
+	}
+	return nil
+}
+
 // validateSchemaCustomizer is a SchemaCustomizerFn that reads validate tags
 // and maps them to OpenAPI schema properties.
 func validateSchemaCustomizer(name string, t reflect.Type, tag reflect.StructTag, schema *openapi3.Schema) error {

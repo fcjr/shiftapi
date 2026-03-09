@@ -313,6 +313,34 @@ func ExampleDelete_noContent() {
 	//
 }
 
+func ExampleFromContext() {
+	userKey := shiftapi.NewContextKey[string]("user")
+
+	authMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, shiftapi.SetContext(r, userKey, "alice"))
+		})
+	}
+
+	api := shiftapi.New(shiftapi.WithMiddleware(authMiddleware))
+
+	shiftapi.Get(api, "/whoami", func(r *http.Request, _ struct{}) (*struct {
+		User string `json:"user"`
+	}, error) {
+		user, _ := shiftapi.FromContext(r, userKey)
+		return &struct {
+			User string `json:"user"`
+		}{User: user}, nil
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/whoami", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Body.String())
+	// Output:
+	// {"user":"alice"}
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

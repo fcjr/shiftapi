@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"reflect"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
@@ -24,6 +25,7 @@ type API struct {
 	maxUploadSize    int64
 	badRequestFn     func(error) any // builds the 400 response body from a parse error
 	internalServerFn func(error) any // builds the 500 response body from an unmatched error
+	enumRegistry          map[reflect.Type][]any            // enum values registered via WithEnum
 	globalErrors          []errorEntry                      // error types registered at the API level via WithError
 	middleware            []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
 	staticRespHeaders     []staticResponseHeader            // static response headers registered at the API level
@@ -42,16 +44,17 @@ func New(options ...APIOption) *API {
 				Schemas: make(openapi3.Schemas),
 			},
 		},
-		specGen: openapi3gen.NewGenerator(
-			openapi3gen.SchemaCustomizer(validateSchemaCustomizer),
-		),
 		mux:           http.NewServeMux(),
 		validate:      validator.New(),
 		maxUploadSize: 32 << 20, // 32 MB
+		enumRegistry:  make(map[reflect.Type][]any),
 	}
 	for _, opt := range options {
 		opt.applyToAPI(api)
 	}
+	api.specGen = openapi3gen.NewGenerator(
+		openapi3gen.SchemaCustomizer(api.schemaCustomizer),
+	)
 
 	// Set defaults for error response functions if not customized.
 	if api.badRequestFn == nil {

@@ -40,7 +40,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		var schema *openapi3.SchemaRef
 		if field, ok := pathFields[name]; ok {
 			schema = scalarToOpenAPISchema(field.Type)
-			_ = validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value)
+			_ = a.schemaCustomizer(name, field.Type, field.Tag, schema.Value)
 		} else {
 			schema = &openapi3.SchemaRef{
 				Value: &openapi3.Schema{
@@ -190,7 +190,7 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 	// Request body schema
 	if hasForm {
 		// multipart/form-data request body
-		formSchema, formEncoding := generateFormSchema(formType)
+		formSchema, formEncoding := a.generateFormSchema(formType)
 		mediaType := &openapi3.MediaType{
 			Schema: &openapi3.SchemaRef{
 				Value: formSchema,
@@ -374,8 +374,8 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 		name := queryFieldName(field)
 		schema := fieldToOpenAPISchema(field.Type)
 
-		// Apply validation constraints
-		if err := validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
+		// Apply validation constraints and enum lookup
+		if err := a.schemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
 			return nil, err
 		}
 
@@ -396,7 +396,7 @@ func (a *API) generateQueryParams(t reflect.Type) ([]*openapi3.ParameterRef, err
 // generateFormSchema builds an inline OpenAPI schema and encoding map for multipart/form-data.
 // Only fields with `form` tags are included; query-tagged fields are skipped.
 // The encoding map is populated for fields with `accept` tags.
-func generateFormSchema(t reflect.Type) (*openapi3.Schema, map[string]*openapi3.Encoding) {
+func (a *API) generateFormSchema(t reflect.Type) (*openapi3.Schema, map[string]*openapi3.Encoding) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -440,7 +440,7 @@ func generateFormSchema(t reflect.Type) (*openapi3.Schema, map[string]*openapi3.
 		default:
 			// Text form field
 			propSchema = fieldToOpenAPISchema(field.Type)
-			_ = validateSchemaCustomizer(name, field.Type, field.Tag, propSchema.Value)
+			_ = a.schemaCustomizer(name, field.Type, field.Tag, propSchema.Value)
 		}
 
 		schema.Properties[name] = propSchema
@@ -552,8 +552,8 @@ func (a *API) generateHeaderParams(t reflect.Type) ([]*openapi3.ParameterRef, er
 		name := http.CanonicalHeaderKey(headerFieldName(field))
 		schema := scalarToOpenAPISchema(field.Type)
 
-		// Apply validation constraints
-		if err := validateSchemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
+		// Apply validation constraints and enum lookup
+		if err := a.schemaCustomizer(name, field.Type, field.Tag, schema.Value); err != nil {
 			return nil, err
 		}
 

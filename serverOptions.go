@@ -119,7 +119,7 @@ func registerErrorSchema[T any](api *API, name string) {
 		t = t.Elem()
 	}
 	gen := openapi3gen.NewGenerator(
-		openapi3gen.SchemaCustomizer(validateSchemaCustomizer),
+		openapi3gen.SchemaCustomizer(api.schemaCustomizer),
 	)
 	schema, err := gen.GenerateSchemaRef(t)
 	if err != nil {

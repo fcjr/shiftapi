@@ -274,6 +274,37 @@ shiftapi.Get(v1, "/admin", getAdmin,
 
 Middleware resolves from outermost to innermost: **API → parent Group → child Group → Route → handler**. Within a single `WithMiddleware(a, b)` call, the first argument wraps outermost.
 
+### Context values
+
+Use `NewContextKey`, `SetContext`, and `FromContext` to pass typed data from middleware to handlers — no untyped `context.Value` keys or type assertions needed:
+
+```go
+var userKey = shiftapi.NewContextKey[User]("user")
+
+// Middleware stores the value:
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        user, err := authenticate(r)
+        if err != nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+        next.ServeHTTP(w, shiftapi.SetContext(r, userKey, user))
+    })
+}
+
+// Handler retrieves it — fully typed, no assertion needed:
+shiftapi.Get(authed, "/me", func(r *http.Request, _ struct{}) (*Profile, error) {
+    user, ok := shiftapi.FromContext(r, userKey)
+    if !ok {
+        return nil, fmt.Errorf("missing user context")
+    }
+    return &Profile{Name: user.Name}, nil
+})
+```
+
+Each `ContextKey` has pointer identity, so two keys for the same type never collide. The type parameter ensures `SetContext` and `FromContext` agree on the value type at compile time.
+
 ### Error handling
 
 Use `WithError` to declare that a handler may return a specific error type at a given HTTP status code. Works at any level — API, group, or route:

@@ -38,6 +38,40 @@ In the example above, a request to `GET /api/v1/admin` passes through:
 
 Within a single `WithMiddleware(a, b, c)` call, the first argument wraps outermost: `a` runs first, then `b`, then `c`.
 
+## Passing data to handlers
+
+Use `NewContextKey`, `SetContext`, and `FromContext` to pass typed values from middleware to handlers — no untyped `context.Value` keys or type assertions needed:
+
+```go
+type User struct {
+    ID   int
+    Name string
+}
+
+var userKey = shiftapi.NewContextKey[User]("user")
+
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        user, err := authenticate(r)
+        if err != nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+        next.ServeHTTP(w, shiftapi.SetContext(r, userKey, user))
+    })
+}
+
+shiftapi.Get(authed, "/me", func(r *http.Request, _ struct{}) (*Profile, error) {
+    user, ok := shiftapi.FromContext(r, userKey)
+    if !ok {
+        return nil, fmt.Errorf("missing user context")
+    }
+    return &Profile{Name: user.Name}, nil
+})
+```
+
+Each `ContextKey` has pointer identity, so two keys for the same type never collide. The type parameter ensures `SetContext` and `FromContext` agree on the value type at compile time.
+
 ## Example: CORS + auth
 
 ```go

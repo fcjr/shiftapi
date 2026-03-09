@@ -45,6 +45,31 @@
 //	    Fields string `query:"fields"`
 //	}
 //
+// # Enums
+//
+// Use [WithEnum] to register the allowed values for a named type. The values
+// are reflected as an enum constraint in the OpenAPI schema for every field of
+// that type — no validate:"oneof=..." tag required:
+//
+//	type Status string
+//
+//	const (
+//	    StatusActive   Status = "active"
+//	    StatusInactive Status = "inactive"
+//	    StatusPending  Status = "pending"
+//	)
+//
+//	api := shiftapi.New(
+//	    shiftapi.WithEnum[Status](StatusActive, StatusInactive, StatusPending),
+//	)
+//
+// Enum values apply to body fields, query parameters, path parameters, and
+// header parameters. If a field also carries a validate:"oneof=..." tag, the
+// tag takes precedence over the registered enum values.
+//
+// The type parameter must satisfy the [Scalar] constraint (~string, ~int*,
+// ~uint*, ~float*).
+//
 // # File uploads
 //
 // Use [*multipart.FileHeader] fields with the form tag for file uploads:
@@ -126,6 +151,34 @@
 // Middleware is applied from outermost to innermost in the order:
 // API → parent Group → child Group → Route → handler.
 // Within a single [WithMiddleware] call, the first argument wraps outermost.
+//
+// # Context values
+//
+// Use [NewContextKey], [SetContext], and [FromContext] to pass typed data from
+// middleware to handlers without untyped context keys or type assertions:
+//
+//	var userKey = shiftapi.NewContextKey[User]("user")
+//
+//	// Middleware stores the value:
+//	func authMiddleware(next http.Handler) http.Handler {
+//	    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//	        user := authenticate(r)
+//	        next.ServeHTTP(w, shiftapi.SetContext(r, userKey, user))
+//	    })
+//	}
+//
+//	// Handler retrieves it — fully typed, no assertion needed:
+//	func getProfile(r *http.Request, _ struct{}) (*Profile, error) {
+//	    user, ok := shiftapi.FromContext(r, userKey)
+//	    if !ok {
+//	        return nil, errUnauthorized
+//	    }
+//	    return &Profile{Name: user.Name}, nil
+//	}
+//
+// Each [ContextKey] has pointer identity, so two keys for the same type T will
+// never collide. The type parameter ensures that [SetContext] and [FromContext]
+// agree on the value type at compile time.
 //
 // # Error handling
 //
