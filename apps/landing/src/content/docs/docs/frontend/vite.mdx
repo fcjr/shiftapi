@@ -97,3 +97,21 @@ For Svelte projects, use the `createSSE` store from your API package:
 ```
 
 See [Server-Sent Events](/docs/core-concepts/server-sent-events) for full details.
+
+### WebSockets
+
+The generated client also includes a `connect` function for WebSocket endpoints registered with `HandleWS`. It returns a typed bidirectional connection:
+
+```typescript
+import { connect } from "@shiftapi/client";
+
+const ws = connect("/chat");
+
+ws.send({ text: "hello" });
+
+for await (const msg of ws) {
+    console.log(msg.text); // fully typed from your Go Send struct
+}
+```
+
+See [WebSockets](/docs/core-concepts/websockets) for full details.

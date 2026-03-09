@@ -24,6 +24,7 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
 
   let virtualModuleSource = "";
   let generatedDts = "";
+  let asyncapiSpec: object | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let projectRoot = process.cwd();
   let configDir = "";
@@ -132,8 +133,9 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
     async buildStart() {
       const result = await regenerateTypes();
       generatedDts = result.types;
+      asyncapiSpec = result.asyncapiSpec;
       virtualModuleSource = result.virtualModuleSource;
-      writeGeneratedFiles(configDir, generatedDts, baseUrl);
+      writeGeneratedFiles(configDir, generatedDts, baseUrl, { asyncapiSpec });
     },
 
     resolveId(id, importer) {
@@ -142,6 +144,9 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
       }
       if (id === "openapi-fetch" && importer === RESOLVED_MODULE_ID) {
         return createRequire(import.meta.url).resolve("openapi-fetch");
+      }
+      if (id === "shiftapi/internal" && importer === RESOLVED_MODULE_ID) {
+        return createRequire(import.meta.url).resolve("shiftapi/internal");
       }
       if (id === "shiftapi/internal" && importer === RESOLVED_MODULE_ID) {
         return createRequire(import.meta.url).resolve("shiftapi/internal");
@@ -175,8 +180,9 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
           const result = await regenerateTypes();
           if (result.changed) {
             generatedDts = result.types;
+            asyncapiSpec = result.asyncapiSpec;
             virtualModuleSource = result.virtualModuleSource;
-            writeGeneratedFiles(configDir, generatedDts, baseUrl);
+            writeGeneratedFiles(configDir, generatedDts, baseUrl, { asyncapiSpec });
             const mod = server.moduleGraph.getModuleById(RESOLVED_MODULE_ID);
             if (mod) {
               server.moduleGraph.invalidateModule(mod);

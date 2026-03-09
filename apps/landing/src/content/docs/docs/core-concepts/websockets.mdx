@@ -1,0 +1,487 @@
+---
+title: WebSockets
+description: Use HandleWS for type-safe bidirectional WebSocket communication with automatic OpenAPI spec generation and typed TypeScript clients.
+sidebar:
+  order: 9
+---
+
+`HandleWS` is a dedicated handler for WebSocket connections that gives you a typed bidirectional connection, automatic upgrade handling, and end-to-end type safety from Go to TypeScript — including a generated `websocket` helper.
+
+## Registering WebSocket handlers
+
+```go
+shiftapi.HandleWS(api, "GET /chat", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+    ctx := r.Context()
+    for {
+        msg, err := ws.Receive(ctx)
+        if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
+            return nil
+        }
+        if err != nil {
+            return err
+        }
+        if err := ws.Send(ctx, ServerMsg{Text: "echo: " + msg.Text}); err != nil {
+            return err
+        }
+    }
+})
+```
+
+## Handler signature
+
+A WebSocket handler has three type parameters — input, server-to-client message, and client-to-server message:
+
+```go
+func handler(r *http.Request, in InputType, ws *shiftapi.WSConn[Send, Recv]) error
+```
+
+- **`r *http.Request`** — the standard HTTP request (available before and after upgrade)
+- **`in InputType`** — automatically decoded from path, query, and header — identical to `Handle`
+- **`ws *shiftapi.WSConn[Send, Recv]`** — typed bidirectional connection
+- **`error`** — return an error to close the connection
+
+Use `struct{}` when the handler takes no input:
+
+```go
+shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+    // ...
+})
+```
+
+## WSConn
+
+`WSConn[Send, Recv]` provides methods for bidirectional communication:
+
+### Send
+
+Writes a JSON-encoded message to the client:
+
+```go
+ws.Send(ctx, ServerMsg{Text: "hello"})
+```
+
+### Receive
+
+Reads and JSON-decodes a message from the client:
+
+```go
+msg, err := ws.Receive(ctx)
+```
+
+### Close
+
+Closes the connection with a status code and reason:
+
+```go
+ws.Close(shiftapi.WSStatusNormalClosure, "done")
+```
+
+## Input parsing
+
+Input decoding works identically to `Handle` — `path`, `query`, and `header` struct tags and validation rules all apply. Input is parsed **before** the WebSocket upgrade, so validation errors produce normal JSON error responses:
+
+```go
+type ChatInput struct {
+    Room  string `path:"room" validate:"required"`
+    Token string `query:"token" validate:"required"`
+}
+
+shiftapi.HandleWS(api, "GET /rooms/{room}", func(r *http.Request, in ChatInput, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+    // in.Room and in.Token are parsed and validated before upgrade
+    // ...
+})
+```
+
+## Error handling
+
+Error behavior depends on whether the WebSocket upgrade has occurred:
+
+- **Before upgrade** — if input parsing or validation fails, a JSON error response is written (just like `Handle`).
+- **After upgrade** — if the handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged.
+- **WebSocket close** — if the handler returns an error that is already a WebSocket close (e.g. from `ws.Receive` when the client disconnects), the framework recognizes it and does not double-close.
+
+```go
+shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+    ctx := r.Context()
+    for {
+        msg, err := ws.Receive(ctx)
+        if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
+            return nil // clean close — no error logged
+        }
+        if err != nil {
+            return err // connection closed with WSStatusInternalError
+        }
+        if err := ws.Send(ctx, ServerMsg{Text: msg.Text}); err != nil {
+            return err
+        }
+    }
+}, shiftapi.WithError[*AuthError](http.StatusUnauthorized))
+```
+
+## AsyncAPI spec
+
+WebSocket endpoints are documented in an [AsyncAPI 2.4](https://www.asyncapi.com/) spec served at `GET /asyncapi.json`. Each `HandleWS` call creates a channel with `subscribe` (server→client) and `publish` (client→server) operations:
+
+```go
+type ServerMsg struct {
+    Text string `json:"text"`
+}
+
+type ClientMsg struct {
+    Text string `json:"text"`
+}
+
+shiftapi.HandleWS(api, "GET /chat", chatHandler)
+```
+
+Produces:
+
+```yaml
+asyncapi: 2.4.0
+defaultContentType: application/json
+channels:
+  /chat:
+    subscribe:
+      message:
+        name: ServerMsg
+        payload:
+          $ref: '#/components/schemas/ServerMsg'
+    publish:
+      message:
+        name: ClientMsg
+        payload:
+          $ref: '#/components/schemas/ClientMsg'
+components:
+  schemas:
+    ServerMsg:
+      type: object
+      properties:
+        text:
+          type: string
+    ClientMsg:
+      type: object
+      properties:
+        text:
+          type: string
+```
+
+Message schemas are also registered in the OpenAPI spec's `components/schemas` so the TypeScript codegen can generate types from a single `openapi-typescript` pass.
+
+## TypeScript client
+
+`shiftapi prepare` generates a fully-typed `websocket` function constrained to WebSocket paths only — calling `websocket` on a non-WebSocket path is a compile-time error.
+
+### websocket
+
+`websocket` returns a `WSConnection` with typed `send`, `receive`, async iteration, and `close`:
+
+```typescript
+import { websocket} from "@shiftapi/client";
+
+const ws = websocket("/chat", {
+  params: { query: { token: "abc" } },
+});
+
+// Send a message
+ws.send({ text: "hello" });
+
+// Receive a single message
+const msg = await ws.receive();
+console.log(msg);
+//          ^? ServerMsg — fully typed
+
+// Or iterate over all messages
+for await (const msg of ws) {
+  console.log(msg.text);
+}
+```
+
+To close the connection:
+
+```typescript
+ws.close(1000, "done");
+```
+
+### Path parameters
+
+Path parameters are type-checked. If your Go handler declares `path:"room"` on the input struct, the generated types require it:
+
+```typescript
+const ws = websocket("/rooms/{room}", {
+  params: {
+    path: { room: "general" },
+    query: { token: "secret" },
+  },
+});
+```
+
+### React
+
+Use `websocket` with React state for a chat-style component:
+
+```tsx
+import { websocket} from "./api";
+import { useEffect, useRef, useState } from "react";
+
+function Chat() {
+  const [messages, setMessages] = useState<ServerMsg[]>([]);
+  const wsRef = useRef<ReturnType<typeof websocket<"/chat">> | null>(null);
+
+  useEffect(() => {
+    const ws = websocket("/chat");
+    wsRef.current = ws;
+    (async () => {
+      for await (const msg of ws) {
+        setMessages((prev) => [...prev, msg]);
+      }
+    })();
+    return () => ws.close();
+  }, []);
+
+  const send = (text: string) => {
+    wsRef.current?.send({ text });
+  };
+
+  return (
+    <div>
+      <ul>
+        {messages.map((msg, i) => (
+          <li key={i}>{msg.text}</li>
+        ))}
+      </ul>
+      <button onClick={() => send("hello")}>Send</button>
+    </div>
+  );
+}
+```
+
+## Discriminated union messages
+
+For endpoints that send or receive multiple message types, use `WithSendMessages` and `WithRecvMessages` to declare each variant. This generates `oneOf` schemas with a `discriminator` on the `type` field, which produces **TypeScript discriminated unions** in the generated client.
+
+### Define marker interfaces
+
+Use Go marker interfaces to constrain the type parameters:
+
+```go
+type ServerEvent interface{ serverEvent() }
+
+type ChatMessage struct {
+    User string `json:"user"`
+    Text string `json:"text"`
+}
+func (ChatMessage) serverEvent() {}
+
+type SystemMessage struct {
+    Info string `json:"info"`
+}
+func (SystemMessage) serverEvent() {}
+
+type ClientEvent interface{ clientEvent() }
+
+type UserMessage struct {
+    Text string `json:"text"`
+}
+func (UserMessage) clientEvent() {}
+
+type UserCommand struct {
+    Command string `json:"command"`
+}
+func (UserCommand) clientEvent() {}
+```
+
+### Register with WithSendMessages / WithRecvMessages
+
+Pass `MessageType[T]` descriptors to declare each named message type:
+
+```go
+shiftapi.HandleWS(api, "GET /chat", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerEvent, ClientEvent]) error {
+    ctx := r.Context()
+
+    // Send discriminated messages
+    if err := ws.SendEvent(ctx, "chat", ChatMessage{User: "alice", Text: "hi"}); err != nil {
+        return err
+    }
+    if err := ws.SendEvent(ctx, "system", SystemMessage{Info: "alice joined"}); err != nil {
+        return err
+    }
+
+    // Receive discriminated messages
+    for {
+        msg, err := ws.ReceiveEvent(ctx)
+        if err != nil {
+            return err
+        }
+        switch msg.Type {
+        case "message":
+            var m UserMessage
+            if err := msg.Decode(&m); err != nil {
+                return err
+            }
+            // handle message...
+        case "command":
+            var cmd UserCommand
+            if err := msg.Decode(&cmd); err != nil {
+                return err
+            }
+            // handle command...
+        }
+    }
+}, shiftapi.WithSendMessages(
+    shiftapi.MessageType[ChatMessage]("chat"),
+    shiftapi.MessageType[SystemMessage]("system"),
+), shiftapi.WithRecvMessages(
+    shiftapi.MessageType[UserMessage]("message"),
+    shiftapi.MessageType[UserCommand]("command"),
+))
+```
+
+### Wire format
+
+`SendEvent` wraps the payload in an envelope:
+
+```json
+{"type": "chat", "data": {"user": "alice", "text": "hi"}}
+```
+
+`ReceiveEvent` expects the same envelope and returns a `WSEvent` with `Type` (the discriminator) and `Data` (raw JSON). Use `msg.Decode(&v)` to unmarshal into the concrete type.
+
+### Generated AsyncAPI schema
+
+`WithSendMessages` and `WithRecvMessages` produce `oneOf` message definitions in the AsyncAPI spec. Each variant becomes a named message in `components/messages` with an envelope payload `{type, data}`:
+
+```yaml
+channels:
+  /chat:
+    subscribe:
+      message:
+        oneOf:
+          - $ref: '#/components/messages/chat_ChatMessage'
+          - $ref: '#/components/messages/system_SystemMessage'
+    publish:
+      message:
+        oneOf:
+          - $ref: '#/components/messages/message_UserMessage'
+          - $ref: '#/components/messages/command_UserCommand'
+components:
+  messages:
+    chat_ChatMessage:
+      name: chat
+      payload:
+        $ref: '#/components/schemas/chat_ChatMessage'
+  schemas:
+    chat_ChatMessage:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [chat]
+        data:
+          $ref: '#/components/schemas/ChatMessage'
+    ChatMessage:
+      type: object
+      properties:
+        user:
+          type: string
+        text:
+          type: string
+```
+
+### TypeScript discriminated unions
+
+The generated TypeScript client automatically narrows message types based on the `type` field:
+
+```typescript
+import { websocket} from "@shiftapi/client";
+
+const ws = websocket("/chat");
+
+for await (const msg of ws) {
+  if (msg.type === "chat") {
+    console.log(msg.data.text);
+    //                  ^? string — narrowed to ChatMessage
+  } else if (msg.type === "system") {
+    console.log(msg.data.info);
+    //                  ^? string — narrowed to SystemMessage
+  }
+}
+```
+
+### Single vs multi-message
+
+Without `WithSendMessages` / `WithRecvMessages`, `HandleWS` uses the `Send` and `Recv` type parameters directly — no `oneOf`, no discriminator, no envelope wrapping. Use the plain `Send` and `Receive` methods:
+
+```go
+// Single message type per direction — no WithSendMessages/WithRecvMessages needed
+shiftapi.HandleWS(api, "GET /echo", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+    msg, err := ws.Receive(ctx)
+    // ...
+    return ws.Send(ctx, ServerMsg{Text: msg.Text})
+})
+```
+
+Use `WithSendMessages` / `WithRecvMessages` only when your endpoint has multiple distinct message types in a given direction.
+
+## Origin checking
+
+By default, `HandleWS` rejects WebSocket connections from different origins. In dev mode (`shiftapidev` build tag, set automatically by the Vite and Next.js plugins), origin checking is disabled so that cross-origin requests from the frontend dev server work without extra configuration.
+
+In production, you must either serve the frontend and API from the same origin or allow specific origins with `WithWSAcceptOptions`:
+
+```go
+shiftapi.HandleWS(api, "GET /ws", handler,
+    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+        OriginPatterns: []string{"example.com"},
+    }),
+)
+```
+
+## WithWSAcceptOptions
+
+Use `WithWSAcceptOptions` to configure the WebSocket upgrade — allowed origins, subprotocols, etc.:
+
+```go
+shiftapi.HandleWS(api, "GET /ws", handler,
+    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+        Subprotocols:   []string{"graphql-ws"},
+        OriginPatterns: []string{"example.com", "*.example.com"},
+    }),
+)
+```
+
+## Route options
+
+All standard route options work with `HandleWS`:
+
+```go
+shiftapi.HandleWS(api, "GET /ws", handler,
+    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+        Summary: "WebSocket chat",
+        Tags:    []string{"chat"},
+    }),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithMiddleware(auth),
+    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+        OriginPatterns: []string{"example.com"},
+    }),
+)
+```
+
+| Option | Description |
+|--------|-------------|
+| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
+| `WithError[T](code)` | Declare an error type at a status code |
+| `WithMiddleware(mw...)` | Apply HTTP middleware |
+| `WithWSAcceptOptions(opts)` | Configure WebSocket upgrade (origins, subprotocols) |
+| `WithSendMessages(variants...)` | Declare discriminated union server→client message types |
+| `WithRecvMessages(variants...)` | Declare discriminated union client→server message types |
+
+## When to use HandleWS vs HandleSSE vs Handle
+
+| Use case | Recommendation |
+|----------|---------------|
+| Bidirectional real-time (chat, games) | `HandleWS` — typed send/receive, auto upgrade |
+| Server push only (feeds, notifications) | [`HandleSSE`](/docs/core-concepts/server-sent-events) — simpler, works through proxies |
+| JSON API endpoint | `Handle` — let the framework encode the response |
+| Custom WebSocket framing | `HandleRaw` — direct `ResponseWriter` control |

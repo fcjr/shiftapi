@@ -9,6 +9,8 @@ import (
 	"os"
 )
 
+const devMode = true
+
 // ListenAndServe starts the HTTP server on the given address.
 //
 // In production builds this is a direct call to [http.ListenAndServe] with
@@ -26,6 +28,11 @@ func ListenAndServe(addr string, api *API) error {
 		if err := exportSpec(api, specPath); err != nil {
 			return err
 		}
+		if asyncPath := os.Getenv("SHIFTAPI_EXPORT_ASYNCAPI"); asyncPath != "" {
+			if err := exportAsyncSpec(api, asyncPath); err != nil {
+				return err
+			}
+		}
 		os.Exit(0)
 	}
 	if port := os.Getenv("SHIFTAPI_PORT"); port != "" {
@@ -36,6 +43,14 @@ func ListenAndServe(addr string, api *API) error {
 }
 
 func exportSpec(api *API, path string) error {
+	return exportJSON(api.spec, path)
+}
+
+func exportAsyncSpec(api *API, path string) error {
+	return exportJSON(api.asyncSpec, path)
+}
+
+func exportJSON(v any, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -43,7 +58,7 @@ func exportSpec(api *API, path string) error {
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(api.spec); err != nil {
+	if err := enc.Encode(v); err != nil {
 		_ = f.Close()
 		return err
 	}

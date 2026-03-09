@@ -363,3 +363,96 @@ func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[I
 	registerSSERoute(router, method, path, fn, options...)
 }
 
+
+
+func registerWSRoute[In, Send, Recv any](
+	router Router,
+	method string,
+	path string,
+	fn WSHandlerFunc[In, Send, Recv],
+	options ...RouteOption,
+) {
+	s := prepareRoute[In](router, method, path, false, options)
+
+	// Validate no duplicate message names.
+	validateMessageVariants(s.cfg.wsSendVariants, "WithSendMessages", method, path)
+	validateMessageVariants(s.cfg.wsRecvVariants, "WithRecvMessages", method, path)
+
+	// Build path field map for AsyncAPI channel parameters.
+	sendType := reflect.TypeFor[Send]()
+	recvType := reflect.TypeFor[Recv]()
+	pathFields := make(map[string]reflect.StructField)
+	if s.pathType != nil {
+		pt := s.pathType
+		for pt.Kind() == reflect.Pointer {
+			pt = pt.Elem()
+		}
+		if pt.Kind() == reflect.Struct {
+			for f := range pt.Fields() {
+				if f.IsExported() && hasPathTag(f) {
+					pathFields[pathFieldName(f)] = f
+				}
+			}
+		}
+	}
+
+	// Register in AsyncAPI spec.
+	if err := s.api.addWSChannel(
+		s.fullPath, sendType, recvType,
+		s.cfg.wsSendVariants, s.cfg.wsRecvVariants,
+		s.cfg.info, pathFields,
+	); err != nil {
+		panic(fmt.Sprintf("shiftapi: AsyncAPI generation failed for %s %s: %v", method, s.fullPath, err))
+	}
+
+	hc := s.handlerCfg(method, false)
+	h := adaptWS(fn, hc, s.cfg.wsOptions)
+	s.wrapAndRegister(router, h)
+}
+
+
+
+// HandleWS registers a WebSocket handler for the given pattern. The handler
+// receives a typed [WSConn] for bidirectional JSON communication.
+// Input parsing, validation, and middleware work identically to [Handle].
+//
+// WebSocket endpoints are documented in an AsyncAPI 2.4 spec served at
+// GET /asyncapi.json, with send and receive schemas describing the
+// message types.
+//
+//	shiftapi.HandleWS(api, "GET /chat", func(r *http.Request, in struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+//	    ctx := r.Context()
+//	    for {
+//	        msg, err := ws.Receive(ctx)
+//	        if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
+//	            return nil
+//	        }
+//	        if err != nil {
+//	            return err
+//	        }
+//	        if err := ws.Send(ctx, ServerMsg{Text: msg.Text}); err != nil {
+//	            return err
+//	        }
+//	    }
+//	})
+func HandleWS[In, Send, Recv any](router Router, pattern string, fn WSHandlerFunc[In, Send, Recv], options ...RouteOption) {
+	method, path := parsePattern(pattern)
+	registerWSRoute(router, method, path, fn, options...)
+}
+
+
+
+func validateMessageVariants(variants []MessageVariant, optName, method, path string) {
+	if len(variants) == 0 {
+		return
+	}
+	seen := make(map[string]bool, len(variants))
+	for _, v := range variants {
+		name := v.messageName()
+		if seen[name] {
+			panic(fmt.Sprintf("shiftapi: duplicate message name %q in %s for %s %s", name, optName, method, path))
+		}
+		seen[name] = true
+	}
+}
+

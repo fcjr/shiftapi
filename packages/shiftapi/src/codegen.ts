@@ -1,7 +1,7 @@
 import { resolve, relative } from "node:path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { parse, stringify } from "comment-json";
-import { extractSpec } from "./extract";
+import { extractSpecs } from "./extract";
 import { generateTypes } from "./generate";
 import { MODULE_ID, DEV_API_PREFIX } from "./constants";
 import { dtsTemplate, clientJsTemplate, virtualModuleTemplate } from "./templates";
@@ -12,18 +12,15 @@ export async function regenerateTypes(
   baseUrl: string,
   isDev: boolean,
   previousTypes: string,
-): Promise<{ types: string; virtualModuleSource: string; changed: boolean }> {
-  const spec = extractSpec(serverEntry, resolve(goRoot)) as Record<
-    string,
-    unknown
-  >;
-  const types = await generateTypes(spec);
+): Promise<{ types: string; virtualModuleSource: string; changed: boolean; asyncapiSpec: object | null }> {
+  const specs = extractSpecs(serverEntry, resolve(goRoot));
+  const types = await generateTypes(specs.openapi as Record<string, unknown>);
   const changed = types !== previousTypes;
   const virtualModuleSource = virtualModuleTemplate(
     baseUrl,
     isDev ? DEV_API_PREFIX : undefined,
   );
-  return { types, virtualModuleSource, changed };
+  return { types, virtualModuleSource, changed, asyncapiSpec: specs.asyncapi };
 }
 
 export function writeGeneratedFiles(
@@ -33,6 +30,7 @@ export function writeGeneratedFiles(
   options?: {
     clientJsContent?: string;
     openapiSource?: string;
+    asyncapiSpec?: object | null;
   },
 ): void {
   const outDir = resolve(typesRoot, ".shiftapi");
@@ -40,7 +38,7 @@ export function writeGeneratedFiles(
     mkdirSync(outDir, { recursive: true });
   }
 
-  writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts));
+  writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts, options?.asyncapiSpec ?? null));
   writeFileSync(resolve(outDir, "client.js"), options?.clientJsContent ?? clientJsTemplate(baseUrl));
   if (options?.openapiSource) {
     writeFileSync(resolve(outDir, "openapi-fetch.js"), options.openapiSource);
