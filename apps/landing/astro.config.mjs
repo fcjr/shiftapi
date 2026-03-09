@@ -4,6 +4,9 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  redirects: {
+    "/docs": "/docs/getting-started/introduction",
+  },
   integrations: [
     starlight({
       title: "ShiftAPI",
