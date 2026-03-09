@@ -11,6 +11,9 @@ export default defineConfig({
         src: "./src/assets/logo.svg",
         replacesTitle: false,
       },
+      expressiveCode: {
+        themes: ["starlight-dark"],
+      },
       customCss: ["./src/docs.css"],
       components: {
         ThemeSelect: "./src/components/ThemeSelect.astro",
