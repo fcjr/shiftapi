@@ -11,8 +11,9 @@ type routeConfig struct {
 	errors             []errorEntry
 	middleware          []func(http.Handler) http.Handler
 	staticRespHeaders  []staticResponseHeader
-	contentType        string       // custom response media type
-	responseSchemaType reflect.Type // optional type for schema generation under the content type
+	contentType        string         // custom response media type
+	responseSchemaType reflect.Type   // optional type for schema generation under the content type
+	eventVariants      []EventVariant // SSE event variants for oneOf schema generation
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -96,5 +97,25 @@ func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOpti
 		if len(opts) > 0 {
 			cfg.responseSchemaType = opts[0].typ
 		}
+	}
+}
+
+// WithEvents registers named SSE event types for OpenAPI schema generation.
+// Each [EventVariant] maps an event name to a payload type, producing a oneOf
+// schema with a discriminator in the OpenAPI spec. The generated TypeScript
+// client yields a discriminated union type.
+//
+// Use with [HandleSSE] and [SSEWriter.SendEvent] to send different payload
+// types under different event names:
+//
+//	shiftapi.HandleSSE(api, "GET /chat", chatHandler,
+//	    shiftapi.WithEvents(
+//	        shiftapi.EventType[MessageData]("message"),
+//	        shiftapi.EventType[JoinData]("join"),
+//	    ),
+//	)
+func WithEvents(variants ...EventVariant) routeOptionFunc {
+	return func(cfg *routeConfig) {
+		cfg.eventVariants = append(cfg.eventVariants, variants...)
 	}
 }

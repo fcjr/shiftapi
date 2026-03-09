@@ -162,6 +162,7 @@ func (s *routeSetup) schemaInput(method string, outType reflect.Type, hasRespHea
 		staticHeaders:      s.allStaticHeaders,
 		contentType:        s.cfg.contentType,
 		responseSchemaType: s.cfg.responseSchemaType,
+		eventVariants:      s.cfg.eventVariants,
 	}
 }
 
@@ -302,5 +303,63 @@ func registerRawRoute[In any](
 func HandleRaw[In any](router Router, pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
 	method, path := parsePattern(pattern)
 	registerRawRoute(router, method, path, fn, options...)
+}
+
+func registerSSERoute[In, Event any](
+	router Router,
+	method string,
+	path string,
+	fn SSEHandlerFunc[In, Event],
+	options ...RouteOption,
+) {
+	s := prepareRoute[In](router, method, path, false, options)
+
+	// Set content type for the OpenAPI spec. If WithEvents was used,
+	// event variants drive schema generation (oneOf + discriminator).
+	// Otherwise, use the Event type parameter for a single-type schema.
+	s.cfg.contentType = "text/event-stream"
+	if len(s.cfg.eventVariants) == 0 {
+		s.cfg.responseSchemaType = reflect.TypeFor[Event]()
+	} else {
+		seen := make(map[string]bool, len(s.cfg.eventVariants))
+		for _, ev := range s.cfg.eventVariants {
+			name := ev.eventName()
+			if seen[name] {
+				panic(fmt.Sprintf("shiftapi: duplicate event name %q in WithEvents for %s %s", name, method, path))
+			}
+			seen[name] = true
+		}
+	}
+
+	si := s.schemaInput(method, nil, false, false)
+	if err := s.api.updateSchema(si); err != nil {
+		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, s.fullPath, err))
+	}
+
+	hc := s.handlerCfg(method, false)
+	h := adaptSSE(fn, hc)
+	s.wrapAndRegister(router, h)
+}
+
+
+
+// HandleSSE registers a Server-Sent Events handler for the given pattern.
+// The handler receives a typed [SSEWriter] for sending events to the client.
+// Input parsing, validation, and middleware work identically to [Handle].
+//
+// The OpenAPI spec automatically uses "text/event-stream" as the response
+// content type, with the Event type parameter generating the event schema.
+//
+//	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in struct{}, sse *shiftapi.SSEWriter[Message]) error {
+//	    for msg := range messages(r.Context()) {
+//	        if err := sse.Send(msg); err != nil {
+//	            return err
+//	        }
+//	    }
+//	    return nil
+//	})
+func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[In, Event], options ...RouteOption) {
+	method, path := parsePattern(pattern)
+	registerSSERoute(router, method, path, fn, options...)
 }
 

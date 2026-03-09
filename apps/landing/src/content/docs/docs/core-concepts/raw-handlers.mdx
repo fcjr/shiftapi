@@ -237,12 +237,13 @@ shiftapi.HandleRaw(api, "GET /events", sseHandler,
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithResponseHeader(name, value)` | Set a static response header |
 
-## When to use HandleRaw vs Handle
+## When to use HandleRaw vs Handle vs HandleSSE
 
 | Use case | Recommendation |
 |----------|---------------|
 | JSON API endpoint | `Handle` — let the framework encode the response |
-| Server-Sent Events (SSE) | `HandleRaw` + `WithContentType("text/event-stream")` |
+| Server-Sent Events (SSE) | [`HandleSSE`](/docs/core-concepts/server-sent-events) — typed writer, auto headers, typed TS client |
+| SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
 | File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
 | WebSocket upgrade | `HandleRaw` (no `WithContentType` needed) |
 | Streaming response | `HandleRaw` with `Flusher` access |

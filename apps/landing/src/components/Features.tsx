@@ -25,9 +25,9 @@ const features = [
     desc: <>Scalar API reference at <code>/docs</code> and an OpenAPI spec at <code>/openapi.json</code> &mdash; generated, never stale.</>,
   },
   {
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
-    title: "Just net/http",
-    desc: <>Implements <code>http.Handler</code>. Works with any middleware, any router, any test framework. Zero lock-in.</>,
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M16 6l4 6-4 6"/></svg>,
+    title: "Server-Sent Events",
+    desc: <><code>HandleSSE</code> gives you a typed writer with auto headers. The TypeScript client gets a typed <code>subscribe</code> helper plus React and Svelte hooks.</>,
   },
 ];
 

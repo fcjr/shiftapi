@@ -201,6 +201,32 @@ func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc
 	}
 }
 
+func adaptSSE[In, Event any](fn SSEHandlerFunc[In, Event], hc *handlerConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		in, ok := parseInput[In](w, r, hc)
+		if !ok {
+			return
+		}
+
+		for _, h := range hc.staticHeaders {
+			w.Header().Set(h.name, h.value)
+		}
+
+		wt := &writeTracker{ResponseWriter: w}
+		sse := &SSEWriter[Event]{
+			w:  wt,
+			rc: http.NewResponseController(wt),
+		}
+		if err := fn(r, in, sse); err != nil {
+			if !wt.written {
+				handleError(wt, hc.internalServerFn, err, hc.errLookup)
+			} else {
+				log.Printf("shiftapi: SSE handler error after response started: %v", err)
+			}
+		}
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
