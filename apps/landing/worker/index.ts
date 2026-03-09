@@ -9,6 +9,14 @@ export default {
 			url.hostname = "www.shiftapi.dev";
 			return Response.redirect(url.toString(), 301);
 		}
-		return env.ASSETS.fetch(request);
+		const response = await env.ASSETS.fetch(request);
+		if (response.status === 404) {
+			const notFoundPage = await env.ASSETS.fetch(new URL("/404.html", url.origin));
+			return new Response(notFoundPage.body, {
+				status: 404,
+				headers: notFoundPage.headers,
+			});
+		}
+		return response;
 	},
 } satisfies ExportedHandler<Env>;
