@@ -5184,3 +5184,161 @@ func TestWithResponseHeaderNestedGroups(t *testing.T) {
 		t.Errorf("expected X-Level %q, got %q", "group", got)
 	}
 }
+
+// --- No-body response tests ---
+
+func TestNoBody_StructEmpty_204(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
+		return struct{}{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	resp := doRequest(t, api, "DELETE", "/items/1", "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got %q", body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		t.Errorf("expected no Content-Type, got %q", ct)
+	}
+}
+
+func TestNoBody_PointerStructEmpty_204(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (*Empty, error) {
+		return &Empty{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	resp := doRequest(t, api, "DELETE", "/items/1", "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestNoBody_HeaderOnly_204(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (RespHeaderOnly, error) {
+		return RespHeaderOnly{Location: "/items"}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	resp := doRequest(t, api, "DELETE", "/items/1", "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/items" {
+		t.Errorf("expected Location header %q, got %q", "/items", got)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got %q", body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		t.Errorf("expected no Content-Type, got %q", ct)
+	}
+}
+
+func TestNoBody_304_NotModified(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/item", func(r *http.Request, _ struct{}) (struct{}, error) {
+		return struct{}{}, nil
+	}, shiftapi.WithStatus(http.StatusNotModified))
+
+	resp := doRequest(t, api, "GET", "/item", "")
+	if resp.StatusCode != http.StatusNotModified {
+		t.Fatalf("expected 304, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestNoBody_WithStaticHeaders_204(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
+		return struct{}{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent),
+		shiftapi.WithResponseHeader("X-Deleted", "true"),
+	)
+
+	resp := doRequest(t, api, "DELETE", "/items/1", "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Deleted"); got != "true" {
+		t.Errorf("expected X-Deleted header %q, got %q", "true", got)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestNoBody_OpenAPI_204_NoContent(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
+		return struct{}{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/items/{id}").Delete.Responses.Value("204")
+	if respRef == nil || respRef.Value == nil {
+		t.Fatal("expected 204 response in spec")
+	}
+	if respRef.Value.Content != nil {
+		t.Error("expected no content in 204 response spec")
+	}
+	if *respRef.Value.Description != "No Content" {
+		t.Errorf("expected description %q, got %q", "No Content", *respRef.Value.Description)
+	}
+}
+
+func TestNoBody_OpenAPI_204_WithHeaders(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (RespHeaderOnly, error) {
+		return RespHeaderOnly{Location: "/items"}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	spec := api.Spec()
+	respRef := spec.Paths.Find("/items/{id}").Delete.Responses.Value("204")
+	if respRef == nil || respRef.Value == nil {
+		t.Fatal("expected 204 response in spec")
+	}
+	if respRef.Value.Content != nil {
+		t.Error("expected no content in 204 response spec")
+	}
+	if respRef.Value.Headers == nil {
+		t.Fatal("expected headers in 204 response spec")
+	}
+	if respRef.Value.Headers["Location"] == nil {
+		t.Error("expected Location header in 204 response spec")
+	}
+}
+
+func TestNoBody_PanicsOnBodyWith204(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for 204 with body fields")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("expected string panic, got %T", r)
+		}
+		if !strings.Contains(msg, "204") || !strings.Contains(msg, "must not have a response body") {
+			t.Errorf("unexpected panic message: %s", msg)
+		}
+	}()
+
+	api := newTestAPI(t)
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (Greeting, error) {
+		return Greeting{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+}

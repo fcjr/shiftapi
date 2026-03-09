@@ -12,7 +12,7 @@ import (
 
 var pathParamRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader) error {
+func (a *API) updateSchema(method, path string, pathType, queryType, headerType, inType, outType reflect.Type, hasRespHeader, noBody, hasForm bool, formType reflect.Type, info *RouteInfo, status int, errors []errorEntry, staticHeaders []staticResponseHeader) error {
 	op := &openapi3.Operation{
 		OperationID: operationID(method, path),
 		Responses:   openapi3.NewResponses(),
@@ -78,19 +78,12 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 
 	// Response schema
 	statusStr := fmt.Sprintf("%d", status)
-	outSchema, err := a.generateSchemaRef(outType)
-	if err != nil {
-		return err
-	}
 
 	// Build response header definitions from header-tagged fields on the output type
 	// and static response headers from WithResponseHeader.
 	var respHeaders openapi3.Headers
 	if hasRespHeader && outType != nil {
 		respHeaders = generateRespHeaders(outType)
-		if outSchema != nil {
-			stripRespHeaderFields(outType, outSchema.Value)
-		}
 	}
 	for _, h := range staticHeaders {
 		if respHeaders == nil {
@@ -112,33 +105,53 @@ func (a *API) updateSchema(method, path string, pathType, queryType, headerType,
 		}
 	}
 
-	if outSchema != nil {
+	if noBody {
+		// No-body status codes (204, 304) — emit response with description
+		// and optional headers, but no content.
 		resp := &openapi3.Response{
 			Description: new(http.StatusText(status)),
-		}
-		if len(outSchema.Value.Properties) > 0 {
-			resp.Content = map[string]*openapi3.MediaType{
-				"application/json": {
-					Schema: &openapi3.SchemaRef{
-						Ref: fmt.Sprintf("#/components/schemas/%s", outSchema.Ref),
-					},
-				},
-			}
-			a.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
-				Value: outSchema.Value,
-			}
 		}
 		if len(respHeaders) > 0 {
 			resp.Headers = respHeaders
 		}
 		op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
-	} else if len(respHeaders) > 0 {
-		op.Responses.Set(statusStr, &openapi3.ResponseRef{
-			Value: &openapi3.Response{
+	} else {
+		outSchema, err := a.generateSchemaRef(outType)
+		if err != nil {
+			return err
+		}
+		if hasRespHeader && outSchema != nil {
+			stripRespHeaderFields(outType, outSchema.Value)
+		}
+
+		if outSchema != nil {
+			resp := &openapi3.Response{
 				Description: new(http.StatusText(status)),
-				Headers:     respHeaders,
-			},
-		})
+			}
+			if len(outSchema.Value.Properties) > 0 {
+				resp.Content = map[string]*openapi3.MediaType{
+					"application/json": {
+						Schema: &openapi3.SchemaRef{
+							Ref: fmt.Sprintf("#/components/schemas/%s", outSchema.Ref),
+						},
+					},
+				}
+				a.spec.Components.Schemas[outSchema.Ref] = &openapi3.SchemaRef{
+					Value: outSchema.Value,
+				}
+			}
+			if len(respHeaders) > 0 {
+				resp.Headers = respHeaders
+			}
+			op.Responses.Set(statusStr, &openapi3.ResponseRef{Value: resp})
+		} else if len(respHeaders) > 0 {
+			op.Responses.Set(statusStr, &openapi3.ResponseRef{
+				Value: &openapi3.Response{
+					Description: new(http.StatusText(status)),
+					Headers:     respHeaders,
+				},
+			})
+		}
 	}
 
 	// Error responses — always include 400, 422, and 500.

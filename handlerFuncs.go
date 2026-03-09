@@ -72,6 +72,23 @@ func registerRoute[In, Resp any](
 		respEnc = newRespEncoder(outType)
 	}
 
+	noBody := isNoBodyStatus(cfg.status)
+
+	// Panic if a no-body status code is used with a response type that has JSON body fields.
+	if noBody && outType != nil {
+		ot := outType
+		for ot.Kind() == reflect.Pointer {
+			ot = ot.Elem()
+		}
+		if ot.Kind() == reflect.Struct {
+			for f := range ot.Fields() {
+				if f.IsExported() && !hasHeaderTag(f) {
+					panic(fmt.Sprintf("shiftapi: status %d must not have a response body; response type %s has JSON body field %q — use struct{} or a header-only struct", cfg.status, ot.Name(), f.Name))
+				}
+			}
+		}
+	}
+
 	// Merge: rd already contains API globals + group chain.
 	// Append route-level entries on top.
 	allErrors := append(rd.errors, cfg.errors...)
@@ -82,14 +99,14 @@ func registerRoute[In, Resp any](
 		pathType = rawInType
 	}
 
-	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders); err != nil {
+	if err := api.updateSchema(method, fullPath, pathType, queryType, headerType, bodyType, outType, hasRespHeader, noBody, hasForm, rawInType, cfg.info, cfg.status, allErrors, allStaticHeaders); err != nil {
 		panic(fmt.Sprintf("shiftapi: schema generation failed for %s %s: %v", method, fullPath, err))
 	}
 
 	errLookup := buildErrorLookup(allErrors)
 
 	pattern := fmt.Sprintf("%s %s", method, fullPath)
-	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, respEnc, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
+	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, noBody, respEnc, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
 	// Apply route-level middleware (innermost), then group-level (outermost).
 	// Reverse order so the first middleware in the slice wraps outermost.
 	for i := len(cfg.middleware) - 1; i >= 0; i-- {

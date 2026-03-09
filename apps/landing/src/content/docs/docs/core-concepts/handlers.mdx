@@ -165,6 +165,32 @@ When a response is written, headers are applied in this order:
 
 This means the most specific source always wins: handler struct tags override `WithResponseHeader`, which overrides middleware.
 
+## No-body responses
+
+For status codes that forbid a response body (204 No Content, 304 Not Modified), use `WithStatus` with `struct{}` or a header-only response type. No JSON body or `Content-Type` header is written. Response headers (both static and dynamic) are still sent.
+
+```go
+shiftapi.Delete(api, "/items/{id}", func(r *http.Request, in DeleteInput) (struct{}, error) {
+    deleteItem(in.ID)
+    return struct{}{}, nil
+}, shiftapi.WithStatus(http.StatusNoContent))
+```
+
+You can also use a header-only struct to return response headers without a body:
+
+```go
+type DeleteResponse struct {
+    Location string `header:"Location"`
+}
+
+shiftapi.Delete(api, "/items/{id}", func(r *http.Request, in DeleteInput) (DeleteResponse, error) {
+    deleteItem(in.ID)
+    return DeleteResponse{Location: "/items"}, nil
+}, shiftapi.WithStatus(http.StatusNoContent))
+```
+
+The OpenAPI spec correctly reflects no response content for these routes. Registering a route with status 204 or 304 and a response type that has JSON body fields panics at startup.
+
 ## Route options
 
 Customize routes with options:

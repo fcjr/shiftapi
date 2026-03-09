@@ -296,6 +296,23 @@ func ExampleWithResponseHeader() {
 	// {"name":"Widget"}
 }
 
+func ExampleDelete_noContent() {
+	api := shiftapi.New()
+
+	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
+		return struct{}{}, nil
+	}, shiftapi.WithStatus(http.StatusNoContent))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", "/items/42", nil)
+	api.ServeHTTP(w, r)
+	fmt.Println(w.Code)
+	fmt.Println(w.Body.String())
+	// Output:
+	// 204
+	//
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

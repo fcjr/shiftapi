@@ -80,6 +80,20 @@
 //  2. Static headers via [WithResponseHeader] (API → Group → Route)
 //  3. Dynamic headers via header struct tags (innermost, applied last)
 //
+// # No-body responses
+//
+// For status codes that forbid a response body (204 No Content, 304 Not Modified),
+// use [WithStatus] with struct{} or a header-only response type. No JSON body or
+// Content-Type header will be written. Response headers (both static and dynamic)
+// are still sent.
+//
+//	shiftapi.Delete(api, "/items/{id}", deleteItem,
+//	    shiftapi.WithStatus(http.StatusNoContent),
+//	)
+//
+// Registering a route with status 204 or 304 and a response type that has JSON body
+// fields panics at startup — this catches misconfigurations early.
+//
 // # Route groups
 //
 // Use [API.Group] to create a sub-router with a shared path prefix and options.

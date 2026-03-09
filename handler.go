@@ -33,7 +33,13 @@ import (
 // parameters, and other request metadata.
 type HandlerFunc[In, Resp any] func(r *http.Request, in In) (Resp, error)
 
-func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, respEnc *respEncoder, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
+// isNoBodyStatus reports whether the HTTP status code forbids a response body.
+// Per RFC 9110, only 204 No Content and 304 Not Modified must not contain a body.
+func isNoBodyStatus(status int) bool {
+	return status == http.StatusNoContent || status == http.StatusNotModified
+}
+
+func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any) error, hasPath, hasQuery, hasHeader, hasBody, hasForm bool, noBody bool, respEnc *respEncoder, staticHeaders []staticResponseHeader, maxUploadSize int64, errLookup errorLookup, badRequestFn, internalServerFn func(error) any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in In
 		rv := reflect.ValueOf(&in).Elem()
@@ -106,6 +112,12 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], status int, validate func(any
 		}
 		if respEnc != nil {
 			writeResponseHeaders(w, resp)
+		}
+		if noBody {
+			w.WriteHeader(status)
+			return
+		}
+		if respEnc != nil {
 			writeJSON(w, status, respEnc.encode(resp))
 			return
 		}
