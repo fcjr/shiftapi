@@ -248,7 +248,7 @@ func isSliceKind(k reflect.Kind) bool {
 }
 
 // applyRequired walks struct fields and adds JSON names to schema.Required.
-// Non-pointer fields are always required (they can't be null in Go).
+// Non-pointer fields are required unless they have `json:",omitempty"`.
 // Pointer fields are only required if they have validate:"required".
 // Recurses into nested struct fields.
 func applyRequired(t reflect.Type, schema *openapi3.Schema) {
@@ -267,8 +267,9 @@ func applyRequired(t reflect.Type, schema *openapi3.Schema) {
 
 		isPointer := field.Type.Kind() == reflect.Pointer
 		hasRequired := hasRule(field.Tag.Get("validate"), "required")
+		omitempty := hasJSONOmitempty(field)
 
-		if !isPointer || hasRequired {
+		if hasRequired || (!isPointer && !omitempty) {
 			schema.Required = append(schema.Required, jsonName)
 		}
 
@@ -290,6 +291,18 @@ func hasRule(tag, rule string) bool {
 	for r := range strings.SplitSeq(tag, ",") {
 		key, _, _ := strings.Cut(strings.TrimSpace(r), "=")
 		if key == rule {
+			return true
+		}
+	}
+	return false
+}
+
+// hasJSONOmitempty reports whether a struct field's json tag includes "omitempty".
+func hasJSONOmitempty(f reflect.StructField) bool {
+	tag := f.Tag.Get("json")
+	_, rest, _ := strings.Cut(tag, ",")
+	for opt := range strings.SplitSeq(rest, ",") {
+		if opt == "omitempty" {
 			return true
 		}
 	}

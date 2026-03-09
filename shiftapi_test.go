@@ -5474,3 +5474,111 @@ func TestSliceResponse_OpenAPI_StringSlice(t *testing.T) {
 		t.Error("expected string items type")
 	}
 }
+
+// --- Omitempty / required tests ---
+
+func TestOmitemptyNotRequired(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Resp struct {
+		Name string `json:"name"`
+		Bio  string `json:"bio,omitempty"`
+	}
+
+	shiftapi.Get(api, "/user", func(r *http.Request, _ struct{}) (*Resp, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema := spec.Components.Schemas["Resp"].Value
+	for _, req := range schema.Required {
+		if req == "bio" {
+			t.Error("bio should not be required (has omitempty)")
+		}
+	}
+	found := false
+	for _, req := range schema.Required {
+		if req == "name" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("name should be required")
+	}
+}
+
+func TestOmitemptyPointerNotRequired(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Resp struct {
+		Name  string  `json:"name"`
+		Score *int    `json:"score,omitempty"`
+	}
+
+	shiftapi.Get(api, "/user", func(r *http.Request, _ struct{}) (*Resp, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema := spec.Components.Schemas["Resp"].Value
+	for _, req := range schema.Required {
+		if req == "score" {
+			t.Error("score should not be required (pointer + omitempty)")
+		}
+	}
+}
+
+func TestValidateRequiredOverridesOmitempty(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Resp struct {
+		Name string `json:"name" validate:"required"`
+		Bio  string `json:"bio,omitempty" validate:"required"`
+	}
+
+	shiftapi.Get(api, "/user", func(r *http.Request, _ struct{}) (*Resp, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema := spec.Components.Schemas["Resp"].Value
+	nameReq, bioReq := false, false
+	for _, req := range schema.Required {
+		if req == "name" {
+			nameReq = true
+		}
+		if req == "bio" {
+			bioReq = true
+		}
+	}
+	if !nameReq {
+		t.Error("name should be required")
+	}
+	if !bioReq {
+		t.Error("bio should be required (validate:required overrides omitempty)")
+	}
+}
+
+func TestPointerValidateRequiredIsRequired(t *testing.T) {
+	api := newTestAPI(t)
+
+	type Resp struct {
+		Age *int `json:"age" validate:"required"`
+	}
+
+	shiftapi.Get(api, "/user", func(r *http.Request, _ struct{}) (*Resp, error) {
+		return nil, nil
+	})
+
+	spec := api.Spec()
+	schema := spec.Components.Schemas["Resp"].Value
+	found := false
+	for _, req := range schema.Required {
+		if req == "age" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("age should be required (pointer + validate:required)")
+	}
+}
