@@ -28,10 +28,10 @@ type API struct {
 	internalServerFn func(error) any // builds the 500 response body from an unmatched error
 	globalErrors     []errorEntry                      // error types registered at the API level via WithError
 	middleware       []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
-	devListener      net.Listener                      // dev-only secondary listener (set by devInit)
-	devOnce          sync.Once                         // ensures devServe is called exactly once
-	exportMode       bool                              // true when SHIFTAPI_EXPORT_SPEC is set (dev build only)
-	exportFile       string                            // temp file path for export mode spec output
+	devListener net.Listener //nolint:unused // used in shiftapidev build
+	devOnce     sync.Once    //nolint:unused // used in shiftapidev build
+	exportMode  bool         //nolint:unused // used in shiftapidev build
+	exportFile  string       //nolint:unused // used in shiftapidev build
 }
 
 // New creates a new API with the given options. By default the API uses a
