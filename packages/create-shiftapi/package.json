@@ -1,6 +1,6 @@
 {
   "name": "create-shiftapi",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "description": "Scaffold a new ShiftAPI fullstack app",
   "author": "Frank Chiarulli Jr. <frank@frankchiarulli.com>",
   "license": "MIT",
