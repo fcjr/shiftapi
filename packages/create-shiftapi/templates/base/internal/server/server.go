@@ -32,7 +32,7 @@ func ListenAndServe(ctx context.Context, addr string) error {
 		Title: "{{name}}",
 	}))
 
-	shiftapi.Post(api, "/echo", echo,
+	shiftapi.Handle(api, "POST /echo", echo,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Echo a message",
 			Description: "Returns the message you send",
@@ -40,7 +40,7 @@ func ListenAndServe(ctx context.Context, addr string) error {
 		}),
 	)
 
-	shiftapi.Get(api, "/health", health,
+	shiftapi.Handle(api, "GET /health", health,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary: "Health check",
 			Tags:    []string{"health"},

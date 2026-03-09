@@ -89,7 +89,7 @@ func TestFromContext_middlewareIntegration(t *testing.T) {
 		User string `json:"user"`
 	}
 
-	shiftapi.Get(api, "/whoami", func(r *http.Request, _ struct{}) (*Resp, error) {
+	shiftapi.Handle(api, "GET /whoami", func(r *http.Request, _ struct{}) (*Resp, error) {
 		user, ok := shiftapi.FromContext(r, userKey)
 		if !ok {
 			return nil, fmt.Errorf("no user in context")

@@ -13,7 +13,7 @@ ShiftAPI uses a layered option system. Options configure the API, groups, and in
 |------|---------------|----------|
 | `Option` | API, Group, and Route | `WithError`, `WithMiddleware`, `WithResponseHeader` |
 | `APIOption` | API only (`New`) | `WithInfo`, `WithBadRequestError`, `WithInternalServerError` |
-| `RouteOption` | Route only (`Get`, `Post`, etc.) | `WithStatus`, `WithRouteInfo` |
+| `RouteOption` | Route only (`Handle`) | `WithStatus`, `WithRouteInfo` |
 
 `Option` implements all three level interfaces, so `WithError` and `WithMiddleware` work everywhere. Level-specific options like `WithStatus` are restricted to their level at compile time.
 
@@ -32,7 +32,7 @@ func WithAuth() shiftapi.Option {
 // Works at any level
 api := shiftapi.New(WithAuth())
 v1 := api.Group("/api/v1", WithAuth())
-shiftapi.Get(v1, "/secret", getSecret, WithAuth())
+shiftapi.Handle(v1, "GET /secret", getSecret, WithAuth())
 ```
 
 ### Level-specific composition
@@ -54,7 +54,7 @@ createOpts := shiftapi.ComposeRouteOptions(
     shiftapi.WithError[*ConflictError](http.StatusConflict),   // Option (also a RouteOption)
 )
 
-shiftapi.Post(api, "/users", createUser, createOpts)
+shiftapi.Handle(api, "POST /users", createUser, createOpts)
 ```
 
 ## Route groups
@@ -67,8 +67,8 @@ v1 := api.Group("/api/v1",
     shiftapi.WithMiddleware(auth),
 )
 
-shiftapi.Get(v1, "/users", listUsers)   // GET /api/v1/users
-shiftapi.Post(v1, "/users", createUser) // POST /api/v1/users
+shiftapi.Handle(v1, "GET /users", listUsers)   // GET /api/v1/users
+shiftapi.Handle(v1, "POST /users", createUser) // POST /api/v1/users
 ```
 
 Groups can be nested. Error types and middleware are inherited by child groups:
@@ -78,7 +78,7 @@ admin := v1.Group("/admin",
     shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
     shiftapi.WithMiddleware(adminOnly),
 )
-shiftapi.Get(admin, "/stats", getStats) // GET /api/v1/admin/stats
+shiftapi.Handle(admin, "GET /stats", getStats) // GET /api/v1/admin/stats
 // inherits RateLimitError (429) + auth middleware from v1
 // adds ForbiddenError (403) + adminOnly middleware
 ```

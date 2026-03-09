@@ -7,7 +7,7 @@
 // # Quick start
 //
 //	api := shiftapi.New()
-//	shiftapi.Post(api, "/greet", greet)
+//	shiftapi.Handle(api, "POST /greet", greet)
 //	shiftapi.ListenAndServe(":8080", api)
 //
 // where greet is a typed handler:
@@ -112,7 +112,7 @@
 // Content-Type header will be written. Response headers (both static and dynamic)
 // are still sent.
 //
-//	shiftapi.Delete(api, "/items/{id}", deleteItem,
+//	shiftapi.Handle(api, "DELETE /items/{id}", deleteItem,
 //	    shiftapi.WithStatus(http.StatusNoContent),
 //	)
 //
@@ -127,12 +127,12 @@
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithMiddleware(auth),
 //	)
-//	shiftapi.Get(v1, "/users", listUsers) // registers GET /api/v1/users
+//	shiftapi.Handle(v1, "GET /users", listUsers) // registers GET /api/v1/users
 //
 //	admin := v1.Group("/admin",
 //	    shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
 //	)
-//	shiftapi.Get(admin, "/stats", getStats) // registers GET /api/v1/admin/stats
+//	shiftapi.Handle(admin, "GET /stats", getStats) // registers GET /api/v1/admin/stats
 //
 // # Middleware
 //
@@ -144,7 +144,7 @@
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithMiddleware(auth),                   // group routes
 //	)
-//	shiftapi.Get(v1, "/admin", getAdmin,
+//	shiftapi.Handle(v1, "GET /admin", getAdmin,
 //	    shiftapi.WithMiddleware(adminOnly),               // single route
 //	)
 //
@@ -190,7 +190,7 @@
 //	api := shiftapi.New(
 //	    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 //	)
-//	shiftapi.Get(api, "/users/{id}", getUser,
+//	shiftapi.Handle(api, "GET /users/{id}", getUser,
 //	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 //	)
 //
@@ -207,12 +207,12 @@
 // # Options
 //
 // [Option] is the primary option type. It works at all three levels: [New],
-// [API.Group]/[Group.Group], and route registration functions ([Get], [Post], etc.).
+// [API.Group]/[Group.Group], and [Handle].
 // [WithError], [WithMiddleware], and [WithResponseHeader] all return [Option].
 //
 // Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
 // with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with
-// route registration functions ([RouteOption]).
+// [Handle] ([RouteOption]).
 //
 // Use [ComposeOptions] to bundle multiple [Option] values into a reusable option:
 //

@@ -19,7 +19,7 @@ type UploadResult struct {
     Size     int64  `json:"size"`
 }
 
-shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+shiftapi.Handle(api, "POST /upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
     return &UploadResult{
         Filename: in.File.Filename,
         Size:     in.File.Size,

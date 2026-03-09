@@ -45,7 +45,7 @@ func main() {
         Version: "1.0.0",
     }))
 
-    shiftapi.Post(api, "/hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
+    shiftapi.Handle(api, "POST /hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
         return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
     })
 

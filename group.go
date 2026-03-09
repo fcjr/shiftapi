@@ -35,7 +35,7 @@ func (g *Group) routerImpl() routerData {
 //	    shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
 //	    shiftapi.WithMiddleware(auth, logging),
 //	)
-//	shiftapi.Get(v1, "/users", listUsers)  // registers GET /api/v1/users
+//	shiftapi.Handle(v1, "GET /users", listUsers)  // registers GET /api/v1/users
 func (a *API) Group(prefix string, opts ...GroupOption) *Group {
 	var cfg groupConfig
 	for _, opt := range opts {

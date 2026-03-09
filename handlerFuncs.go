@@ -7,6 +7,32 @@ import (
 	"strings"
 )
 
+// validMethods is the set of HTTP methods recognized by Handle.
+var validMethods = map[string]bool{
+	http.MethodGet:     true,
+	http.MethodHead:    true,
+	http.MethodPost:    true,
+	http.MethodPut:     true,
+	http.MethodPatch:   true,
+	http.MethodDelete:  true,
+	http.MethodConnect: true,
+	http.MethodOptions: true,
+	http.MethodTrace:   true,
+}
+
+// parsePattern splits a pattern like "GET /users/{id}" into method and path.
+// It panics if the pattern is malformed or uses an unknown HTTP method.
+func parsePattern(pattern string) (method, path string) {
+	method, path, ok := strings.Cut(pattern, " ")
+	if !ok || method == "" || path == "" {
+		panic(fmt.Sprintf("shiftapi: invalid pattern %q — must be \"METHOD /path\"", pattern))
+	}
+	if !validMethods[method] {
+		panic(fmt.Sprintf("shiftapi: unknown HTTP method %q in pattern %q", method, pattern))
+	}
+	return method, path
+}
+
 func registerRoute[In, Resp any](
 	router Router,
 	method string,
@@ -50,7 +76,7 @@ func registerRoute[In, Resp any](
 	}
 	// POST/PUT/PATCH conventionally carry a request body, so always attempt
 	// body decode for these methods — even when the input is struct{}.
-	// This means Post(api, path, func(r, _ struct{}) ...) requires at least "{}".
+	// This means Handle(api, "POST /path", func(r, _ struct{}) ...) requires at least "{}".
 	methodRequiresBody := method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
 	decodeBody := !hasForm && (hasBody || methodRequiresBody)
 
@@ -105,7 +131,7 @@ func registerRoute[In, Resp any](
 
 	errLookup := buildErrorLookup(allErrors)
 
-	pattern := fmt.Sprintf("%s %s", method, fullPath)
+	muxPattern := fmt.Sprintf("%s %s", method, fullPath)
 	var h http.Handler = adapt(fn, cfg.status, api.validateBody, hasPath, hasQuery, hasHeader, decodeBody, hasForm, noBody, respEnc, allStaticHeaders, api.maxUploadSize, errLookup, api.badRequestFn, api.internalServerFn)
 	// Apply route-level middleware (innermost), then group-level (outermost).
 	// Reverse order so the first middleware in the slice wraps outermost.
@@ -115,55 +141,26 @@ func registerRoute[In, Resp any](
 	for i := len(rd.middleware) - 1; i >= 0; i-- {
 		h = rd.middleware[i](h)
 	}
-	api.mux.Handle(pattern, h)
+	api.mux.Handle(muxPattern, h)
 }
 
-// Get registers a handler for GET requests at the given path. The path
-// follows [net/http.ServeMux] patterns, including wildcards like /users/{id}.
+// Handle registers a typed handler for the given pattern. The pattern follows
+// [net/http.ServeMux] conventions: "METHOD /path", e.g. "GET /users/{id}".
+//
 // Path parameters can be declared on the input struct with path:"name" tags
 // for automatic parsing and validation, or accessed via [http.Request.PathValue].
-func Get[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodGet, path, fn, options...)
+//
+// For POST, PUT, and PATCH methods, the request body is automatically decoded
+// from JSON (or multipart/form-data if the In type has form-tagged fields).
+// Validation is applied before the handler runs.
+//
+//	shiftapi.Handle(api, "GET /users/{id}", getUser)
+//	shiftapi.Handle(api, "POST /users", createUser)
+//	shiftapi.Handle(api, "DELETE /items/{id}", deleteItem,
+//	    shiftapi.WithStatus(http.StatusNoContent),
+//	)
+func Handle[In, Resp any](router Router, pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+	method, path := parsePattern(pattern)
+	registerRoute(router, method, path, fn, options...)
 }
 
-// Post registers a handler for POST requests at the given path. The request
-// body is automatically decoded from JSON (or multipart/form-data if the In
-// type has form-tagged fields). Validation is applied before the handler runs.
-func Post[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodPost, path, fn, options...)
-}
-
-// Put registers a PUT handler.
-func Put[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodPut, path, fn, options...)
-}
-
-// Patch registers a PATCH handler.
-func Patch[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodPatch, path, fn, options...)
-}
-
-// Delete registers a DELETE handler.
-func Delete[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodDelete, path, fn, options...)
-}
-
-// Head registers a HEAD handler.
-func Head[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodHead, path, fn, options...)
-}
-
-// Options registers an OPTIONS handler.
-func Options[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodOptions, path, fn, options...)
-}
-
-// Trace registers a TRACE handler.
-func Trace[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodTrace, path, fn, options...)
-}
-
-// Connect registers a CONNECT handler.
-func Connect[In, Resp any](router Router, path string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	registerRoute(router, http.MethodConnect, path, fn, options...)
-}

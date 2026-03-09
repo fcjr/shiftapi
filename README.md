@@ -71,7 +71,7 @@ func main() {
         Version: "1.0.0",
     }))
 
-    shiftapi.Post(api, "/greet", greet)
+    shiftapi.Handle(api, "POST /greet", greet)
 
     log.Println("listening on :8080")
     log.Fatal(shiftapi.ListenAndServe(":8080", api))
@@ -89,12 +89,12 @@ Generic free functions capture your request and response types at compile time. 
 
 ```go
 // POST with body — input is decoded and passed as *CreateUser
-shiftapi.Post(api, "/users", func(r *http.Request, in *CreateUser) (*User, error) {
+shiftapi.Handle(api, "POST /users", func(r *http.Request, in *CreateUser) (*User, error) {
     return db.CreateUser(r.Context(), in)
 }, shiftapi.WithStatus(http.StatusCreated))
 
 // GET without input — use _ struct{}
-shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
+shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
     return db.GetUser(r.Context(), r.PathValue("id"))
 })
 ```
@@ -108,7 +108,7 @@ type GetUserInput struct {
     ID int `path:"id" validate:"required,gt=0"`
 }
 
-shiftapi.Get(api, "/users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
+shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
     return db.GetUser(r.Context(), in.ID) // in.ID is already an int
 })
 ```
@@ -128,7 +128,7 @@ type SearchQuery struct {
     Limit int    `query:"limit" validate:"min=1,max=100"`
 }
 
-shiftapi.Get(api, "/search", func(r *http.Request, in SearchQuery) (*Results, error) {
+shiftapi.Handle(api, "GET /search", func(r *http.Request, in SearchQuery) (*Results, error) {
     return doSearch(in.Q, in.Page, in.Limit), nil
 })
 ```
@@ -143,7 +143,7 @@ type CreateInput struct {
     Name   string `json:"name"`
 }
 
-shiftapi.Post(api, "/items", func(r *http.Request, in CreateInput) (*Result, error) {
+shiftapi.Handle(api, "POST /items", func(r *http.Request, in CreateInput) (*Result, error) {
     return createItem(in.Name, in.DryRun), nil
 })
 ```
@@ -158,7 +158,7 @@ type AuthInput struct {
     Q     string `query:"q"`
 }
 
-shiftapi.Get(api, "/search", func(r *http.Request, in AuthInput) (*Results, error) {
+shiftapi.Handle(api, "GET /search", func(r *http.Request, in AuthInput) (*Results, error) {
     // in.Token parsed from the Authorization header
     // in.Q parsed from ?q= query param
     return doSearch(in.Token, in.Q), nil
@@ -178,7 +178,7 @@ type UploadInput struct {
     Tags  string                  `query:"tags"`
 }
 
-shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*Result, error) {
+shiftapi.Handle(api, "POST /upload", func(r *http.Request, in UploadInput) (*Result, error) {
     f, err := in.File.Open()
     if err != nil {
         return nil, fmt.Errorf("failed to open file: %w", err)
@@ -246,14 +246,14 @@ v1 := api.Group("/api/v1",
     shiftapi.WithMiddleware(auth),
 )
 
-shiftapi.Get(v1, "/users", listUsers)   // GET /api/v1/users
-shiftapi.Post(v1, "/users", createUser) // POST /api/v1/users
+shiftapi.Handle(v1, "GET /users", listUsers)   // GET /api/v1/users
+shiftapi.Handle(v1, "POST /users", createUser) // POST /api/v1/users
 
 admin := v1.Group("/admin",
     shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
     shiftapi.WithMiddleware(adminOnly),
 )
-shiftapi.Get(admin, "/stats", getStats) // GET /api/v1/admin/stats
+shiftapi.Handle(admin, "GET /stats", getStats) // GET /api/v1/admin/stats
 ```
 
 ### Middleware
@@ -267,7 +267,7 @@ api := shiftapi.New(
 v1 := api.Group("/api/v1",
     shiftapi.WithMiddleware(auth),                   // group routes
 )
-shiftapi.Get(v1, "/admin", getAdmin,
+shiftapi.Handle(v1, "GET /admin", getAdmin,
     shiftapi.WithMiddleware(adminOnly),               // single route
 )
 ```
@@ -294,7 +294,7 @@ func authMiddleware(next http.Handler) http.Handler {
 }
 
 // Handler retrieves it — fully typed, no assertion needed:
-shiftapi.Get(authed, "/me", func(r *http.Request, _ struct{}) (*Profile, error) {
+shiftapi.Handle(authed, "GET /me", func(r *http.Request, _ struct{}) (*Profile, error) {
     user, ok := shiftapi.FromContext(r, userKey)
     if !ok {
         return nil, fmt.Errorf("missing user context")
@@ -313,7 +313,7 @@ Use `WithError` to declare that a handler may return a specific error type at a 
 api := shiftapi.New(
     shiftapi.WithError[*AuthError](http.StatusUnauthorized),         // all routes
 )
-shiftapi.Get(api, "/users/{id}", getUser,
+shiftapi.Handle(api, "GET /users/{id}", getUser,
     shiftapi.WithError[*NotFoundError](http.StatusNotFound),         // single route
 )
 ```
@@ -356,7 +356,7 @@ createOpts := shiftapi.ComposeRouteOptions(
     shiftapi.WithStatus(http.StatusCreated),
     shiftapi.WithError[*ConflictError](http.StatusConflict),
 )
-shiftapi.Post(api, "/users", createUser, createOpts)
+shiftapi.Handle(api, "POST /users", createUser, createOpts)
 ```
 
 ### Route metadata
@@ -364,7 +364,7 @@ shiftapi.Post(api, "/users", createUser, createOpts)
 Add OpenAPI summaries, descriptions, and tags per route:
 
 ```go
-shiftapi.Post(api, "/greet", greet,
+shiftapi.Handle(api, "POST /greet", greet,
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary:     "Greet a person",
         Description: "Returns a personalized greeting.",

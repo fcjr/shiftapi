@@ -93,7 +93,7 @@ func buildErrorLookup(entries []errorEntry) errorLookup {
 // WithError returns an [Option] that works at any level:
 //   - [New] — applies to all routes (API-level)
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
-//   - [Get], [Post], etc. — applies to a single route
+//   - [Handle] — applies to a single route
 //
 //	api := shiftapi.New(
 //	    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
@@ -101,7 +101,7 @@ func buildErrorLookup(entries []errorEntry) errorLookup {
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
 //	)
-//	shiftapi.Get(v1, "/users/{id}", getUser,
+//	shiftapi.Handle(v1, "GET /users/{id}", getUser,
 //	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 //	)
 func WithError[T error](status int) Option {
@@ -121,7 +121,7 @@ func WithError[T error](status int) Option {
 // WithMiddleware returns an [Option] that works at any level:
 //   - [New] — applies to all routes (API-level)
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
-//   - [Get], [Post], etc. — applies to a single route
+//   - [Handle] — applies to a single route
 //
 //	api := shiftapi.New(
 //	    shiftapi.WithMiddleware(cors, logging),
@@ -129,7 +129,7 @@ func WithError[T error](status int) Option {
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithMiddleware(auth),
 //	)
-//	shiftapi.Get(v1, "/admin", getAdmin,
+//	shiftapi.Handle(v1, "GET /admin", getAdmin,
 //	    shiftapi.WithMiddleware(adminOnly),
 //	)
 func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
@@ -144,7 +144,7 @@ func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 // WithResponseHeader returns an [Option] that works at any level:
 //   - [New] — applies to all routes (API-level)
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
-//   - [Get], [Post], etc. — applies to a single route
+//   - [Handle] — applies to a single route
 //
 // Static headers are applied in API → Group → Route order. If the same header
 // name is declared at multiple levels, the later level wins. Dynamic headers
@@ -157,7 +157,7 @@ func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithResponseHeader("X-API-Version", "1"),
 //	)
-//	shiftapi.Get(v1, "/users", listUsers,
+//	shiftapi.Handle(v1, "GET /users", listUsers,
 //	    shiftapi.WithResponseHeader("Cache-Control", "max-age=3600"),
 //	)
 func WithResponseHeader(name, value string) Option {

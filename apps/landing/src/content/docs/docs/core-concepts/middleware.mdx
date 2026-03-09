@@ -21,7 +21,7 @@ v1 := api.Group("/api/v1",
 )
 
 // Route level — applies to this route only
-shiftapi.Get(v1, "/admin", getAdmin,
+shiftapi.Handle(v1, "GET /admin", getAdmin,
     shiftapi.WithMiddleware(adminOnly),
 )
 ```
@@ -61,7 +61,7 @@ func authMiddleware(next http.Handler) http.Handler {
     })
 }
 
-shiftapi.Get(authed, "/me", func(r *http.Request, _ struct{}) (*Profile, error) {
+shiftapi.Handle(authed, "GET /me", func(r *http.Request, _ struct{}) (*Profile, error) {
     user, ok := shiftapi.FromContext(r, userKey)
     if !ok {
         return nil, fmt.Errorf("missing user context")
@@ -101,5 +101,5 @@ authed := api.Group("/api",
     shiftapi.WithMiddleware(authMiddleware),
 )
 
-shiftapi.Get(authed, "/me", getMe)
+shiftapi.Handle(authed, "GET /me", getMe)
 ```

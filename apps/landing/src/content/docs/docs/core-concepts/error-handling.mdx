@@ -23,7 +23,7 @@ func (e *ConflictError) Error() string { return e.Message }
 ### Register it on a route
 
 ```go
-shiftapi.Post(api, "/users", createUser,
+shiftapi.Handle(api, "POST /users", createUser,
     shiftapi.WithError[*ConflictError](http.StatusConflict),
     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 )
@@ -62,7 +62,7 @@ return nil, fmt.Errorf("db lookup failed: %w", &ConflictError{Code: "EMAIL_TAKEN
 A single route can declare multiple error types:
 
 ```go
-shiftapi.Post(api, "/users", createUser,
+shiftapi.Handle(api, "POST /users", createUser,
     shiftapi.WithError[*ConflictError](http.StatusConflict),
     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
     shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
@@ -87,7 +87,7 @@ v1 := api.Group("/api/v1",
 )
 
 // Route level — applies to this route only
-shiftapi.Get(v1, "/users/{id}", getUser,
+shiftapi.Handle(v1, "GET /users/{id}", getUser,
     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 )
 ```

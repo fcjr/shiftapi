@@ -42,7 +42,7 @@ type RouteInfo struct {
 
 // WithRouteInfo sets the route's OpenAPI metadata (summary, description, tags).
 //
-//	shiftapi.Post(api, "/greet", greet, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+//	shiftapi.Handle(api, "POST /greet", greet, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 //	    Summary: "Greet a person",
 //	    Tags:    []string{"greetings"},
 //	}))

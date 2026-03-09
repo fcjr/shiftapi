@@ -30,7 +30,7 @@ func Example() {
 		Message string `json:"message"`
 	}
 
-	shiftapi.Post(api, "/hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
+	shiftapi.Handle(api, "POST /hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
 		return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
 	})
 
@@ -49,7 +49,7 @@ func ExampleNew() {
 	_ = api
 }
 
-func ExampleGet() {
+func ExampleHandle_get() {
 	api := shiftapi.New()
 
 	type UserQuery struct {
@@ -60,12 +60,12 @@ func ExampleGet() {
 		Name string `json:"name"`
 	}
 
-	shiftapi.Get(api, "/user", func(r *http.Request, in UserQuery) (*User, error) {
+	shiftapi.Handle(api, "GET /user", func(r *http.Request, in UserQuery) (*User, error) {
 		return &User{ID: in.ID, Name: "Alice"}, nil
 	})
 }
 
-func ExampleGet_pathParameter() {
+func ExampleHandle_pathParameter() {
 	api := shiftapi.New()
 
 	type User struct {
@@ -73,7 +73,7 @@ func ExampleGet_pathParameter() {
 		Name string `json:"name"`
 	}
 
-	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
+	shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
 		id := r.PathValue("id")
 		return &User{ID: id, Name: "Alice"}, nil
 	})
@@ -87,7 +87,7 @@ func ExampleGet_pathParameter() {
 	// {"id":"42","name":"Alice"}
 }
 
-func ExamplePost() {
+func ExampleHandle_post() {
 	api := shiftapi.New()
 
 	type CreateInput struct {
@@ -98,12 +98,12 @@ func ExamplePost() {
 		ID int `json:"id"`
 	}
 
-	shiftapi.Post(api, "/users", func(r *http.Request, in CreateInput) (*CreateOutput, error) {
+	shiftapi.Handle(api, "POST /users", func(r *http.Request, in CreateInput) (*CreateOutput, error) {
 		return &CreateOutput{ID: 1}, nil
 	}, shiftapi.WithStatus(http.StatusCreated))
 }
 
-func ExamplePost_queryAndBody() {
+func ExampleHandle_queryAndBody() {
 	api := shiftapi.New()
 
 	type Request struct {
@@ -114,13 +114,13 @@ func ExamplePost_queryAndBody() {
 		Result string `json:"result"`
 	}
 
-	shiftapi.Post(api, "/action", func(r *http.Request, in Request) (*Response, error) {
+	shiftapi.Handle(api, "POST /action", func(r *http.Request, in Request) (*Response, error) {
 		return &Response{Result: in.Name + " (v" + in.Version + ")"}, nil
 	})
 	_ = api
 }
 
-func ExamplePost_fileUpload() {
+func ExampleHandle_fileUpload() {
 	api := shiftapi.New()
 
 	type UploadInput struct {
@@ -131,7 +131,7 @@ func ExamplePost_fileUpload() {
 		Size     int64  `json:"size"`
 	}
 
-	shiftapi.Post(api, "/upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
+	shiftapi.Handle(api, "POST /upload", func(r *http.Request, in UploadInput) (*UploadResult, error) {
 		return &UploadResult{
 			Filename: in.File.Filename,
 			Size:     in.File.Size,
@@ -150,7 +150,7 @@ func ExampleWithError_auth() {
 
 	type Empty struct{}
 
-	shiftapi.Get(api, "/secret", func(r *http.Request, _ struct{}) (*Empty, error) {
+	shiftapi.Handle(api, "GET /secret", func(r *http.Request, _ struct{}) (*Empty, error) {
 		token := r.Header.Get("Authorization")
 		if token == "" {
 			return nil, &exampleAuthError{Message: "missing auth token"}
@@ -172,7 +172,7 @@ func ExampleWithError_auth() {
 func ExampleWithError() {
 	api := shiftapi.New()
 
-	shiftapi.Get(api, "/users/{id}", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, _ struct{}) (*struct {
 		Name string `json:"name"`
 	}, error) {
 		return nil, &exampleNotFoundError{Message: "user not found", Detail: "no user with that ID"}
@@ -192,7 +192,7 @@ func ExampleWithError() {
 func ExampleWithRouteInfo() {
 	api := shiftapi.New()
 
-	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(api, "GET /health", func(r *http.Request, _ struct{}) (*struct {
 		OK bool `json:"ok"`
 	}, error) {
 		return &struct {
@@ -215,7 +215,7 @@ func ExampleWithStatus() {
 		ID int `json:"id"`
 	}
 
-	shiftapi.Post(api, "/items", func(r *http.Request, in Item) (*Created, error) {
+	shiftapi.Handle(api, "POST /items", func(r *http.Request, in Item) (*Created, error) {
 		return &Created{ID: 1}, nil
 	}, shiftapi.WithStatus(http.StatusCreated))
 
@@ -227,7 +227,7 @@ func ExampleAPI_Group() {
 
 	v1 := api.Group("/api/v1")
 
-	shiftapi.Get(v1, "/users", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(v1, "GET /users", func(r *http.Request, _ struct{}) (*struct {
 		Name string `json:"name"`
 	}, error) {
 		return &struct {
@@ -243,7 +243,7 @@ func ExampleAPI_Group() {
 	// {"name":"Alice"}
 }
 
-func ExampleGet_responseHeaders() {
+func ExampleHandle_responseHeaders() {
 	api := shiftapi.New()
 
 	type CachedItem struct {
@@ -252,7 +252,7 @@ func ExampleGet_responseHeaders() {
 		Name         string  `json:"name"`
 	}
 
-	shiftapi.Get(api, "/item", func(r *http.Request, _ struct{}) (*CachedItem, error) {
+	shiftapi.Handle(api, "GET /item", func(r *http.Request, _ struct{}) (*CachedItem, error) {
 		etag := `"v1"`
 		return &CachedItem{
 			CacheControl: "max-age=3600",
@@ -278,7 +278,7 @@ func ExampleWithResponseHeader() {
 		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
 	)
 
-	shiftapi.Get(api, "/item", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(api, "GET /item", func(r *http.Request, _ struct{}) (*struct {
 		Name string `json:"name"`
 	}, error) {
 		return &struct {
@@ -296,10 +296,10 @@ func ExampleWithResponseHeader() {
 	// {"name":"Widget"}
 }
 
-func ExampleDelete_noContent() {
+func ExampleHandle_noContent() {
 	api := shiftapi.New()
 
-	shiftapi.Delete(api, "/items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
+	shiftapi.Handle(api, "DELETE /items/{id}", func(r *http.Request, _ struct{}) (struct{}, error) {
 		return struct{}{}, nil
 	}, shiftapi.WithStatus(http.StatusNoContent))
 
@@ -324,7 +324,7 @@ func ExampleFromContext() {
 
 	api := shiftapi.New(shiftapi.WithMiddleware(authMiddleware))
 
-	shiftapi.Get(api, "/whoami", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(api, "GET /whoami", func(r *http.Request, _ struct{}) (*struct {
 		User string `json:"user"`
 	}, error) {
 		user, _ := shiftapi.FromContext(r, userKey)
@@ -344,7 +344,7 @@ func ExampleFromContext() {
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 
-	shiftapi.Get(api, "/ping", func(r *http.Request, _ struct{}) (*struct {
+	shiftapi.Handle(api, "GET /ping", func(r *http.Request, _ struct{}) (*struct {
 		Pong bool `json:"pong"`
 	}, error) {
 		return &struct {

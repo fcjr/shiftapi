@@ -37,7 +37,7 @@ func TestWithEnum_bodyField(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Post(api, "/items", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "POST /items", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -61,7 +61,7 @@ func TestWithEnum_queryParam(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Get(api, "/items", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "GET /items", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -95,7 +95,7 @@ func TestWithEnum_pathParam(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Get(api, "/items/{status}", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "GET /items/{status}", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -129,7 +129,7 @@ func TestWithEnum_headerParam(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Get(api, "/items", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "GET /items", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -163,7 +163,7 @@ func TestWithEnum_intEnum(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Post(api, "/tasks", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "POST /tasks", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -201,7 +201,7 @@ func TestWithEnum_oneofOverridesEnum(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Post(api, "/items", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "POST /items", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
@@ -226,7 +226,7 @@ func TestWithEnum_pointerField(t *testing.T) {
 		OK bool `json:"ok"`
 	}
 
-	shiftapi.Post(api, "/items", func(r *http.Request, in *Req) (*Resp, error) {
+	shiftapi.Handle(api, "POST /items", func(r *http.Request, in *Req) (*Resp, error) {
 		return &Resp{OK: true}, nil
 	})
 
