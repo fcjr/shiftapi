@@ -9,7 +9,7 @@ const GREETER_ENTRY = "./examples/greeter";
 
 describe("generateTypes", () => {
   it("generates TypeScript types from the greeter spec", async () => {
-    const spec = extractSpec(GREETER_ENTRY, REPO_ROOT);
+    const spec = await extractSpec(GREETER_ENTRY, REPO_ROOT);
     const types = await generateTypes(spec);
 
     expect(types).toContain("paths");
@@ -18,7 +18,7 @@ describe("generateTypes", () => {
   });
 
   it("includes component type definitions", async () => {
-    const spec = extractSpec(GREETER_ENTRY, REPO_ROOT);
+    const spec = await extractSpec(GREETER_ENTRY, REPO_ROOT);
     const types = await generateTypes(spec);
 
     expect(types).toContain("Person");

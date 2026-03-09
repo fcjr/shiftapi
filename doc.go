@@ -8,7 +8,7 @@
 //
 //	api := shiftapi.New()
 //	shiftapi.Post(api, "/greet", greet)
-//	shiftapi.ListenAndServe(":8080", api)
+//	http.ListenAndServe(":8080", api)
 //
 // where greet is a typed handler:
 //

@@ -73,6 +73,7 @@ func registerRoute[In, Resp any](
 		h = rd.middleware[i](h)
 	}
 	api.mux.Handle(pattern, h)
+	devNotifyRoute(api)
 }
 
 // Get registers a handler for GET requests at the given path. The path

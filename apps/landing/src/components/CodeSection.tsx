@@ -19,7 +19,7 @@ func greet(r *http.Request, in Input) (*Output, error) {
 func main() {
     api := shiftapi.New()
     shiftapi.Post(api, "/greet", greet)
-    shiftapi.ListenAndServe(":8080", api)
+    http.ListenAndServe(":8080", api)
 }`;
 
 const tsCode = `import { client } from "@shiftapi/client";

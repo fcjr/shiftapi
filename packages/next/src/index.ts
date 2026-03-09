@@ -5,12 +5,12 @@ import {
   loadConfig,
   findConfigDir,
   regenerateTypes as _regenerateTypes,
+  regenerateTypesFromServer,
   writeGeneratedFiles,
   patchTsConfigPaths,
   nextClientJsTemplate,
   DEV_API_PREFIX,
   GoServerManager,
-  findFreePort,
 } from "shiftapi/internal";
 import type { ShiftAPIPluginOptions } from "shiftapi/internal";
 
@@ -205,29 +205,42 @@ async function initializeDev(
   openapiSource: string,
 
 ): Promise<InitResult> {
-  const goPort = await findFreePort(basePort);
-  if (goPort !== basePort) {
-    console.log(`[shiftapi] Port ${basePort} is in use, using ${goPort}`);
-  }
-
   const goServer = new GoServerManager(serverEntry, goRoot);
 
-  // Start Go server
+  // Start Go server and wait for the dev port.
+  let devPort: number;
   try {
-    await goServer.start(goPort);
+    await goServer.start();
+    devPort = await goServer.waitForDevPort();
     console.log(
-      `[shiftapi] API docs available at ${parsedUrl.protocol}//${parsedUrl.hostname}:${goPort}/docs`,
+      `[shiftapi] API docs available at ${parsedUrl.protocol}//${parsedUrl.hostname}:${devPort}/docs`,
     );
   } catch (err) {
     console.error("[shiftapi] Go server failed to start:", err);
+    return { port: basePort };
   }
 
-  // Generate types
+  // Wake up the dev listener by hitting the user's Go server port.
+  const userUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}:${basePort}`;
+  try {
+    await fetch(`${userUrl}/openapi.json`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    // will retry via fetchSpec polling
+  }
+
+  // Generate types from the running dev server.
   let generatedDts = "";
   try {
-    const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
+    const result = await regenerateTypesFromServer(
+      `http://localhost:${devPort}`,
+      baseUrl,
+      true,
+      "",
+    );
     generatedDts = result.types;
-    const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
+    const clientJs = nextClientJsTemplate(devPort, baseUrl, DEV_API_PREFIX);
     writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
@@ -249,18 +262,27 @@ async function initializeDev(
       debounceTimer = setTimeout(async () => {
         try {
           await goServer.stop();
-          await goServer.start(goPort);
+          await goServer.start();
+          const newDevPort = await goServer.waitForDevPort();
 
-          const result = await _regenerateTypes(
-            serverEntry,
-            goRoot,
+          // Wake up the dev listener.
+          try {
+            await fetch(`${userUrl}/openapi.json`, {
+              signal: AbortSignal.timeout(10_000),
+            });
+          } catch {
+            // will retry via fetchSpec polling
+          }
+
+          const result = await regenerateTypesFromServer(
+            `http://localhost:${newDevPort}`,
             baseUrl,
             true,
             generatedDts,
           );
           if (result.changed) {
             generatedDts = result.types;
-            const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
+            const clientJs = nextClientJsTemplate(newDevPort, baseUrl, DEV_API_PREFIX);
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
               openapiSource,
@@ -297,7 +319,7 @@ async function initializeDev(
     process.exit();
   });
 
-  return { port: goPort };
+  return { port: devPort };
 }
 
 async function initializeBuild(

@@ -1,59 +1,107 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync, unlinkSync, rmSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Extracts the OpenAPI spec from a Go shiftapi server by running it with
- * the SHIFTAPI_EXPORT_SPEC environment variable set. The Go binary writes
- * the spec to the given path and exits immediately.
+ * the shiftapidev build tag and SHIFTAPI_EXPORT_SPEC=1. The Go process
+ * writes the spec JSON to a temp file during route registration (via
+ * devNotifyRoute), then a background goroutine exits the process cleanly.
+ *
+ * This works even when the user's configured port is in use: the spec file
+ * is written synchronously on the main goroutine during route registration,
+ * before http.ListenAndServe is ever called. If the port is unavailable
+ * and log.Fatal exits the process, the file already contains the complete spec.
  */
-export function extractSpec(serverEntry: string, goRoot: string): object {
-  const tempDir = mkdtempSync(join(tmpdir(), "shiftapi-"));
-  const specPath = join(tempDir, "openapi.json");
+export async function extractSpec(
+  serverEntry: string,
+  goRoot: string,
+): Promise<object> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "shiftapi-"));
+  const exportFile = join(tmpDir, "spec.json");
 
   try {
-    execFileSync("go", ["run", "-tags", "shiftapidev", serverEntry], {
-      cwd: goRoot,
-      env: {
-        ...process.env,
-        SHIFTAPI_EXPORT_SPEC: specPath,
+    return await runExtract(serverEntry, goRoot, exportFile);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function runExtract(
+  serverEntry: string,
+  goRoot: string,
+  exportFile: string,
+): Promise<object> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "go",
+      ["run", "-tags", "shiftapidev", serverEntry],
+      {
+        cwd: goRoot,
+        stdio: ["ignore", "ignore", "pipe"],
+        env: {
+          ...process.env,
+          SHIFTAPI_EXPORT_SPEC: "1",
+          SHIFTAPI_EXPORT_FILE: exportFile,
+        },
       },
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 30_000,
+    );
+
+    let stderrBuf = "";
+    let settled = false;
+
+    function finish(err: Error | null, result?: object) {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(result!);
+    }
+
+    const timeout = setTimeout(() => {
+      proc.kill();
+      finish(
+        new Error(
+          `shiftapi: Timed out waiting for OpenAPI spec.\n` +
+            `  Command: go run -tags shiftapidev ${serverEntry}\n` +
+            `  CWD: ${goRoot}`,
+        ),
+      );
+    }, 30_000);
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      finish(
+        new Error(
+          `shiftapi: Failed to start Go process: ${err.message}`,
+        ),
+      );
     });
-  } catch (err: unknown) {
-    // os.Exit(0) means exit code 0, so execFileSync does NOT throw.
-    // If we're here, the Go code failed to compile or panicked.
-    const stderr =
-      err instanceof Error && "stderr" in err
-        ? String((err as { stderr: unknown }).stderr)
-        : "";
-    throw new Error(
-      `shiftapi: Failed to extract OpenAPI spec.\n` +
-        `  Command: go run ${serverEntry}\n` +
-        `  CWD: ${goRoot}\n` +
-        `  Error: ${stderr || String(err)}`,
-    );
-  }
 
-  let raw: string;
-  try {
-    raw = readFileSync(specPath, "utf-8");
-  } catch {
-    throw new Error(
-      `shiftapi: Spec file was not created at ${specPath}.\n` +
-        `  Make sure your Go server calls shiftapi.ListenAndServe().`,
-    );
-  }
+    proc.stderr!.on("data", (chunk: Buffer) => {
+      stderrBuf += chunk.toString();
+    });
 
-  // Cleanup temp dir
-  try {
-    unlinkSync(specPath);
-    rmSync(tempDir, { recursive: true });
-  } catch {
-    // ignore cleanup errors
-  }
+    // Read the spec file after the process exits (any exit code is OK).
+    proc.on("exit", async () => {
+      clearTimeout(timeout);
 
-  return JSON.parse(raw);
+      try {
+        const data = await readFile(exportFile, "utf-8");
+        const spec = JSON.parse(data) as object;
+        finish(null, spec);
+      } catch (readErr) {
+        finish(
+          new Error(
+            `shiftapi: Failed to read spec from export file.\n` +
+              `  File: ${exportFile}\n` +
+              `  Error: ${readErr instanceof Error ? readErr.message : String(readErr)}\n` +
+              `  Command: go run -tags shiftapidev ${serverEntry}\n` +
+              `  CWD: ${goRoot}\n` +
+              `  Stderr: ${stderrBuf}`,
+          ),
+        );
+      }
+    });
+  });
 }

@@ -47,5 +47,5 @@ func ListenAndServe(ctx context.Context, addr string) error {
 		}),
 	)
 
-	return shiftapi.ListenAndServe(addr, api)
+	return http.ListenAndServe(addr, api)
 }

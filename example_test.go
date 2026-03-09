@@ -34,7 +34,7 @@ func Example() {
 		return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
 	})
 
-	log.Fatal(shiftapi.ListenAndServe(":8080", api))
+	log.Fatal(http.ListenAndServe(":8080", api))
 }
 
 func ExampleNew() {

@@ -171,6 +171,6 @@ func main() {
 	)
 
 	log.Println("listening on :8080")
-	log.Fatal(shiftapi.ListenAndServe(":8080", api))
+	log.Fatal(http.ListenAndServe(":8080", api))
 	// docs at http://localhost:8080/docs
 }

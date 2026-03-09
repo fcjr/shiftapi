@@ -2,10 +2,16 @@ import { resolve, relative } from "node:path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { parse, stringify } from "comment-json";
 import { extractSpec } from "./extract";
+import { fetchSpec } from "./fetchSpec";
 import { generateTypes } from "./generate";
 import { MODULE_ID, DEV_API_PREFIX } from "./constants";
 import { dtsTemplate, clientJsTemplate, virtualModuleTemplate } from "./templates";
 
+/**
+ * Regenerate types by extracting the spec from a Go server binary
+ * (runs go run with SHIFTAPI_EXPORT_SPEC). Used for production builds
+ * and the prepare CLI command.
+ */
 export async function regenerateTypes(
   serverEntry: string,
   goRoot: string,
@@ -13,10 +19,30 @@ export async function regenerateTypes(
   isDev: boolean,
   previousTypes: string,
 ): Promise<{ types: string; virtualModuleSource: string; changed: boolean }> {
-  const spec = extractSpec(serverEntry, resolve(goRoot)) as Record<
+  const spec = (await extractSpec(serverEntry, resolve(goRoot))) as Record<
     string,
     unknown
   >;
+  const types = await generateTypes(spec);
+  const changed = types !== previousTypes;
+  const virtualModuleSource = virtualModuleTemplate(
+    baseUrl,
+    isDev ? DEV_API_PREFIX : undefined,
+  );
+  return { types, virtualModuleSource, changed };
+}
+
+/**
+ * Regenerate types by fetching the OpenAPI spec from a running Go server.
+ * Used in dev mode by the Vite and Next.js plugins.
+ */
+export async function regenerateTypesFromServer(
+  serverUrl: string,
+  baseUrl: string,
+  isDev: boolean,
+  previousTypes: string,
+): Promise<{ types: string; virtualModuleSource: string; changed: boolean }> {
+  const spec = (await fetchSpec(serverUrl)) as Record<string, unknown>;
   const types = await generateTypes(spec);
   const changed = types !== previousTypes;
   const virtualModuleSource = virtualModuleTemplate(

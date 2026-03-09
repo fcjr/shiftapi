@@ -6,8 +6,8 @@ const REPO_ROOT = resolve(__dirname, "../../../..");
 const GREETER_ENTRY = "./examples/greeter";
 
 describe("extractSpec", () => {
-  it("extracts a valid OpenAPI spec from the greeter example", () => {
-    const spec = extractSpec(GREETER_ENTRY, REPO_ROOT) as Record<string, unknown>;
+  it("extracts a valid OpenAPI spec from the greeter example", async () => {
+    const spec = (await extractSpec(GREETER_ENTRY, REPO_ROOT)) as Record<string, unknown>;
 
     expect(spec).toBeDefined();
     expect(spec.openapi).toBe("3.1");
@@ -20,8 +20,8 @@ describe("extractSpec", () => {
     expect(paths).toHaveProperty("/health");
   });
 
-  it("includes component schemas", () => {
-    const spec = extractSpec(GREETER_ENTRY, REPO_ROOT) as Record<string, unknown>;
+  it("includes component schemas", async () => {
+    const spec = (await extractSpec(GREETER_ENTRY, REPO_ROOT)) as Record<string, unknown>;
     const components = spec.components as Record<string, unknown>;
     const schemas = components.schemas as Record<string, unknown>;
 
@@ -30,8 +30,8 @@ describe("extractSpec", () => {
     expect(schemas).toHaveProperty("Status");
   });
 
-  it("throws on invalid server entry", () => {
-    expect(() => extractSpec("./nonexistent", REPO_ROOT)).toThrow(
+  it("throws on invalid server entry", async () => {
+    await expect(extractSpec("./nonexistent", REPO_ROOT)).rejects.toThrow(
       "shiftapi:"
     );
   });

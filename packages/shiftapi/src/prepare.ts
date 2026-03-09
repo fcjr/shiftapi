@@ -21,7 +21,7 @@ async function main() {
   const baseUrl = config.baseUrl ?? "/";
   const goRoot = configDir;
 
-  const spec = extractSpec(serverEntry, resolve(goRoot)) as Record<
+  const spec = (await extractSpec(serverEntry, resolve(goRoot))) as Record<
     string,
     unknown
   >;

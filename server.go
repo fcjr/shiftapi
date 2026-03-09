@@ -3,7 +3,9 @@ package shiftapi
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
+	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
@@ -26,6 +28,10 @@ type API struct {
 	internalServerFn func(error) any // builds the 500 response body from an unmatched error
 	globalErrors     []errorEntry                      // error types registered at the API level via WithError
 	middleware       []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
+	devListener      net.Listener                      // dev-only secondary listener (set by devInit)
+	devOnce          sync.Once                         // ensures devServe is called exactly once
+	exportMode       bool                              // true when SHIFTAPI_EXPORT_SPEC is set (dev build only)
+	exportFile       string                            // temp file path for export mode spec output
 }
 
 // New creates a new API with the given options. By default the API uses a
@@ -99,6 +105,9 @@ func New(options ...APIOption) *API {
 	api.mux.HandleFunc("GET /openapi.json", api.serveSpec)
 	api.mux.HandleFunc("GET /docs", api.serveDocs)
 	api.mux.HandleFunc("GET /", api.redirectTo("/docs"))
+
+	devInit(api)
+
 	return api
 }
 
@@ -117,11 +126,6 @@ func (a *API) routerImpl() routerData {
 		errors:     a.globalErrors,
 		middleware: a.middleware,
 	}
-}
-
-// ServeHTTP implements http.Handler.
-func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.mux.ServeHTTP(w, r)
 }
 
 func (a *API) validateBody(val any) error {

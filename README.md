@@ -73,7 +73,7 @@ func main() {
     shiftapi.Post(api, "/greet", greet)
 
     log.Println("listening on :8080")
-    log.Fatal(shiftapi.ListenAndServe(":8080", api))
+    log.Fatal(http.ListenAndServe(":8080", api))
     // interactive docs at http://localhost:8080/docs
 }
 ```
