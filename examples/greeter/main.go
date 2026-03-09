@@ -9,6 +9,30 @@ import (
 	"github.com/fcjr/shiftapi"
 )
 
+type ChatMsg struct {
+	Text string `json:"text"`
+}
+
+type EchoReply struct {
+	Text string `json:"text"`
+}
+
+func echo(r *http.Request, _ struct{}, ws *shiftapi.WSConn[EchoReply, ChatMsg]) error {
+	ctx := r.Context()
+	for {
+		msg, err := ws.Receive(ctx)
+		if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := ws.Send(ctx, EchoReply{Text: "echo: " + msg.Text}); err != nil {
+			return err
+		}
+	}
+}
+
 type Person struct {
 	Name string `json:"name" validate:"required"`
 }
@@ -170,7 +194,16 @@ func main() {
 		}),
 	)
 
+	shiftapi.HandleWS(api, "GET /echo", echo,
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary:     "Echo WebSocket",
+			Description: "Echoes back any message sent by the client",
+			Tags:        []string{"websocket"},
+		}),
+	)
+
 	log.Println("listening on :8080")
 	log.Fatal(shiftapi.ListenAndServe(":8080", api))
 	// docs at http://localhost:8080/docs
+	// ws docs at http://localhost:8080/docs/ws
 }

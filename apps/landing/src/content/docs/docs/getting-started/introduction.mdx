@@ -22,5 +22,6 @@ ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler 
 - **Typed HTTP headers** — parse, validate, and document HTTP headers with `header` struct tags
 - **File uploads** — declare uploads with `form` tags, get correct `multipart/form-data` types
 - **Server-Sent Events** — `HandleSSE` gives you a typed writer, automatic SSE headers, and a generated `subscribe` helper with React/Svelte hooks
+- **WebSockets** — `HandleWS` gives you a typed bidirectional connection with automatic upgrade handling and a generated `connect` helper
 - **Interactive docs** — Scalar API reference at `/docs` and OpenAPI spec at `/openapi.json`
 - **Just `net/http`** — implements `http.Handler`, works with any middleware or router

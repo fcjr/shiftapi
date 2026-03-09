@@ -5,14 +5,15 @@ sidebar:
   order: 7
 ---
 
-ShiftAPI's `Handle` function owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: Server-Sent Events, file downloads, WebSocket upgrades, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
+ShiftAPI's `Handle` function owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: file downloads, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
+
+For SSE and WebSocket use cases, prefer [`HandleSSE`](/docs/core-concepts/server-sent-events) and [`HandleWS`](/docs/core-concepts/websockets) which provide typed abstractions. Use `HandleRaw` when you need custom framing or non-standard behavior.
 
 ## Registering raw handlers
 
 ```go
 shiftapi.HandleRaw(api, "GET /events", sseHandler)
 shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler)
-shiftapi.HandleRaw(api, "GET /ws", wsHandler)
 ```
 
 ## Handler signature
@@ -186,10 +187,10 @@ The schema is generated using the same reflection logic as typed handlers — st
 
 ### No WithContentType (default)
 
-A `HandleRaw` route with no `WithContentType` produces a response with only a description. This is appropriate for WebSocket upgrades or other routes where the response format isn't meaningful to document:
+A `HandleRaw` route with no `WithContentType` produces a response with only a description. This is appropriate for routes where the response format isn't meaningful to document:
 
 ```go
-shiftapi.HandleRaw(api, "GET /ws", wsHandler)
+shiftapi.HandleRaw(api, "GET /proxy", proxyHandler)
 ```
 
 Produces:
@@ -237,15 +238,16 @@ shiftapi.HandleRaw(api, "GET /events", sseHandler,
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithResponseHeader(name, value)` | Set a static response header |
 
-## When to use HandleRaw vs Handle vs HandleSSE
+## When to use HandleRaw vs Handle vs HandleSSE vs HandleWS
 
 | Use case | Recommendation |
 |----------|---------------|
 | JSON API endpoint | `Handle` — let the framework encode the response |
 | Server-Sent Events (SSE) | [`HandleSSE`](/docs/core-concepts/server-sent-events) — typed writer, auto headers, typed TS client |
+| Bidirectional WebSocket | [`HandleWS`](/docs/core-concepts/websockets) — typed send/receive, auto upgrade, typed TS client |
 | SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
 | File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
-| WebSocket upgrade | `HandleRaw` (no `WithContentType` needed) |
+| Custom WebSocket framing | `HandleRaw` (no `WithContentType` needed) |
 | Streaming response | `HandleRaw` with `Flusher` access |
 | Proxy / passthrough | `HandleRaw` with `struct{}` input to preserve `r.Body` |
 | JSON but custom content type | `Handle` + `WithContentType("application/vnd.api+json")` |

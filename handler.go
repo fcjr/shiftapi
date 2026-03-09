@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+
+	"github.com/coder/websocket"
 )
 
 // RawHandlerFunc is a handler function that writes directly to the
@@ -223,6 +225,52 @@ func adaptSSE[In, Event any](fn SSEHandlerFunc[In, Event], hc *handlerConfig) ht
 			} else {
 				log.Printf("shiftapi: SSE handler error after response started: %v", err)
 			}
+		}
+	}
+}
+
+func adaptWS[In, Send, Recv any](fn WSHandlerFunc[In, Send, Recv], hc *handlerConfig, wsOpts *WSAcceptOptions) http.HandlerFunc {
+	// Convert our public WSAcceptOptions to the underlying library's AcceptOptions.
+	var acceptOpts *websocket.AcceptOptions
+	if wsOpts != nil {
+		acceptOpts = &websocket.AcceptOptions{
+			Subprotocols:   wsOpts.Subprotocols,
+			OriginPatterns: wsOpts.OriginPatterns,
+		}
+	}
+
+	// In dev mode, skip origin verification so that cross-origin requests
+	// from Vite/Next.js dev servers work without extra config. User-provided
+	// options (e.g. Subprotocols) are preserved.
+	if devMode {
+		if acceptOpts == nil {
+			acceptOpts = &websocket.AcceptOptions{InsecureSkipVerify: true}
+		} else {
+			acceptOpts.InsecureSkipVerify = true
+		}
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		in, ok := parseInput[In](w, r, hc)
+		if !ok {
+			return
+		}
+
+		conn, err := websocket.Accept(w, r, acceptOpts)
+		if err != nil {
+			// Accept writes its own error response (e.g. 403 for origin
+			// violations), so we must not write a second one.
+			return
+		}
+
+		ws := &WSConn[Send, Recv]{conn: conn}
+		if err := fn(r, in, ws); err != nil {
+			if websocket.CloseStatus(err) != -1 {
+				// Already a WebSocket close — nothing more to do.
+				return
+			}
+			log.Printf("shiftapi: WS handler error: %v", err)
+			_ = conn.Close(websocket.StatusInternalError, "internal error")
 		}
 	}
 }

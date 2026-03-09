@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3gen"
 	"github.com/go-playground/validator/v10"
+	spec "github.com/swaggest/go-asyncapi/spec-2.4.0"
 )
 
 // API is the central type that collects typed handler registrations, generates
@@ -19,6 +20,7 @@ import (
 // interactive documentation at GET /docs.
 type API struct {
 	spec             *openapi3.T
+	asyncSpec        *spec.AsyncAPI
 	specGen          *openapi3gen.Generator
 	mux              *http.ServeMux
 	validate         *validator.Validate
@@ -43,6 +45,9 @@ func New(options ...APIOption) *API {
 			Components: &openapi3.Components{
 				Schemas: make(openapi3.Schemas),
 			},
+		},
+		asyncSpec: &spec.AsyncAPI{
+			DefaultContentType: "application/json",
 		},
 		mux:           http.NewServeMux(),
 		validate:      validator.New(),
@@ -100,8 +105,17 @@ func New(options ...APIOption) *API {
 		},
 	}
 
+	// Copy API info to AsyncAPI spec.
+	if api.spec.Info != nil {
+		api.asyncSpec.Info.Title = api.spec.Info.Title
+		api.asyncSpec.Info.Version = api.spec.Info.Version
+		api.asyncSpec.Info.Description = api.spec.Info.Description
+	}
+
 	api.mux.HandleFunc("GET /openapi.json", api.serveSpec)
+	api.mux.HandleFunc("GET /asyncapi.json", api.serveAsyncSpec)
 	api.mux.HandleFunc("GET /docs", api.serveDocs)
+	api.mux.HandleFunc("GET /docs/ws", api.serveAsyncDocs)
 	api.mux.HandleFunc("GET /", api.redirectTo("/docs"))
 	return api
 }
@@ -158,6 +172,23 @@ func (a *API) serveDocs(w http.ResponseWriter, r *http.Request) {
 	if err := genDocsHTML(docsData{
 		Title:   title,
 		SpecURL: "/openapi.json",
+	}, w); err != nil {
+		http.Error(w, "error generating docs", http.StatusInternalServerError)
+	}
+}
+
+func (a *API) serveAsyncDocs(w http.ResponseWriter, r *http.Request) {
+	if len(a.asyncSpec.Channels) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	title := ""
+	if a.spec.Info != nil {
+		title = a.spec.Info.Title + " — WebSockets"
+	}
+	if err := genAsyncDocsHTML(docsData{
+		Title:   title,
+		SpecURL: "/asyncapi.json",
 	}, w); err != nil {
 		http.Error(w, "error generating docs", http.StatusInternalServerError)
 	}

@@ -121,8 +121,9 @@ describe("virtualModuleTemplate", () => {
     expect(source).toContain("import.meta.env.VITE_SHIFTAPI_BASE_URL");
     expect(source).toContain("/api");
     expect(source).toContain("export { createClient }");
-    expect(source).toContain('import { createSubscribe } from "shiftapi/internal"');
+    expect(source).toContain('import { createSubscribe, createWebSocket } from "shiftapi/internal"');
     expect(source).toContain("export const subscribe = createSubscribe(");
+    expect(source).toContain("export const websocket = createWebSocket(");
     // Should NOT contain TypeScript syntax
     expect(source).not.toContain("interface");
     expect(source).not.toContain("type ");

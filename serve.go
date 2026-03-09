@@ -4,6 +4,8 @@ package shiftapi
 
 import "net/http"
 
+const devMode = false
+
 // ListenAndServe starts the HTTP server on the given address.
 //
 // In production builds this is a direct call to [http.ListenAndServe] with

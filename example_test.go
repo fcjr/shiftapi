@@ -409,6 +409,93 @@ func ExampleWithEvents() {
 	//
 }
 
+func ExampleHandleWS() {
+	api := shiftapi.New()
+
+	type ServerMsg struct {
+		Text string `json:"text"`
+	}
+	type ClientMsg struct {
+		Text string `json:"text"`
+	}
+
+	shiftapi.HandleWS(api, "GET /echo", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
+		ctx := r.Context()
+		for {
+			msg, err := ws.Receive(ctx)
+			if err != nil {
+				return nil
+			}
+			if err := ws.Send(ctx, ServerMsg{Text: "echo: " + msg.Text}); err != nil {
+				return err
+			}
+		}
+	})
+
+	_ = api
+}
+
+type exServerEvent interface{ exServerEvent() }
+
+type exChatMessage struct {
+	User string `json:"user"`
+	Text string `json:"text"`
+}
+
+func (exChatMessage) exServerEvent() {}
+
+type exSystemMessage struct {
+	Info string `json:"info"`
+}
+
+func (exSystemMessage) exServerEvent() {}
+
+type exClientEvent interface{ exClientEvent() }
+
+type exUserMessage struct {
+	Text string `json:"text"`
+}
+
+func (exUserMessage) exClientEvent() {}
+
+func ExampleWithSendMessages() {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /chat", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[exServerEvent, exClientEvent]) error {
+		ctx := r.Context()
+
+		// Send discriminated messages
+		if err := ws.SendEvent(ctx, "chat", exChatMessage{User: "alice", Text: "hi"}); err != nil {
+			return err
+		}
+		if err := ws.SendEvent(ctx, "system", exSystemMessage{Info: "alice joined"}); err != nil {
+			return err
+		}
+
+		// Receive discriminated messages
+		msg, err := ws.ReceiveEvent(ctx)
+		if err != nil {
+			return err
+		}
+		switch msg.Type {
+		case "message":
+			var m exUserMessage
+			if err := msg.Decode(&m); err != nil {
+				return err
+			}
+			return ws.SendEvent(ctx, "chat", exChatMessage{User: "server", Text: m.Text})
+		}
+		return nil
+	}, shiftapi.WithSendMessages(
+		shiftapi.MessageType[exChatMessage]("chat"),
+		shiftapi.MessageType[exSystemMessage]("system"),
+	), shiftapi.WithRecvMessages(
+		shiftapi.MessageType[exUserMessage]("message"),
+	))
+
+	_ = api
+}
+
 func ExampleAPI_ServeHTTP() {
 	api := shiftapi.New()
 

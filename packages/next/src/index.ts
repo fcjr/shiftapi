@@ -228,7 +228,7 @@ async function initializeDev(
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
     generatedDts = result.types;
     const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
-    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource });
+    writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource, asyncapiSpec: result.asyncapiSpec });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
   } catch (err) {
@@ -264,6 +264,7 @@ async function initializeDev(
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
               openapiSource,
+              asyncapiSpec: result.asyncapiSpec,
             });
             console.log("[shiftapi] Types regenerated.");
           }
@@ -313,7 +314,7 @@ async function initializeBuild(
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, false, "");
     const clientJs = nextClientJsTemplate(basePort, baseUrl);
-    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource });
+    writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource, asyncapiSpec: result.asyncapiSpec });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated for build.");
   } catch (err) {

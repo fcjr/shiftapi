@@ -14,6 +14,9 @@ type routeConfig struct {
 	contentType        string         // custom response media type
 	responseSchemaType reflect.Type   // optional type for schema generation under the content type
 	eventVariants      []EventVariant // SSE event variants for oneOf schema generation
+	wsOptions      *WSAcceptOptions
+	wsSendVariants []MessageVariant
+	wsRecvVariants []MessageVariant
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -117,5 +120,76 @@ func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOpti
 func WithEvents(variants ...EventVariant) routeOptionFunc {
 	return func(cfg *routeConfig) {
 		cfg.eventVariants = append(cfg.eventVariants, variants...)
+	}
+}
+
+// WSAcceptOptions configures the WebSocket upgrade for [HandleWS] routes.
+type WSAcceptOptions struct {
+	// Subprotocols lists the WebSocket subprotocols to negotiate with the
+	// client. The empty subprotocol is always negotiated per RFC 6455.
+	Subprotocols []string
+
+	// OriginPatterns lists host patterns for authorized cross-origin requests.
+	// The request host is always authorized. Each pattern is matched case
+	// insensitively with [path.Match]. Include a URI scheme ("://") to match
+	// against "scheme://host".
+	//
+	// In dev mode (shiftapidev build tag), all origins are allowed by default.
+	OriginPatterns []string
+}
+
+// WithWSAcceptOptions sets the WebSocket upgrade options for [HandleWS] routes.
+// Use this to configure subprotocols, allowed origins, etc.
+//
+//	shiftapi.HandleWS(api, "GET /ws", handler,
+//	    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+//	        Subprotocols:   []string{"graphql-ws"},
+//	        OriginPatterns: []string{"example.com"},
+//	    }),
+//	)
+func WithWSAcceptOptions(opts WSAcceptOptions) routeOptionFunc {
+	return func(cfg *routeConfig) {
+		cfg.wsOptions = &opts
+	}
+}
+
+// WithSendMessages registers named server-to-client message types for AsyncAPI
+// schema generation on a [HandleWS] route. Each [MessageVariant] maps a type
+// name to a payload type, producing a oneOf schema with a discriminator on
+// the "type" field.
+//
+// When using WithSendMessages, send messages via [WSConn.SendEvent] which
+// wraps the payload in {"type": name, "data": payload}.
+//
+//	shiftapi.HandleWS(api, "GET /chat", handler,
+//	    shiftapi.WithSendMessages(
+//	        shiftapi.MessageType[ChatMessage]("chat"),
+//	        shiftapi.MessageType[SystemMessage]("system"),
+//	    ),
+//	)
+func WithSendMessages(variants ...MessageVariant) routeOptionFunc {
+	return func(cfg *routeConfig) {
+		cfg.wsSendVariants = append(cfg.wsSendVariants, variants...)
+	}
+}
+
+// WithRecvMessages registers named client-to-server message types for AsyncAPI
+// schema generation on a [HandleWS] route. Each [MessageVariant] maps a type
+// name to a payload type, producing a oneOf schema with a discriminator on
+// the "type" field.
+//
+// When using WithRecvMessages, receive messages via [WSConn.ReceiveEvent]
+// which parses the {"type": name, "data": payload} envelope into a
+// [WSEvent].
+//
+//	shiftapi.HandleWS(api, "GET /chat", handler,
+//	    shiftapi.WithRecvMessages(
+//	        shiftapi.MessageType[UserMessage]("message"),
+//	        shiftapi.MessageType[UserCommand]("command"),
+//	    ),
+//	)
+func WithRecvMessages(variants ...MessageVariant) routeOptionFunc {
+	return func(cfg *routeConfig) {
+		cfg.wsRecvVariants = append(cfg.wsRecvVariants, variants...)
 	}
 }
