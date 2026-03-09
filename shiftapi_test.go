@@ -560,6 +560,37 @@ func TestSpecHasPath(t *testing.T) {
 	}
 }
 
+func TestWithHiddenExcludesRouteFromSpec(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	}, shiftapi.WithHidden())
+
+	spec := api.Spec()
+	if spec.Paths.Find("/health") != nil {
+		t.Fatal("hidden route should not appear in spec paths")
+	}
+}
+
+func TestWithHiddenRouteStillServes(t *testing.T) {
+	api := newTestAPI(t)
+	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {
+		return &Status{OK: true}, nil
+	}, shiftapi.WithHidden())
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
 func TestSpecGetHasNoRequestBody(t *testing.T) {
 	api := newTestAPI(t)
 	shiftapi.Get(api, "/health", func(r *http.Request, _ struct{}) (*Status, error) {

@@ -211,8 +211,13 @@
 // [WithError], [WithMiddleware], and [WithResponseHeader] all return [Option].
 //
 // Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
-// with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with
-// route registration functions ([RouteOption]).
+// with [New] ([APIOption]), while [WithStatus], [WithRouteInfo], and [WithHidden]
+// only work with route registration functions ([RouteOption]).
+//
+// Use [WithHidden] to exclude a route from the generated OpenAPI schema (and any
+// generated client) while still serving it normally:
+//
+//	shiftapi.Get(api, "/internal/health", healthCheck, shiftapi.WithHidden())
 //
 // Use [ComposeOptions] to bundle multiple [Option] values into a reusable option:
 //
