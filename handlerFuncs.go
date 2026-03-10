@@ -477,8 +477,13 @@ func registerWSRoute[In any](
 		panic(fmt.Sprintf("shiftapi: AsyncAPI generation failed for %s %s: %v", method, s.fullPath, err))
 	}
 
+	cb := wsCallbacks{
+		onError:      msgs.cfg.onError,
+		onUnknownMsg: msgs.cfg.onUnknownMsg,
+	}
+
 	hc := s.handlerCfg(method, false)
-	h := adaptWSMessages[In](dispatch, sendVariantMap, hc, wsOpts.wsAcceptOptions)
+	h := adaptWSMessages[In](dispatch, sendVariantMap, hc, wsOpts.wsAcceptOptions, cb)
 	s.wrapAndRegister(router, h)
 }
 
