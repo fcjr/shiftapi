@@ -1,7 +1,6 @@
 package shiftapi_test
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -426,8 +425,8 @@ func ExampleHandleWS() {
 
 	shiftapi.HandleWS(api, "GET /echo",
 		shiftapi.Websocket[struct{}](
-			shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-				return ws.Send(ctx, ServerMsg{Text: "echo: " + msg.Text})
+			shiftapi.WSOn("echo", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+				return ws.Send(ServerMsg{Text: "echo: " + msg.Text})
 			}),
 			shiftapi.WSSends(
 				shiftapi.MessageType[ServerMsg]("server"),
@@ -456,8 +455,8 @@ func ExampleHandleWS_multiType() {
 
 	shiftapi.HandleWS(api, "GET /chat",
 		shiftapi.Websocket[struct{}](
-			shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
-				return ws.Send(ctx, exChatMessage{User: "server", Text: m.Text})
+			shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
+				return ws.Send(exChatMessage{User: "server", Text: m.Text})
 			}),
 			shiftapi.WSSends(
 				shiftapi.MessageType[exChatMessage]("chat"),

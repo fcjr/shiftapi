@@ -21,19 +21,20 @@ import (
 // via [WSSends].
 type WSSender struct {
 	conn         *websocket.Conn
+	ctx          context.Context
 	sendVariants map[reflect.Type]string // nil = raw mode
 }
 
 // Send writes a JSON-encoded message to the WebSocket connection. The value
 // is automatically wrapped in a {"type": name, "data": value} envelope based
 // on its concrete Go type, using the types registered via [WSSends].
-func (ws *WSSender) Send(ctx context.Context, v any) error {
+func (ws *WSSender) Send(v any) error {
 	name, ok := ws.sendVariants[reflect.TypeOf(v)]
 	if !ok {
 		return fmt.Errorf("shiftapi: unregistered send type %T; register with WSSends", v)
 	}
 	envelope := wsEnvelope[any]{Type: name, Data: v}
-	return wsjson.Write(ctx, ws.conn, envelope)
+	return wsjson.Write(ws.ctx, ws.conn, envelope)
 }
 
 // Close closes the WebSocket connection with the given status code and reason.
@@ -99,43 +100,43 @@ type websocketConfig struct {
 type wsOnHandler interface {
 	messageName() string
 	messagePayloadType() reflect.Type
-	handle(ctx context.Context, sender *WSSender, input any, data json.RawMessage) error
+	handle(r *http.Request, sender *WSSender, input any, data json.RawMessage) error
 }
 
 // onHandlerImpl is the concrete implementation of [wsOnHandler] created
 // by the [WSOn] function.
 type onHandlerImpl[In, Msg any] struct {
 	name string
-	fn   func(ctx context.Context, ws *WSSender, in In, msg Msg) error
+	fn   func(r *http.Request, ws *WSSender, in In, msg Msg) error
 }
 
 func (h *onHandlerImpl[In, Msg]) messageName() string              { return h.name }
 func (h *onHandlerImpl[In, Msg]) messagePayloadType() reflect.Type { return reflect.TypeFor[Msg]() }
 
-func (h *onHandlerImpl[In, Msg]) handle(ctx context.Context, sender *WSSender, input any, data json.RawMessage) error {
+func (h *onHandlerImpl[In, Msg]) handle(r *http.Request, sender *WSSender, input any, data json.RawMessage) error {
 	var msg Msg
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return fmt.Errorf("shiftapi: decode %q message: %w", h.name, err)
 	}
-	return h.fn(ctx, sender, input.(In), msg)
+	return h.fn(r, sender, input.(In), msg)
 }
 
 func (h *onHandlerImpl[In, Msg]) applyToWebsocket(cfg *websocketConfig) {
 	cfg.handlers = append(cfg.handlers, h)
 }
 
-// On creates a [WebsocketHandler] that handles messages with the given type
-// name. The handler function receives the parsed input, a [WSSender] for
-// sending responses, and the decoded message payload.
+// WSOn creates a [WebsocketHandler] that handles messages with the given type
+// name. The handler function receives the HTTP request, a [WSSender] for
+// sending responses, the parsed input, and the decoded message payload.
 //
-// Each On handler provides both the runtime dispatch logic and the type
+// Each WSOn handler provides both the runtime dispatch logic and the type
 // information needed for AsyncAPI schema generation. The In type parameter
 // must match the [Websocket] type parameter.
 //
-//	shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
-//	    return ws.Send(ctx, ChatMessage{User: "echo", Text: m.Text})
+//	shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+//	    return ws.Send(ChatMessage{User: "echo", Text: m.Text})
 //	})
-func WSOn[In, Msg any](name string, fn func(ctx context.Context, ws *WSSender, in In, msg Msg) error) WebsocketHandler {
+func WSOn[In, Msg any](name string, fn func(r *http.Request, ws *WSSender, in In, msg Msg) error) WebsocketHandler {
 	if name == "" {
 		panic("shiftapi: WSOn name must not be empty")
 	}
@@ -179,8 +180,8 @@ type WSMessages[In any] struct {
 // parameter parsing. Use struct{} when no input is needed.
 //
 //	shiftapi.Websocket[ChatInput](
-//	    shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
-//	        return ws.Send(ctx, ChatMessage{Room: in.Room, Text: m.Text})
+//	    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+//	        return ws.Send(ChatMessage{Room: in.Room, Text: m.Text})
 //	    }),
 //	    shiftapi.WSSends(
 //	        shiftapi.MessageType[ChatMessage]("chat"),
@@ -232,7 +233,8 @@ func MessageType[T any](name string) MessageVariant {
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
 // WebSocket endpoints. It reads discriminated messages, dispatches to the
 // matching [WSOn] handler, and stops on close or error.
-func runWSDispatchLoop[In any](ctx context.Context, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler) {
+func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler) {
+	ctx := r.Context()
 	for {
 		var envelope wsEvent
 		if err := wsjson.Read(ctx, conn, &envelope); err != nil {
@@ -250,7 +252,7 @@ func runWSDispatchLoop[In any](ctx context.Context, conn *websocket.Conn, ws *WS
 			continue
 		}
 
-		if err := handler.handle(ctx, ws, in, envelope.Data); err != nil {
+		if err := handler.handle(r, ws, in, envelope.Data); err != nil {
 			if websocket.CloseStatus(err) != -1 {
 				return // handler triggered a close
 			}
