@@ -3,7 +3,14 @@ title: WebSockets
 description: Use HandleWS for type-safe bidirectional WebSocket communication with automatic AsyncAPI spec generation and typed TypeScript clients.
 sidebar:
   order: 9
+  badge:
+    text: Experimental
+    variant: caution
 ---
+
+:::caution
+`HandleWS` is experimental. The API may change in future releases.
+:::
 
 `HandleWS` is a dedicated handler for WebSocket connections that gives you typed message handlers, automatic upgrade handling, and end-to-end type safety from Go to TypeScript — including a generated `websocket` helper.
 
@@ -45,7 +52,7 @@ func(r *http.Request, ws *shiftapi.WSSender, in In, msg Msg) error
 
 - **`r *http.Request`** — the original HTTP request (use `r.Context()` for the connection context)
 - **`ws *WSSender`** — for sending messages back to the client
-- **`in In`** — the parsed input (path, query, header params)
+- **`in In`** — the parsed input (path, query, header params), or the state value if `WSSetup` is used
 - **`msg Msg`** — the decoded message payload
 
 The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped by default — use `WSOnUnknownMessage` to customize this.
