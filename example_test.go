@@ -425,6 +425,9 @@ func ExampleHandleWS() {
 			shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
 				return ws.Send(ctx, ServerMsg{Text: "echo: " + msg.Text})
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[ServerMsg]("server"),
+			),
 		),
 	)
 
