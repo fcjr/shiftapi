@@ -28,7 +28,7 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	shiftapi.HandleWS(api, "GET /ws",
 		shiftapi.Websocket[struct{}](
 			shiftapi.WSOn("echo", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
-				return ws.Send(wsServerMsg{Text: msg.Text})
+				return ws.Send(wsServerMsg(msg))
 			}),
 			shiftapi.WSSends(
 				shiftapi.MessageType[wsServerMsg]("server"),
@@ -178,7 +178,7 @@ func TestHandleWS_InputParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send a message to trigger the handler.
 	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
@@ -195,7 +195,7 @@ func TestHandleWS_InputParsing(t *testing.T) {
 	if envelope.Data.Text != "channel=general" {
 		t.Errorf("got %q, want %q", envelope.Data.Text, "channel=general")
 	}
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 func TestHandleWS_OnDispatch(t *testing.T) {
@@ -220,7 +220,7 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send and receive multiple messages.
 	for _, text := range []string{"hello", "world"} {
@@ -241,7 +241,7 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 		}
 	}
 
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 func TestHandleWS_AutoWrapSend(t *testing.T) {
@@ -266,7 +266,7 @@ func TestHandleWS_AutoWrapSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send a message
 	if err := wsjson.Write(ctx, conn, map[string]any{"type": "ping", "data": map[string]any{"text": "hi"}}); err != nil {
@@ -287,7 +287,7 @@ func TestHandleWS_AutoWrapSend(t *testing.T) {
 	if envelope.Data.Text != "pong" {
 		t.Errorf("envelope.Data.Text = %q, want %q", envelope.Data.Text, "pong")
 	}
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
@@ -340,7 +340,7 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send a message to trigger the handler error.
 	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
@@ -385,7 +385,7 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Verify the subprotocol was negotiated.
 	if got := resp.Header.Get("Sec-WebSocket-Protocol"); got != "test-proto" {
@@ -407,7 +407,7 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 	if envelope.Data.Text != "ok" {
 		t.Errorf("got %q, want %q", envelope.Data.Text, "ok")
 	}
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 func TestHandleWS_PathParams(t *testing.T) {
@@ -436,7 +436,7 @@ func TestHandleWS_PathParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send a message to trigger the handler.
 	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
@@ -453,7 +453,7 @@ func TestHandleWS_PathParams(t *testing.T) {
 	if envelope.Data.Text != "room=abc" {
 		t.Errorf("got %q, want %q", envelope.Data.Text, "room=abc")
 	}
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 // --- Multi-message (WSSends) tests ---
@@ -501,7 +501,7 @@ func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck
 
 	// Send a "message" type
 	if err := wsjson.Write(ctx, conn, map[string]any{"type": "message", "data": map[string]any{"text": "hello"}}); err != nil {
@@ -541,7 +541,7 @@ func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 		t.Errorf("msg2.Data.Info = %q, want %q", msg2.Data.Info, "executed: quit")
 	}
 
-	conn.Close(websocket.StatusNormalClosure, "")
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
 }
 
 func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
