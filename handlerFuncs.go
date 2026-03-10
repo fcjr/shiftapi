@@ -483,7 +483,7 @@ func registerWSRoute[In any](
 	}
 
 	hc := s.handlerCfg(method, false)
-	h := adaptWSMessages[In](dispatch, sendVariantMap, hc, wsOpts.wsAcceptOptions, cb)
+	h := adaptWSMessages[In](dispatch, sendVariantMap, hc, wsOpts.wsAcceptOptions, cb, msgs.cfg.setup)
 	s.wrapAndRegister(router, h)
 }
 

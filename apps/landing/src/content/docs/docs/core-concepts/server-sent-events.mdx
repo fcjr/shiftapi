@@ -40,7 +40,9 @@ Use `struct{}` when the handler takes no input:
 ```go
 shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Event]) error {
     // ...
-})
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[Event]("event"),
+))
 ```
 
 ## SSEWriter
@@ -86,7 +88,9 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in EventInput, sse 
         }
     }
     return nil
-})
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[Event]("event"),
+))
 ```
 
 Path parameters work too:
@@ -98,7 +102,9 @@ type StreamInput struct {
 
 shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter[Event]) error {
     // in.RoomID is parsed and validated
-})
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[Event]("event"),
+))
 ```
 
 ## Error handling
