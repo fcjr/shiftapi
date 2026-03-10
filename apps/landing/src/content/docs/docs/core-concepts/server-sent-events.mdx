@@ -3,7 +3,14 @@ title: Server-Sent Events
 description: Use HandleSSE for type-safe Server-Sent Events with automatic OpenAPI spec generation and typed TypeScript clients.
 sidebar:
   order: 8
+  badge:
+    text: Experimental
+    variant: caution
 ---
+
+:::caution
+`HandleSSE` is experimental. The API may change in future releases.
+:::
 
 `HandleSSE` is a dedicated handler for Server-Sent Events that gives you a typed writer, automatic SSE headers, and end-to-end type safety from Go to TypeScript — including a generated `sse` helper and framework-specific hooks.
 
@@ -424,7 +431,7 @@ With a single event type, the schema uses the type directly — no `oneOf`, no d
 | SSE with typed events | `HandleSSE` — typed writer, auto headers, typed TS client |
 | SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
 | File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
-| WebSocket upgrade | `HandleRaw` |
+| Bidirectional real-time | [`HandleWS`](/docs/core-concepts/websockets) — typed handlers, auto dispatch |
 | JSON API endpoint | `Handle` |
 
 `HandleSSE` is the recommended approach for SSE. Use [`HandleRaw`](/docs/core-concepts/raw-handlers) only when you need custom SSE framing or non-standard behavior.
