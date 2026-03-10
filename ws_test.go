@@ -25,12 +25,20 @@ type wsClientMsg struct {
 func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return nil
-	}, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
-		Summary: "Echo WS",
-		Tags:    []string{"websocket"},
-	}))
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: msg.Text})
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
+		),
+		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+			Summary: "Echo WS",
+			Tags:    []string{"websocket"},
+		}),
+	)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/asyncapi.json", nil)
@@ -112,11 +120,6 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 		t.Error("missing wsClientMsg schema in async spec")
 	}
 
-	// Single-message case should NOT create components/messages.
-	if _, ok := components["messages"]; ok {
-		t.Error("single-message case should not create components/messages")
-	}
-
 	// Verify WS path is NOT in OpenAPI spec.
 	w2 := httptest.NewRecorder()
 	r2 := httptest.NewRequest("GET", "/openapi.json", nil)
@@ -156,9 +159,13 @@ func TestHandleWS_InputParsing(t *testing.T) {
 		Channel string `query:"channel" validate:"required"`
 	}
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, in Input, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return ws.Send(r.Context(), wsServerMsg{Text: "channel=" + in.Channel})
-	})
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[Input](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: "channel=" + in.Channel})
+			}),
+		),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -170,6 +177,11 @@ func TestHandleWS_InputParsing(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
+	// Send a message to trigger the handler.
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
 	var msg wsServerMsg
 	if err := wsjson.Read(ctx, conn, &msg); err != nil {
 		t.Fatalf("read: %v", err)
@@ -180,24 +192,16 @@ func TestHandleWS_InputParsing(t *testing.T) {
 	conn.Close(websocket.StatusNormalClosure, "")
 }
 
-func TestHandleWS_SendReceiveRoundtrip(t *testing.T) {
+func TestHandleWS_OnDispatch(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /echo", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		ctx := r.Context()
-		for {
-			msg, err := ws.Receive(ctx)
-			if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			if err := ws.Send(ctx, wsServerMsg{Text: "echo: " + msg.Text}); err != nil {
-				return err
-			}
-		}
-	})
+	shiftapi.HandleWS(api, "GET /echo",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: "echo: " + msg.Text})
+			}),
+		),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -211,7 +215,8 @@ func TestHandleWS_SendReceiveRoundtrip(t *testing.T) {
 
 	// Send and receive multiple messages.
 	for _, text := range []string{"hello", "world"} {
-		if err := wsjson.Write(ctx, conn, wsClientMsg{Text: text}); err != nil {
+		envelope := map[string]any{"type": "echo", "data": map[string]any{"text": text}}
+		if err := wsjson.Write(ctx, conn, envelope); err != nil {
 			t.Fatalf("write %q: %v", text, err)
 		}
 		var resp wsServerMsg
@@ -227,6 +232,52 @@ func TestHandleWS_SendReceiveRoundtrip(t *testing.T) {
 	conn.Close(websocket.StatusNormalClosure, "")
 }
 
+func TestHandleWS_AutoWrapSend(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("ping", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: "pong"})
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// Send a message
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "ping", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Read — should be wrapped in envelope {"type":"server","data":{...}}
+	var envelope struct {
+		Type string       `json:"type"`
+		Data wsServerMsg  `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &envelope); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if envelope.Type != "server" {
+		t.Errorf("envelope.Type = %q, want %q", envelope.Type, "server")
+	}
+	if envelope.Data.Text != "pong" {
+		t.Errorf("envelope.Data.Text = %q, want %q", envelope.Data.Text, "pong")
+	}
+	conn.Close(websocket.StatusNormalClosure, "")
+}
+
 func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 	api := shiftapi.New()
 
@@ -234,9 +285,13 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 		Token string `query:"token" validate:"required"`
 	}
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, in Input, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return nil
-	})
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[Input](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
+				return nil
+			}),
+		),
+	)
 
 	// Missing required query param → should get JSON error, not upgrade.
 	w := httptest.NewRecorder()
@@ -251,9 +306,13 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return fmt.Errorf("something went wrong")
-	})
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return fmt.Errorf("something went wrong")
+			}),
+		),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -264,6 +323,11 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.CloseNow()
+
+	// Send a message to trigger the handler error.
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
 
 	// The server should close the connection with StatusInternalError.
 	_, _, err = conn.Read(ctx)
@@ -279,11 +343,16 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return ws.Send(r.Context(), wsServerMsg{Text: "ok"})
-	}, shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
-		Subprotocols: []string{"test-proto"},
-	}))
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: "ok"})
+			}),
+		),
+		shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+			Subprotocols: []string{"test-proto"},
+		}),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -300,6 +369,11 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 	// Verify the subprotocol was negotiated.
 	if got := resp.Header.Get("Sec-WebSocket-Protocol"); got != "test-proto" {
 		t.Errorf("subprotocol = %q, want %q", got, "test-proto")
+	}
+
+	// Send a message to trigger the handler.
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
 	}
 
 	var msg wsServerMsg
@@ -319,9 +393,13 @@ func TestHandleWS_PathParams(t *testing.T) {
 		ID string `path:"id"`
 	}
 
-	shiftapi.HandleWS(api, "GET /rooms/{id}", func(r *http.Request, in Input, ws *shiftapi.WSConn[wsServerMsg, wsClientMsg]) error {
-		return ws.Send(r.Context(), wsServerMsg{Text: "room=" + in.ID})
-	})
+	shiftapi.HandleWS(api, "GET /rooms/{id}",
+		shiftapi.Websocket[Input](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
+				return ws.Send(ctx, wsServerMsg{Text: "room=" + in.ID})
+			}),
+		),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -333,6 +411,11 @@ func TestHandleWS_PathParams(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
+	// Send a message to trigger the handler.
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
 	var msg wsServerMsg
 	if err := wsjson.Read(ctx, conn, &msg); err != nil {
 		t.Fatalf("read: %v", err)
@@ -343,50 +426,42 @@ func TestHandleWS_PathParams(t *testing.T) {
 	conn.Close(websocket.StatusNormalClosure, "")
 }
 
-// --- Multi-message (WithSendMessages / WithRecvMessages) tests ---
-
-type wsServerEvent interface{ wsServerEvent() }
+// --- Multi-message (WSSends) tests ---
 
 type wsChatMsg struct {
 	User string `json:"user"`
 	Text string `json:"text"`
 }
 
-func (wsChatMsg) wsServerEvent() {}
-
 type wsSystemMsg struct {
 	Info string `json:"info"`
 }
-
-func (wsSystemMsg) wsServerEvent() {}
-
-type wsClientEvent interface{ wsClientEvent() }
 
 type wsUserMsg struct {
 	Text string `json:"text"`
 }
 
-func (wsUserMsg) wsClientEvent() {}
-
 type wsUserCmd struct {
 	Command string `json:"command"`
 }
 
-func (wsUserCmd) wsClientEvent() {}
-
-func TestHandleWS_SendEvent(t *testing.T) {
+func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerEvent, wsClientEvent]) error {
-		ctx := r.Context()
-		if err := ws.SendEvent(ctx, "chat", wsChatMsg{User: "alice", Text: "hi"}); err != nil {
-			return err
-		}
-		return ws.SendEvent(ctx, "system", wsSystemMsg{Info: "joined"})
-	}, shiftapi.WithSendMessages(
-		shiftapi.MessageType[wsChatMsg]("chat"),
-		shiftapi.MessageType[wsSystemMsg]("system"),
-	))
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+				return ws.Send(ctx, wsChatMsg{User: "server", Text: "got: " + m.Text})
+			}),
+			shiftapi.WSOn("command", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
+				return ws.Send(ctx, wsSystemMsg{Info: "executed: " + cmd.Command})
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsChatMsg]("chat"),
+				shiftapi.MessageType[wsSystemMsg]("system"),
+			),
+		),
+	)
 
 	srv := httptest.NewServer(api)
 	defer srv.Close()
@@ -398,104 +473,64 @@ func TestHandleWS_SendEvent(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Read first message — chat
-	var msg1 shiftapi.WSEvent
+	// Send a "message" type
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "message", "data": map[string]any{"text": "hello"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var msg1 struct {
+		Type string     `json:"type"`
+		Data wsChatMsg  `json:"data"`
+	}
 	if err := wsjson.Read(ctx, conn, &msg1); err != nil {
 		t.Fatalf("read 1: %v", err)
 	}
 	if msg1.Type != "chat" {
 		t.Errorf("msg1.Type = %q, want %q", msg1.Type, "chat")
 	}
-	var chat wsChatMsg
-	if err := msg1.Decode(&chat); err != nil {
-		t.Fatalf("decode chat: %v", err)
-	}
-	if chat.User != "alice" || chat.Text != "hi" {
-		t.Errorf("chat = %+v, want {alice, hi}", chat)
+	if msg1.Data.Text != "got: hello" {
+		t.Errorf("msg1.Data.Text = %q, want %q", msg1.Data.Text, "got: hello")
 	}
 
-	// Read second message — system
-	var msg2 shiftapi.WSEvent
+	// Send a "command" type
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "command", "data": map[string]any{"command": "quit"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var msg2 struct {
+		Type string       `json:"type"`
+		Data wsSystemMsg  `json:"data"`
+	}
 	if err := wsjson.Read(ctx, conn, &msg2); err != nil {
 		t.Fatalf("read 2: %v", err)
 	}
 	if msg2.Type != "system" {
 		t.Errorf("msg2.Type = %q, want %q", msg2.Type, "system")
 	}
-	var sys wsSystemMsg
-	if err := msg2.Decode(&sys); err != nil {
-		t.Fatalf("decode system: %v", err)
-	}
-	if sys.Info != "joined" {
-		t.Errorf("sys.Info = %q, want %q", sys.Info, "joined")
-	}
-	conn.Close(websocket.StatusNormalClosure, "")
-}
-
-func TestHandleWS_ReceiveEvent(t *testing.T) {
-	api := shiftapi.New()
-
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerEvent, wsClientEvent]) error {
-		ctx := r.Context()
-		msg, err := ws.ReceiveEvent(ctx)
-		if err != nil {
-			return err
-		}
-		// Echo back what we received as a chat message
-		return ws.SendEvent(ctx, "chat", wsChatMsg{User: "server", Text: "got type=" + msg.Type})
-	}, shiftapi.WithRecvMessages(
-		shiftapi.MessageType[wsUserMsg]("message"),
-		shiftapi.MessageType[wsUserCmd]("command"),
-	), shiftapi.WithSendMessages(
-		shiftapi.MessageType[wsChatMsg]("chat"),
-	))
-
-	srv := httptest.NewServer(api)
-	defer srv.Close()
-
-	ctx := context.Background()
-	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	// Send a discriminated message
-	envelope := map[string]any{"type": "command", "data": map[string]any{"command": "quit"}}
-	if err := wsjson.Write(ctx, conn, envelope); err != nil {
-		t.Fatalf("write: %v", err)
+	if msg2.Data.Info != "executed: quit" {
+		t.Errorf("msg2.Data.Info = %q, want %q", msg2.Data.Info, "executed: quit")
 	}
 
-	// Read the echo
-	var resp shiftapi.WSEvent
-	if err := wsjson.Read(ctx, conn, &resp); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if resp.Type != "chat" {
-		t.Errorf("resp.Type = %q, want %q", resp.Type, "chat")
-	}
-	var chat wsChatMsg
-	if err := resp.Decode(&chat); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if chat.Text != "got type=command" {
-		t.Errorf("chat.Text = %q, want %q", chat.Text, "got type=command")
-	}
 	conn.Close(websocket.StatusNormalClosure, "")
 }
 
 func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerEvent, wsClientEvent]) error {
-		return nil
-	}, shiftapi.WithSendMessages(
-		shiftapi.MessageType[wsChatMsg]("chat"),
-		shiftapi.MessageType[wsSystemMsg]("system"),
-	), shiftapi.WithRecvMessages(
-		shiftapi.MessageType[wsUserMsg]("message"),
-		shiftapi.MessageType[wsUserCmd]("command"),
-	))
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+				return nil
+			}),
+			shiftapi.WSOn("command", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
+				return nil
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsChatMsg]("chat"),
+				shiftapi.MessageType[wsSystemMsg]("system"),
+			),
+		),
+	)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/asyncapi.json", nil)
@@ -512,7 +547,6 @@ func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
 	// subscribe = server→client = Send with oneOf variants
 	sub := ch["subscribe"].(map[string]any)
 	subMsg := sub["message"].(map[string]any)
-	// The message should have a oneOf array (via MessageOneOf1.OneOf0)
 	subOneOf, ok := subMsg["oneOf"].([]any)
 	if !ok {
 		t.Fatal("subscribe message missing oneOf")
@@ -521,7 +555,7 @@ func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
 		t.Fatalf("subscribe oneOf has %d items, want 2", len(subOneOf))
 	}
 
-	// publish = client→server = Recv with oneOf variants
+	// publish = client→server = Recv with oneOf variants (from On handlers)
 	pub := ch["publish"].(map[string]any)
 	pubMsg := pub["message"].(map[string]any)
 	pubOneOf, ok := pubMsg["oneOf"].([]any)
@@ -573,7 +607,7 @@ func TestMessageType_EmptyNamePanics(t *testing.T) {
 	shiftapi.MessageType[wsClientMsg]("")
 }
 
-func TestWithSendMessages_DuplicateNamePanics(t *testing.T) {
+func TestHandleWS_DuplicateSendNamePanics(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -585,11 +619,73 @@ func TestWithSendMessages_DuplicateNamePanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleWS(api, "GET /dup", func(r *http.Request, _ struct{}, ws *shiftapi.WSConn[wsServerEvent, wsClientEvent]) error {
-		return nil
-	}, shiftapi.WithSendMessages(
-		shiftapi.MessageType[wsChatMsg]("same"),
-		shiftapi.MessageType[wsSystemMsg]("same"),
-	))
+	shiftapi.HandleWS(api, "GET /dup",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+				return nil
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsChatMsg]("same"),
+				shiftapi.MessageType[wsSystemMsg]("same"),
+			),
+		),
+	)
 }
 
+func TestHandleWS_DuplicateOnNamePanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for duplicate On name")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "duplicate message name") {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+	api := shiftapi.New()
+	shiftapi.HandleWS(api, "GET /dup",
+		shiftapi.Websocket[struct{}](
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+				return nil
+			}),
+			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+				return nil
+			}),
+		),
+	)
+}
+
+func TestOn_EmptyNamePanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for empty On name")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "must not be empty") {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+	shiftapi.WSOn("", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+		return nil
+	})
+}
+
+func TestWebsocket_NoHandlersPanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for no On handlers")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "at least one WSOn handler") {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+	shiftapi.Websocket[struct{}](
+		shiftapi.WSSends(
+			shiftapi.MessageType[wsServerMsg]("server"),
+		),
+	)
+}

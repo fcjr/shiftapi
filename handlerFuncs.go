@@ -365,22 +365,62 @@ func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[I
 
 
 
-func registerWSRoute[In, Send, Recv any](
+func registerWSRoute[In any](
 	router Router,
 	method string,
 	path string,
-	fn WSHandlerFunc[In, Send, Recv],
-	options ...RouteOption,
+	msgs WSMessages[In],
+	wsOpts wsRouteConfig,
 ) {
-	s := prepareRoute[In](router, method, path, false, options)
+	// Build a routeConfig from the wsRouteConfig so we can reuse prepareRoute.
+	routeOpts := []RouteOption{}
+	if wsOpts.info != nil {
+		routeOpts = append(routeOpts, WithRouteInfo(*wsOpts.info))
+	}
+	for _, e := range wsOpts.errors {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addError(e)
+		}))
+	}
+	if len(wsOpts.middleware) > 0 {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addMiddleware(wsOpts.middleware)
+		}))
+	}
+	for _, h := range wsOpts.staticRespHeaders {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addStaticResponseHeader(h)
+		}))
+	}
+
+	s := prepareRoute[In](router, method, path, false, routeOpts)
+
+	// Extract recv variants from On handlers.
+	recvVariants := make([]MessageVariant, len(msgs.cfg.handlers))
+	for i, h := range msgs.cfg.handlers {
+		recvVariants[i] = rawMessageVariant{name: h.messageName(), payloadType: h.messagePayloadType()}
+	}
 
 	// Validate no duplicate message names.
-	validateMessageVariants(s.cfg.wsSendVariants, "WithSendMessages", method, path)
-	validateMessageVariants(s.cfg.wsRecvVariants, "WithRecvMessages", method, path)
+	validateMessageVariants(msgs.cfg.sendVariants, "WSSends", method, path)
+	validateMessageVariants(recvVariants, "WSOn", method, path)
+
+	// Build dispatch map for the receive loop.
+	dispatch := make(map[string]wsOnHandler, len(msgs.cfg.handlers))
+	for _, h := range msgs.cfg.handlers {
+		dispatch[h.messageName()] = h
+	}
+
+	// Build send variants map for WSSender auto-wrapping.
+	var sendVariantMap map[reflect.Type]string
+	if len(msgs.cfg.sendVariants) > 0 {
+		sendVariantMap = make(map[reflect.Type]string, len(msgs.cfg.sendVariants))
+		for _, v := range msgs.cfg.sendVariants {
+			sendVariantMap[v.messagePayloadType()] = v.messageName()
+		}
+	}
 
 	// Build path field map for AsyncAPI channel parameters.
-	sendType := reflect.TypeFor[Send]()
-	recvType := reflect.TypeFor[Recv]()
 	pathFields := make(map[string]reflect.StructField)
 	if s.pathType != nil {
 		pt := s.pathType
@@ -396,51 +436,65 @@ func registerWSRoute[In, Send, Recv any](
 		}
 	}
 
+	// For AsyncAPI, use nil types when variants are present (variants carry the types).
+	var sendType, recvType reflect.Type
+	if len(msgs.cfg.sendVariants) == 0 {
+		sendType = nil
+	}
+	if len(recvVariants) == 0 {
+		recvType = nil
+	}
+
 	// Register in AsyncAPI spec.
 	if err := s.api.addWSChannel(
 		s.fullPath, sendType, recvType,
-		s.cfg.wsSendVariants, s.cfg.wsRecvVariants,
-		s.cfg.info, pathFields,
+		msgs.cfg.sendVariants, recvVariants,
+		wsOpts.info, pathFields,
 	); err != nil {
 		panic(fmt.Sprintf("shiftapi: AsyncAPI generation failed for %s %s: %v", method, s.fullPath, err))
 	}
 
 	hc := s.handlerCfg(method, false)
-	h := adaptWS(fn, hc, s.cfg.wsOptions)
+	h := adaptWSMessages[In](dispatch, sendVariantMap, hc, wsOpts.wsAcceptOptions)
 	s.wrapAndRegister(router, h)
 }
 
 
 
-// HandleWS registers a WebSocket handler for the given pattern. The handler
-// receives a typed [WSConn] for bidirectional JSON communication.
+// HandleWS registers a WebSocket endpoint for the given pattern. Message
+// handling is defined by [WSOn] handlers collected in a [Websocket] block.
+// The framework manages the receive loop, dispatching incoming messages
+// to the matching handler.
+//
 // Input parsing, validation, and middleware work identically to [Handle].
-//
 // WebSocket endpoints are documented in an AsyncAPI 2.4 spec served at
-// GET /asyncapi.json, with send and receive schemas describing the
-// message types.
+// GET /asyncapi.json.
 //
-//	shiftapi.HandleWS(api, "GET /chat", func(r *http.Request, in struct{}, ws *shiftapi.WSConn[ServerMsg, ClientMsg]) error {
-//	    ctx := r.Context()
-//	    for {
-//	        msg, err := ws.Receive(ctx)
-//	        if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
-//	            return nil
-//	        }
-//	        if err != nil {
-//	            return err
-//	        }
-//	        if err := ws.Send(ctx, ServerMsg{Text: msg.Text}); err != nil {
-//	            return err
-//	        }
-//	    }
-//	})
-func HandleWS[In, Send, Recv any](router Router, pattern string, fn WSHandlerFunc[In, Send, Recv], options ...RouteOption) {
+//	shiftapi.HandleWS(api, "GET /chat",
+//	    shiftapi.Websocket[struct{}](
+//	        shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+//	            return ws.Send(ctx, ChatMessage{User: "echo", Text: m.Text})
+//	        }),
+//	        shiftapi.WSSends(
+//	            shiftapi.MessageType[ChatMessage]("chat"),
+//	        ),
+//	    ),
+//	)
+func HandleWS[In any](router Router, pattern string, msgs WSMessages[In], options ...WSOption) {
 	method, path := parsePattern(pattern)
-	registerWSRoute(router, method, path, fn, options...)
+	wsOpts := applyWSOptions(options)
+	registerWSRoute(router, method, path, msgs, wsOpts)
 }
 
+// rawMessageVariant is a non-generic MessageVariant implementation built
+// from On handlers at registration time.
+type rawMessageVariant struct {
+	name        string
+	payloadType reflect.Type
+}
 
+func (r rawMessageVariant) messageName() string              { return r.name }
+func (r rawMessageVariant) messagePayloadType() reflect.Type { return r.payloadType }
 
 func validateMessageVariants(variants []MessageVariant, optName, method, path string) {
 	if len(variants) == 0 {

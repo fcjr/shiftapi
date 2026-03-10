@@ -3,6 +3,8 @@ package shiftapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"reflect"
 
@@ -10,76 +12,42 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// WSHandlerFunc is a handler function for WebSocket endpoints. It receives
-// the parsed input and a typed [WSConn] for bidirectional communication.
+// WSSender is the send-only WebSocket connection passed to [WSOn] message
+// handlers. It provides [WSSender.Send] for writing messages and
+// [WSSender.Close] for closing the connection.
 //
-// The handler is called after the WebSocket upgrade has completed. Use
-// [WSConn.Send] and [WSConn.Receive] for typed message exchange and return
-// nil when the connection is complete. If the handler returns an error, the
-// connection is closed with [WSStatusInternalError] and the error is logged.
-//
-// Input parsing and validation errors (before upgrade) produce a normal
-// JSON error response, identical to [Handle].
-type WSHandlerFunc[In, Send, Recv any] func(r *http.Request, in In, ws *WSConn[Send, Recv]) error
-
-// WSConn is a typed WebSocket connection wrapper. It provides type-safe
-// Send and Receive methods over the underlying [websocket.Conn].
-//
-// For single-type endpoints, use [WSConn.Send] and [WSConn.Receive] for
-// direct typed messaging. For multi-type endpoints (registered with
-// [WithSendMessages] / [WithRecvMessages]), use [WSConn.SendEvent] and
-// [WSConn.ReceiveEvent] which wrap messages in a discriminated
-// {"type", "data"} envelope.
-//
-// WSConn is created internally by [HandleWS] and should not be constructed
-// directly.
-type WSConn[Send, Recv any] struct {
-	conn *websocket.Conn
+// When [WSSends] is used, [WSSender.Send] automatically wraps the value in a
+// discriminated {"type", "data"} envelope based on the concrete Go type.
+// Without [WSSends], the value is written as raw JSON.
+type WSSender struct {
+	conn         *websocket.Conn
+	sendVariants map[reflect.Type]string // nil = raw mode
 }
 
-// Send writes a JSON-encoded message to the WebSocket connection.
-// Use this for single-type endpoints without [WithSendMessages].
-func (ws *WSConn[Send, Recv]) Send(ctx context.Context, v Send) error {
+// Send writes a JSON-encoded message to the WebSocket connection. If send
+// message types were registered via [WSSends], the value is automatically
+// wrapped in a {"type": name, "data": value} envelope based on its concrete
+// Go type. Without [WSSends], the value is written as raw JSON.
+func (ws *WSSender) Send(ctx context.Context, v any) error {
+	if ws.sendVariants != nil {
+		name, ok := ws.sendVariants[reflect.TypeOf(v)]
+		if !ok {
+			return fmt.Errorf("shiftapi: unregistered send type %T; register with WSSends", v)
+		}
+		envelope := wsEnvelope[any]{Type: name, Data: v}
+		return wsjson.Write(ctx, ws.conn, envelope)
+	}
 	return wsjson.Write(ctx, ws.conn, v)
 }
 
-// Receive reads and JSON-decodes a message from the WebSocket connection.
-// Use this for single-type endpoints without [WithRecvMessages].
-func (ws *WSConn[Send, Recv]) Receive(ctx context.Context) (Recv, error) {
-	var v Recv
-	err := wsjson.Read(ctx, ws.conn, &v)
-	return v, err
-}
-
-// SendEvent writes a discriminated JSON message to the WebSocket connection.
-// The value is wrapped in an envelope: {"type": eventType, "data": v}.
-// Use this for multi-type endpoints registered with [WithSendMessages].
-func (ws *WSConn[Send, Recv]) SendEvent(ctx context.Context, eventType string, v Send) error {
-	envelope := wsEnvelope[Send]{Type: eventType, Data: v}
-	return wsjson.Write(ctx, ws.conn, envelope)
-}
-
-// ReceiveEvent reads a discriminated JSON message from the WebSocket
-// connection. It expects an envelope: {"type": "...", "data": ...} and
-// returns a [WSEvent] with the type name and raw data. Call
-// [WSEvent.Decode] to unmarshal into the concrete type.
-// Use this for multi-type endpoints registered with [WithRecvMessages].
-func (ws *WSConn[Send, Recv]) ReceiveEvent(ctx context.Context) (WSEvent, error) {
-	var msg WSEvent
-	err := wsjson.Read(ctx, ws.conn, &msg)
-	return msg, err
-}
-
 // Close closes the WebSocket connection with the given status code and reason.
-func (ws *WSConn[Send, Recv]) Close(status WSStatusCode, reason string) error {
+func (ws *WSSender) Close(status WSStatusCode, reason string) error {
 	return ws.conn.Close(websocket.StatusCode(status), reason)
 }
 
 // Conn returns the underlying [websocket.Conn] for advanced use cases
-// such as binary frames, ping/pong, or custom close handling. Most
-// handlers should use [Send], [Receive], [SendEvent], and [ReceiveEvent]
-// instead.
-func (ws *WSConn[Send, Recv]) Conn() *websocket.Conn {
+// such as binary frames, ping/pong, or custom close handling.
+func (ws *WSSender) Conn() *websocket.Conn {
 	return ws.conn
 }
 
@@ -108,22 +76,133 @@ type wsEnvelope[T any] struct {
 	Data T      `json:"data"`
 }
 
-// WSEvent represents a received discriminated WebSocket message.
-// Use [WSEvent.Decode] to unmarshal the data into a concrete type
-// after switching on [WSEvent.Type].
-type WSEvent struct {
+// wsEvent represents a received discriminated WebSocket message with raw
+// data for deferred decoding.
+type wsEvent struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
 
-// Decode unmarshals the message data into the given value.
-func (m WSEvent) Decode(v any) error {
-	return json.Unmarshal(m.Data, v)
+// WebsocketHandler configures a WebSocket endpoint. Both [WSOn] message
+// handlers and [WSSends] type registrations implement this interface.
+// Pass them to [Websocket] to build a complete endpoint.
+type WebsocketHandler interface {
+	applyToWebsocket(*websocketConfig)
+}
+
+// websocketConfig holds the configuration built by [Websocket] from
+// [WebsocketHandler] values.
+type websocketConfig struct {
+	handlers     []wsOnHandler
+	sendVariants []MessageVariant
+}
+
+// wsOnHandler is the internal interface for a typed message handler
+// created by [WSOn]. It provides the message name and payload type for
+// AsyncAPI schema generation, and a handle method for runtime dispatch.
+type wsOnHandler interface {
+	messageName() string
+	messagePayloadType() reflect.Type
+	handle(ctx context.Context, sender *WSSender, input any, data json.RawMessage) error
+}
+
+// onHandlerImpl is the concrete implementation of [wsOnHandler] created
+// by the [WSOn] function.
+type onHandlerImpl[In, Msg any] struct {
+	name string
+	fn   func(ctx context.Context, ws *WSSender, in In, msg Msg) error
+}
+
+func (h *onHandlerImpl[In, Msg]) messageName() string              { return h.name }
+func (h *onHandlerImpl[In, Msg]) messagePayloadType() reflect.Type { return reflect.TypeFor[Msg]() }
+
+func (h *onHandlerImpl[In, Msg]) handle(ctx context.Context, sender *WSSender, input any, data json.RawMessage) error {
+	var msg Msg
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return fmt.Errorf("shiftapi: decode %q message: %w", h.name, err)
+	}
+	return h.fn(ctx, sender, input.(In), msg)
+}
+
+func (h *onHandlerImpl[In, Msg]) applyToWebsocket(cfg *websocketConfig) {
+	cfg.handlers = append(cfg.handlers, h)
+}
+
+// On creates a [WebsocketHandler] that handles messages with the given type
+// name. The handler function receives the parsed input, a [WSSender] for
+// sending responses, and the decoded message payload.
+//
+// Each On handler provides both the runtime dispatch logic and the type
+// information needed for AsyncAPI schema generation. The In type parameter
+// must match the [Websocket] type parameter.
+//
+//	shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+//	    return ws.Send(ctx, ChatMessage{User: "echo", Text: m.Text})
+//	})
+func WSOn[In, Msg any](name string, fn func(ctx context.Context, ws *WSSender, in In, msg Msg) error) WebsocketHandler {
+	if name == "" {
+		panic("shiftapi: WSOn name must not be empty")
+	}
+	return &onHandlerImpl[In, Msg]{name: name, fn: fn}
+}
+
+// sendsHandler registers send message types on the websocket config.
+type sendsHandler struct {
+	variants []MessageVariant
+}
+
+func (s *sendsHandler) applyToWebsocket(cfg *websocketConfig) {
+	cfg.sendVariants = append(cfg.sendVariants, s.variants...)
+}
+
+// Sends registers named server-to-client message types for a WebSocket
+// endpoint. When present, [WSSender.Send] automatically wraps messages in a
+// discriminated {"type", "data"} envelope based on the concrete Go type.
+//
+// Each [MessageVariant] maps a type name to a payload type, producing a oneOf
+// schema with a discriminator on the "type" field in the AsyncAPI spec.
+//
+//	shiftapi.WSSends(
+//	    shiftapi.MessageType[ChatMessage]("chat"),
+//	    shiftapi.MessageType[SystemMessage]("system"),
+//	)
+func WSSends(variants ...MessageVariant) WebsocketHandler {
+	return &sendsHandler{variants: variants}
+}
+
+// WSMessages holds the assembled WebSocket endpoint configuration built by
+// [Websocket]. It is passed as a positional argument to [HandleWS].
+type WSMessages[In any] struct {
+	cfg websocketConfig
+}
+
+// Websocket collects [WebsocketHandler] values ([WSOn] handlers and [WSSends]
+// registrations) into a [WSMessages] configuration for [HandleWS].
+//
+// The type parameter In specifies the input struct for path, query, and header
+// parameter parsing. Use struct{} when no input is needed.
+//
+//	shiftapi.Websocket[ChatInput](
+//	    shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+//	        return ws.Send(ctx, ChatMessage{Room: in.Room, Text: m.Text})
+//	    }),
+//	    shiftapi.WSSends(
+//	        shiftapi.MessageType[ChatMessage]("chat"),
+//	    ),
+//	)
+func Websocket[In any](handlers ...WebsocketHandler) WSMessages[In] {
+	var cfg websocketConfig
+	for _, h := range handlers {
+		h.applyToWebsocket(&cfg)
+	}
+	if len(cfg.handlers) == 0 {
+		panic("shiftapi: Websocket requires at least one WSOn handler")
+	}
+	return WSMessages[In]{cfg: cfg}
 }
 
 // MessageVariant describes a named WebSocket message type for AsyncAPI schema
-// generation. Created by [MessageType] and passed to [WithSendMessages] or
-// [WithRecvMessages].
+// generation. Created by [MessageType] and passed to [WSSends].
 type MessageVariant interface {
 	messageName() string
 	messagePayloadType() reflect.Type
@@ -137,18 +216,12 @@ func (m messageVariant[T]) messageName() string              { return m.name }
 func (m messageVariant[T]) messagePayloadType() reflect.Type { return reflect.TypeFor[T]() }
 
 // MessageType creates a [MessageVariant] that maps a message type name to a
-// payload type T. Use with [WithSendMessages] or [WithRecvMessages] to
-// register discriminated message types for a WebSocket endpoint.
+// payload type T. Use with [WSSends] to register discriminated server-to-client
+// message types for a WebSocket endpoint.
 //
-//	shiftapi.HandleWS(api, "GET /chat", chatHandler,
-//	    shiftapi.WithSendMessages(
-//	        shiftapi.MessageType[ChatMessage]("chat"),
-//	        shiftapi.MessageType[SystemMessage]("system"),
-//	    ),
-//	    shiftapi.WithRecvMessages(
-//	        shiftapi.MessageType[UserMessage]("message"),
-//	        shiftapi.MessageType[UserCommand]("command"),
-//	    ),
+//	shiftapi.WSSends(
+//	    shiftapi.MessageType[ChatMessage]("chat"),
+//	    shiftapi.MessageType[SystemMessage]("system"),
 //	)
 func MessageType[T any](name string) MessageVariant {
 	if name == "" {
@@ -156,3 +229,112 @@ func MessageType[T any](name string) MessageVariant {
 	}
 	return messageVariant[T]{name: name}
 }
+
+// runWSDispatchLoop runs the framework-managed receive loop for multi-type
+// WebSocket endpoints. It reads discriminated messages, dispatches to the
+// matching [WSOn] handler, and stops on close or error.
+func runWSDispatchLoop[In any](ctx context.Context, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler) {
+	for {
+		var envelope wsEvent
+		if err := wsjson.Read(ctx, conn, &envelope); err != nil {
+			if websocket.CloseStatus(err) != -1 {
+				return // clean close
+			}
+			log.Printf("shiftapi: WS read error: %v", err)
+			_ = conn.Close(websocket.StatusInternalError, "internal error")
+			return
+		}
+
+		handler, ok := dispatch[envelope.Type]
+		if !ok {
+			log.Printf("shiftapi: unknown WS message type: %q", envelope.Type)
+			continue
+		}
+
+		if err := handler.handle(ctx, ws, in, envelope.Data); err != nil {
+			if websocket.CloseStatus(err) != -1 {
+				return // handler triggered a close
+			}
+			log.Printf("shiftapi: WS handler error: %v", err)
+			_ = conn.Close(websocket.StatusInternalError, "internal error")
+			return
+		}
+	}
+}
+
+// WSOption configures a [HandleWS] route. General options like
+// [WithRouteInfo], [WithError], and [WithMiddleware] implement both
+// [RouteOption] and [WSOption]. WebSocket-specific options like
+// [WithWSAcceptOptions] implement only [WSOption].
+type WSOption interface {
+	applyToWS(*wsRouteConfig)
+}
+
+// wsRouteConfig holds the registration-time configuration for a WebSocket
+// route, built from [WSOption] values.
+type wsRouteConfig struct {
+	info              *RouteInfo
+	errors            []errorEntry
+	middleware        []func(http.Handler) http.Handler
+	staticRespHeaders []staticResponseHeader
+	wsAcceptOptions   *WSAcceptOptions
+}
+
+func (c *wsRouteConfig) addError(e errorEntry) {
+	c.errors = append(c.errors, e)
+}
+
+func (c *wsRouteConfig) addMiddleware(mw []func(http.Handler) http.Handler) {
+	c.middleware = append(c.middleware, mw...)
+}
+
+func (c *wsRouteConfig) addStaticResponseHeader(h staticResponseHeader) {
+	c.staticRespHeaders = append(c.staticRespHeaders, h)
+}
+
+func applyWSOptions(opts []WSOption) wsRouteConfig {
+	var cfg wsRouteConfig
+	for _, opt := range opts {
+		opt.applyToWS(&cfg)
+	}
+	return cfg
+}
+
+// WSAcceptOptions configures the WebSocket upgrade for [HandleWS] routes.
+type WSAcceptOptions struct {
+	// Subprotocols lists the WebSocket subprotocols to negotiate with the
+	// client. The empty subprotocol is always negotiated per RFC 6455.
+	Subprotocols []string
+
+	// OriginPatterns lists host patterns for authorized cross-origin requests.
+	// The request host is always authorized. Each pattern is matched case
+	// insensitively with [path.Match]. Include a URI scheme ("://") to match
+	// against "scheme://host".
+	//
+	// In dev mode (shiftapidev build tag), all origins are allowed by default.
+	OriginPatterns []string
+}
+
+// WithWSAcceptOptions sets the WebSocket upgrade options for [HandleWS] routes.
+// Use this to configure subprotocols, allowed origins, etc.
+//
+//	shiftapi.HandleWS(api, "GET /ws",
+//	    shiftapi.Websocket[struct{}](...),
+//	    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
+//	        Subprotocols:   []string{"graphql-ws"},
+//	        OriginPatterns: []string{"example.com"},
+//	    }),
+//	)
+func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
+	return func(cfg *wsRouteConfig) {
+		cfg.wsAcceptOptions = &opts
+	}
+}
+
+// wsOptionFunc is a function that implements [WSOption].
+type wsOptionFunc func(*wsRouteConfig)
+
+func (f wsOptionFunc) applyToWS(cfg *wsRouteConfig) { f(cfg) }
+
+// Ensure that the shared Option type also implements WSOption.
+func (f Option) applyToWS(cfg *wsRouteConfig) { f(cfg) }

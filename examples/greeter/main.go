@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -17,21 +18,14 @@ type EchoReply struct {
 	Text string `json:"text"`
 }
 
-func echo(r *http.Request, _ struct{}, ws *shiftapi.WSConn[EchoReply, ChatMsg]) error {
-	ctx := r.Context()
-	for {
-		msg, err := ws.Receive(ctx)
-		if shiftapi.WSCloseStatus(err) == shiftapi.WSStatusNormalClosure {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := ws.Send(ctx, EchoReply{Text: "echo: " + msg.Text}); err != nil {
-			return err
-		}
-	}
-}
+var echoWS = shiftapi.Websocket[struct{}](
+	shiftapi.WSOn("chat", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ChatMsg) error {
+		return ws.Send(ctx, EchoReply{Text: "echo: " + msg.Text})
+	}),
+	shiftapi.WSSends(
+		shiftapi.MessageType[EchoReply]("echo"),
+	),
+)
 
 type Person struct {
 	Name string `json:"name" validate:"required"`
@@ -194,7 +188,7 @@ func main() {
 		}),
 	)
 
-	shiftapi.HandleWS(api, "GET /echo", echo,
+	shiftapi.HandleWS(api, "GET /echo", echoWS,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Echo WebSocket",
 			Description: "Echoes back any message sent by the client",
