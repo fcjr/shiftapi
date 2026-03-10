@@ -17,7 +17,9 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
         }
     }
     return nil
-})
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[Message]("message"),
+))
 ```
 
 ## Handler signature
@@ -43,11 +45,11 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
 
 ## SSEWriter
 
-`SSEWriter[Event]` provides two methods for sending events:
+`SSEWriter[Event]` provides a single method for sending events:
 
 ### Send
 
-Writes a data-only event:
+`Send` automatically determines the event name from the concrete Go type registered via `SSESends`:
 
 ```go
 sse.Send(Message{Text: "hello"})
@@ -56,27 +58,12 @@ sse.Send(Message{Text: "hello"})
 Produces:
 
 ```
+event: message
 data: {"text":"hello"}
 
 ```
 
-### SendEvent
-
-Writes a named event:
-
-```go
-sse.SendEvent("chat", Message{Text: "hello"})
-```
-
-Produces:
-
-```
-event: chat
-data: {"text":"hello"}
-
-```
-
-Both methods JSON-encode the value, write it in SSE format, and flush the response. On the first call, SSEWriter automatically sets the required headers:
+`Send` JSON-encodes the value, writes it in SSE format, and flushes the response. On the first call, SSEWriter automatically sets the required headers:
 
 - `Content-Type: text/event-stream`
 - `Cache-Control: no-cache`
@@ -118,7 +105,7 @@ shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in 
 
 Error behavior depends on whether the handler has started sending events:
 
-- **Before sending** — if your handler returns an error and hasn't called `Send` or `SendEvent`, the framework handles it normally: matching `WithError` types, returning `422` for validation errors, or falling back to `500`.
+- **Before sending** — if your handler returns an error and hasn't called `Send`, the framework handles it normally: matching `WithError` types, returning `422` for validation errors, or falling back to `500`.
 - **After sending** — if events have already been sent, it's too late to send an error response. The error is logged and the stream ends.
 
 ```go
@@ -132,7 +119,10 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
         return err // logged, stream already started
     }
     return nil
-}, shiftapi.WithError[*AuthError](http.StatusUnauthorized))
+},
+    shiftapi.SSESends(shiftapi.SSEEventType[Event]("event")),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+)
 ```
 
 ## OpenAPI spec
@@ -145,7 +135,9 @@ type ChatEvent struct {
     Message string `json:"message"`
 }
 
-shiftapi.HandleSSE(api, "GET /chat", chatHandler)
+shiftapi.HandleSSE(api, "GET /chat", chatHandler,
+    shiftapi.SSESends(shiftapi.SSEEventType[ChatEvent]("chat")),
+)
 ```
 
 Produces:
@@ -294,6 +286,7 @@ All standard route options work with `HandleSSE`:
 
 ```go
 shiftapi.HandleSSE(api, "GET /events", handler,
+    shiftapi.SSESends(shiftapi.SSEEventType[Event]("event")),
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary: "Subscribe to events",
         Tags:    []string{"events"},
@@ -309,11 +302,11 @@ shiftapi.HandleSSE(api, "GET /events", handler,
 | `WithError[T](code)` | Declare an error type at a status code |
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithResponseHeader(name, value)` | Set a static response header |
-| `WithEvents(variants...)` | Declare discriminated union event types (see above) |
+| `SSESends(variants...)` | Declare discriminated union event types (see above) |
 
 ## Discriminated union events
 
-For endpoints that emit multiple event types, use `WithEvents` to declare each variant. This generates a `oneOf` schema with a `discriminator` in the OpenAPI spec, which produces **TypeScript discriminated unions** in the generated client.
+For endpoints that emit multiple event types, use `SSESends` to declare each variant. This generates a `oneOf` schema with a `discriminator` in the OpenAPI spec, which produces **TypeScript discriminated unions** in the generated client.
 
 ### Define a marker interface
 
@@ -334,9 +327,9 @@ type JoinData struct {
 func (JoinData) chatEvent() {}
 ```
 
-### Register with WithEvents
+### Register with SSESends
 
-Pass `EventType[T]` descriptors to `WithEvents` to declare each named event. When `WithEvents` is used, `Send` automatically determines the event name from the concrete Go type — no need to pass the name manually:
+Pass `SSEEventType[T]` descriptors to `SSESends` to declare each named event. When `SSESends` is used, `Send` automatically determines the event name from the concrete Go type — no need to pass the name manually:
 
 ```go
 shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
@@ -344,15 +337,15 @@ shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shif
         return err
     }
     return sse.Send(JoinData{User: "bob"})
-}, shiftapi.WithEvents(
-    shiftapi.EventType[MessageData]("message"),
-    shiftapi.EventType[JoinData]("join"),
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[MessageData]("message"),
+    shiftapi.SSEEventType[JoinData]("join"),
 ))
 ```
 
 ### Generated OpenAPI schema
 
-`WithEvents` produces a `oneOf` + `discriminator` schema:
+`SSESends` produces a `oneOf` + `discriminator` schema:
 
 ```yaml
 paths:
@@ -406,16 +399,17 @@ for await (const msg of stream) {
 
 ### Single vs multi-event
 
-Without `WithEvents`, `HandleSSE` uses the `Event` type parameter directly as the schema — no `oneOf`, no discriminator. This is the simple case for endpoints with a single event shape:
+`SSESends` is always required. For endpoints with a single event type, pass a single `SSEEventType`:
 
 ```go
-// Single event type — no WithEvents needed
 shiftapi.HandleSSE(api, "GET /ticks", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Tick]) error {
     return sse.Send(Tick{Time: time.Now()})
-})
+}, shiftapi.SSESends(
+    shiftapi.SSEEventType[Tick]("tick"),
+))
 ```
 
-Use `WithEvents` only when your endpoint emits multiple distinct event types.
+With a single event type, the schema uses the type directly — no `oneOf`, no discriminator. Multiple event types produce a `oneOf` schema with a discriminator.
 
 ## When to use HandleSSE vs HandleRaw
 

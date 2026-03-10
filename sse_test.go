@@ -24,7 +24,9 @@ func TestSSEWriter_Send(t *testing.T) {
 			return err
 		}
 		return sse.Send(sseMessage{Text: "world"})
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/events", nil)
@@ -44,34 +46,17 @@ func TestSSEWriter_Send(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
 	}
+	if events[0].Event != "message" {
+		t.Errorf("event[0].Event = %q, want %q", events[0].Event, "message")
+	}
 	if events[0].Data != `{"text":"hello"}` {
 		t.Errorf("event[0].Data = %q, want %q", events[0].Data, `{"text":"hello"}`)
 	}
+	if events[1].Event != "message" {
+		t.Errorf("event[1].Event = %q, want %q", events[1].Event, "message")
+	}
 	if events[1].Data != `{"text":"world"}` {
 		t.Errorf("event[1].Data = %q, want %q", events[1].Data, `{"text":"world"}`)
-	}
-}
-
-func TestSSEWriter_SendEvent(t *testing.T) {
-	api := shiftapi.New()
-
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
-		return sse.SendEvent("msg", sseMessage{Text: "named"})
-	})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/events", nil)
-	api.ServeHTTP(w, r)
-
-	events := parseSSEEvents(t, w.Body.String())
-	if len(events) != 1 {
-		t.Fatalf("got %d events, want 1", len(events))
-	}
-	if events[0].Event != "msg" {
-		t.Errorf("event[0].Event = %q, want %q", events[0].Event, "msg")
-	}
-	if events[0].Data != `{"text":"named"}` {
-		t.Errorf("event[0].Data = %q, want %q", events[0].Data, `{"text":"named"}`)
 	}
 }
 
@@ -84,7 +69,9 @@ func TestHandleSSE_InputParsing(t *testing.T) {
 
 	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
 		return sse.Send(sseMessage{Text: "channel=" + in.Channel})
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/events?channel=general", nil)
@@ -108,7 +95,9 @@ func TestHandleSSE_InputValidationError(t *testing.T) {
 
 	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
 		return sse.Send(sseMessage{Text: "should not reach"})
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/events", nil) // missing required channel
@@ -124,7 +113,9 @@ func TestHandleSSE_ErrorBeforeWrite(t *testing.T) {
 
 	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
 		return fmt.Errorf("something went wrong")
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/events", nil)
@@ -144,7 +135,9 @@ func TestHandleSSE_PathParams(t *testing.T) {
 
 	shiftapi.HandleSSE(api, "GET /streams/{id}", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
 		return sse.Send(sseMessage{Text: "id=" + in.ID})
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/streams/abc", nil)
@@ -164,7 +157,9 @@ func TestHandleSSE_OpenAPISpec(t *testing.T) {
 
 	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
 		return nil
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/openapi.json", nil)
@@ -204,7 +199,7 @@ func TestHandleSSE_OpenAPISpec(t *testing.T) {
 	}
 }
 
-// --- Multi-event (WithEvents) tests ---
+// --- Multi-event (SSESends) tests ---
 
 type chatEvent interface{ chatEvent() }
 
@@ -221,7 +216,7 @@ type joinData struct {
 
 func (joinData) chatEvent() {}
 
-func TestHandleSSE_WithEvents_AutoWrapSend(t *testing.T) {
+func TestHandleSSE_SSESends_AutoWrapSend(t *testing.T) {
 	api := shiftapi.New()
 
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
@@ -229,9 +224,9 @@ func TestHandleSSE_WithEvents_AutoWrapSend(t *testing.T) {
 			return err
 		}
 		return sse.Send(joinData{User: "bob"})
-	}, shiftapi.WithEvents(
-		shiftapi.EventType[messageData]("message"),
-		shiftapi.EventType[joinData]("join"),
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[messageData]("message"),
+		shiftapi.SSEEventType[joinData]("join"),
 	))
 
 	w := httptest.NewRecorder()
@@ -260,14 +255,14 @@ func TestHandleSSE_WithEvents_AutoWrapSend(t *testing.T) {
 	}
 }
 
-func TestHandleSSE_WithEvents_OpenAPISpec(t *testing.T) {
+func TestHandleSSE_SSESends_OpenAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
 		return nil
-	}, shiftapi.WithEvents(
-		shiftapi.EventType[messageData]("message"),
-		shiftapi.EventType[joinData]("join"),
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[messageData]("message"),
+		shiftapi.SSEEventType[joinData]("join"),
 	))
 
 	w := httptest.NewRecorder()
@@ -330,49 +325,21 @@ func TestHandleSSE_WithEvents_OpenAPISpec(t *testing.T) {
 	}
 }
 
-func TestHandleSSE_SingleEvent_StillWorks(t *testing.T) {
-	// Verify that single-event HandleSSE (no WithEvents) is unchanged.
+func TestHandleSSE_MissingSSESendsPanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for missing SSESends")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "requires SSESends") {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
 	api := shiftapi.New()
-
-	shiftapi.HandleSSE(api, "GET /ticks", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
-		return sse.Send(sseMessage{Text: "tick"})
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
+		return nil
 	})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/ticks", nil)
-	api.ServeHTTP(w, r)
-
-	events := parseSSEEvents(t, w.Body.String())
-	if len(events) != 1 {
-		t.Fatalf("got %d events, want 1", len(events))
-	}
-	if events[0].Data != `{"text":"tick"}` {
-		t.Errorf("event[0].Data = %q, want %q", events[0].Data, `{"text":"tick"}`)
-	}
-
-	// Verify spec still uses single schema (not oneOf)
-	w2 := httptest.NewRecorder()
-	r2 := httptest.NewRequest("GET", "/openapi.json", nil)
-	api.ServeHTTP(w2, r2)
-
-	var spec map[string]any
-	if err := json.NewDecoder(w2.Body).Decode(&spec); err != nil {
-		t.Fatalf("decode spec: %v", err)
-	}
-
-	paths := spec["paths"].(map[string]any)
-	ticksPath := paths["/ticks"].(map[string]any)
-	getOp := ticksPath["get"].(map[string]any)
-	responses := getOp["responses"].(map[string]any)
-	resp200 := responses["200"].(map[string]any)
-	content := resp200["content"].(map[string]any)
-	sse := content["text/event-stream"].(map[string]any)
-	schema := sse["schema"].(map[string]any)
-
-	// Should NOT have oneOf
-	if _, ok := schema["oneOf"]; ok {
-		t.Error("single-event schema should not have oneOf")
-	}
 }
 
 func TestEventType_EmptyNamePanics(t *testing.T) {
@@ -386,10 +353,10 @@ func TestEventType_EmptyNamePanics(t *testing.T) {
 			t.Errorf("unexpected panic message: %v", r)
 		}
 	}()
-	shiftapi.EventType[sseMessage]("")
+	shiftapi.SSEEventType[sseMessage]("")
 }
 
-func TestWithEvents_DuplicateNamePanics(t *testing.T) {
+func TestSSESends_DuplicateNamePanics(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -403,20 +370,20 @@ func TestWithEvents_DuplicateNamePanics(t *testing.T) {
 	api := shiftapi.New()
 	shiftapi.HandleSSE(api, "GET /dup", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
 		return nil
-	}, shiftapi.WithEvents(
-		shiftapi.EventType[messageData]("same"),
-		shiftapi.EventType[joinData]("same"),
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[messageData]("same"),
+		shiftapi.SSEEventType[joinData]("same"),
 	))
 }
 
-func TestHandleSSE_WithEvents_UnregisteredTypeErrors(t *testing.T) {
+func TestHandleSSE_SSESends_UnregisteredTypeErrors(t *testing.T) {
 	api := shiftapi.New()
 
-	// joinData satisfies chatEvent but is not registered in WithEvents.
+	// joinData satisfies chatEvent but is not registered in SSESends.
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
 		return sse.Send(joinData{User: "bob"})
-	}, shiftapi.WithEvents(
-		shiftapi.EventType[messageData]("message"),
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[messageData]("message"),
 	))
 
 	w := httptest.NewRecorder()
