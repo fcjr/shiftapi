@@ -42,12 +42,6 @@ func (ws *WSSender) Close(status WSStatusCode, reason string) error {
 	return ws.conn.Close(websocket.StatusCode(status), reason)
 }
 
-// Conn returns the underlying [websocket.Conn] for advanced use cases
-// such as binary frames, ping/pong, or custom close handling.
-func (ws *WSSender) Conn() *websocket.Conn {
-	return ws.conn
-}
-
 // WSStatusCode represents a WebSocket close status code as defined in
 // RFC 6455 section 7.4.
 type WSStatusCode int

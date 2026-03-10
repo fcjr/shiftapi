@@ -52,8 +52,34 @@ func(r *http.Request, ws *shiftapi.WSSender, in In, msg Msg) error
 
 - **`r *http.Request`** — the original HTTP request (use `r.Context()` for the connection context)
 - **`ws *WSSender`** — for sending messages back to the client
-- **`in In`** — the parsed input (path, query, header params), or the state value if `WSSetup` is used
+- **`in In`** — the parsed input (path, query, header params)
 - **`msg Msg`** — the decoded message payload
+
+The first type parameter of `WSOn` must match what the dispatch loop passes to handlers:
+
+- **Without `WSSetup`** — handlers receive `In` directly (the parsed input struct from `Websocket[In]`)
+- **With `WSSetup[In, State]`** — handlers receive `State` (the value returned by the setup function)
+
+```go
+// Without WSSetup — handlers get In directly
+shiftapi.Websocket[ChatInput](
+    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+        // in is the parsed ChatInput
+    }),
+    ...
+)
+
+// With WSSetup — handlers get State
+shiftapi.Websocket[ChatInput](
+    shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in ChatInput) (*Room, error) {
+        return joinRoom(in.RoomID), nil
+    }),
+    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, room *Room, m UserMessage) error {
+        // room is the State returned by WSSetup
+    }),
+    ...
+)
+```
 
 The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped by default — use `WSOnUnknownMessage` to customize this.
 
@@ -76,14 +102,6 @@ Closes the connection with a status code and reason:
 
 ```go
 ws.Close(shiftapi.WSStatusNormalClosure, "done")
-```
-
-### Conn
-
-Returns the underlying `websocket.Conn` for advanced use cases (binary frames, ping/pong):
-
-```go
-conn := ws.Conn()
 ```
 
 ## Input parsing
