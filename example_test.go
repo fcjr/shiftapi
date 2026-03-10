@@ -388,10 +388,10 @@ func ExampleWithEvents() {
 	api := shiftapi.New()
 
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[exChatEvent]) error {
-		if err := sse.SendEvent("message", exMessageData{User: "alice", Text: "hi"}); err != nil {
+		if err := sse.Send(exMessageData{User: "alice", Text: "hi"}); err != nil {
 			return err
 		}
-		return sse.SendEvent("join", exJoinData{User: "bob"})
+		return sse.Send(exJoinData{User: "bob"})
 	}, shiftapi.WithEvents(
 		shiftapi.EventType[exMessageData]("message"),
 		shiftapi.EventType[exJoinData]("join"),
