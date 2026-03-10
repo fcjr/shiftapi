@@ -336,14 +336,14 @@ func (JoinData) chatEvent() {}
 
 ### Register with WithEvents
 
-Pass `EventType[T]` descriptors to `WithEvents` to declare each named event:
+Pass `EventType[T]` descriptors to `WithEvents` to declare each named event. When `WithEvents` is used, `Send` automatically determines the event name from the concrete Go type — no need to pass the name manually:
 
 ```go
 shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
-    if err := sse.SendEvent("message", MessageData{User: "alice", Text: "hi"}); err != nil {
+    if err := sse.Send(MessageData{User: "alice", Text: "hi"}); err != nil {
         return err
     }
-    return sse.SendEvent("join", JoinData{User: "bob"})
+    return sse.Send(JoinData{User: "bob"})
 }, shiftapi.WithEvents(
     shiftapi.EventType[MessageData]("message"),
     shiftapi.EventType[JoinData]("join"),

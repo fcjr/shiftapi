@@ -318,9 +318,11 @@ func registerSSERoute[In, Event any](
 	// event variants drive schema generation (oneOf + discriminator).
 	// Otherwise, use the Event type parameter for a single-type schema.
 	s.cfg.contentType = "text/event-stream"
+	var sendVariants map[reflect.Type]string
 	if len(s.cfg.eventVariants) == 0 {
 		s.cfg.responseSchemaType = reflect.TypeFor[Event]()
 	} else {
+		sendVariants = make(map[reflect.Type]string, len(s.cfg.eventVariants))
 		seen := make(map[string]bool, len(s.cfg.eventVariants))
 		for _, ev := range s.cfg.eventVariants {
 			name := ev.eventName()
@@ -328,6 +330,7 @@ func registerSSERoute[In, Event any](
 				panic(fmt.Sprintf("shiftapi: duplicate event name %q in WithEvents for %s %s", name, method, path))
 			}
 			seen[name] = true
+			sendVariants[ev.eventPayloadType()] = name
 		}
 	}
 
@@ -337,7 +340,7 @@ func registerSSERoute[In, Event any](
 	}
 
 	hc := s.handlerCfg(method, false)
-	h := adaptSSE(fn, hc)
+	h := adaptSSE(fn, hc, sendVariants)
 	s.wrapAndRegister(router, h)
 }
 

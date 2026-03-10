@@ -221,14 +221,14 @@ type joinData struct {
 
 func (joinData) chatEvent() {}
 
-func TestHandleSSE_WithEvents_SendEvent(t *testing.T) {
+func TestHandleSSE_WithEvents_AutoWrapSend(t *testing.T) {
 	api := shiftapi.New()
 
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
-		if err := sse.SendEvent("message", messageData{User: "alice", Text: "hi"}); err != nil {
+		if err := sse.Send(messageData{User: "alice", Text: "hi"}); err != nil {
 			return err
 		}
-		return sse.SendEvent("join", joinData{User: "bob"})
+		return sse.Send(joinData{User: "bob"})
 	}, shiftapi.WithEvents(
 		shiftapi.EventType[messageData]("message"),
 		shiftapi.EventType[joinData]("join"),
@@ -407,6 +407,27 @@ func TestWithEvents_DuplicateNamePanics(t *testing.T) {
 		shiftapi.EventType[messageData]("same"),
 		shiftapi.EventType[joinData]("same"),
 	))
+}
+
+func TestHandleSSE_WithEvents_UnregisteredTypeErrors(t *testing.T) {
+	api := shiftapi.New()
+
+	// joinData satisfies chatEvent but is not registered in WithEvents.
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
+		return sse.Send(joinData{User: "bob"})
+	}, shiftapi.WithEvents(
+		shiftapi.EventType[messageData]("message"),
+	))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/chat", nil)
+	api.ServeHTTP(w, r)
+
+	// The handler returned an error before any events were written,
+	// so we expect a 500 error response.
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
 }
 
 // sseEvent represents a parsed SSE event.
