@@ -236,6 +236,7 @@ func adaptWSMessages[In any](
 	hc *handlerConfig,
 	wsOpts *WSAcceptOptions,
 	cb wsCallbacks,
+	setup func(r *http.Request, ws *WSSender, input any) (any, error),
 ) http.HandlerFunc {
 	// Convert our public WSAcceptOptions to the underlying library's AcceptOptions.
 	var acceptOpts *websocket.AcceptOptions
@@ -271,7 +272,18 @@ func adaptWSMessages[In any](
 		}
 
 		ws := &WSSender{conn: conn, ctx: r.Context(), sendVariants: sendVariants}
-		runWSDispatchLoop(r, conn, ws, in, dispatch, cb)
+
+		var state any = in
+		if setup != nil {
+			state, err = setup(r, ws, in)
+			if err != nil {
+				log.Printf("shiftapi: WS setup error: %v", err)
+				_ = conn.Close(websocket.StatusInternalError, "setup error")
+				return
+			}
+		}
+
+		runWSDispatchLoop(r, conn, ws, state, dispatch, cb)
 	}
 }
 

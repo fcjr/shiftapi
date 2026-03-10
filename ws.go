@@ -92,6 +92,7 @@ type WebsocketHandler interface {
 type websocketConfig struct {
 	handlers        []wsOnHandler
 	sendVariants    []MessageVariant
+	setup           func(r *http.Request, ws *WSSender, input any) (any, error)
 	onError         func(r *http.Request, ws *WSSender, err error)
 	onUnknownMsg    func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
@@ -215,6 +216,46 @@ func WSOnUnknownMessage(fn func(r *http.Request, ws *WSSender, msgType string, d
 	return &wsOnUnknownMsgHandler{fn: fn}
 }
 
+// wsSetupHandler stores the user's setup callback.
+type wsSetupHandler struct {
+	fn func(r *http.Request, ws *WSSender, input any) (any, error)
+}
+
+func (h *wsSetupHandler) applyToWebsocket(cfg *websocketConfig) {
+	cfg.setup = h.fn
+}
+
+// WSSetup registers a setup function that runs after the WebSocket upgrade
+// but before the dispatch loop starts. The returned State value replaces the
+// parsed input and is passed to all [WSOn] handlers as the third argument.
+//
+// Use WSSetup to initialize per-connection state such as loading a user from
+// the database, joining a room, or allocating session resources. If the setup
+// function returns an error, the connection is closed immediately.
+//
+// The In type parameter must match the [Websocket] type parameter. The State
+// type parameter must match the first type parameter of [WSOn] handlers.
+//
+//	shiftapi.Websocket[ChatInput](
+//	    shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in ChatInput) (*Room, error) {
+//	        return joinRoom(in.RoomID), nil
+//	    }),
+//	    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, room *Room, m UserMessage) error {
+//	        room.Broadcast(m)
+//	        return nil
+//	    }),
+//	    shiftapi.WSSends(
+//	        shiftapi.MessageType[ChatMessage]("chat"),
+//	    ),
+//	)
+func WSSetup[In, State any](fn func(r *http.Request, ws *WSSender, in In) (State, error)) WebsocketHandler {
+	return &wsSetupHandler{
+		fn: func(r *http.Request, ws *WSSender, input any) (any, error) {
+			return fn(r, ws, input.(In))
+		},
+	}
+}
+
 // WSMessages holds the assembled WebSocket endpoint configuration built by
 // [Websocket]. It is passed as a positional argument to [HandleWS].
 type WSMessages[In any] struct {
@@ -287,7 +328,7 @@ type wsCallbacks struct {
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
 // WebSocket endpoints. It reads discriminated messages, dispatches to the
 // matching [WSOn] handler, and stops on close or error.
-func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler, cb wsCallbacks) {
+func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, state any, dispatch map[string]wsOnHandler, cb wsCallbacks) {
 	ctx := r.Context()
 	for {
 		var envelope wsEvent
@@ -310,7 +351,7 @@ func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSend
 			continue
 		}
 
-		if err := handler.handle(r, ws, in, envelope.Data); err != nil {
+		if err := handler.handle(r, ws, state, envelope.Data); err != nil {
 			if websocket.CloseStatus(err) != -1 {
 				return // handler triggered a close
 			}

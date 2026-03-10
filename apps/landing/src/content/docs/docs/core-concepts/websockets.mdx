@@ -29,6 +29,7 @@ shiftapi.HandleWS(api, "GET /echo",
 - **`Websocket[In](...WebsocketHandler)`** — collects handlers into a `WSMessages[In]` value. `In` is the input struct for path/query/header parsing. Requires at least one `WSOn` and one `WSSends`.
 - **`WSOn[In, Msg]("name", fn)`** — registers a typed handler for messages with the given type name. The framework manages the receive loop and dispatches to the right handler automatically.
 - **`WSSends(variants...)`** — registers named send types for auto-wrap envelopes and AsyncAPI schema generation. Required for TypeScript type generation.
+- **`WSSetup[In, State](fn)`** — optional setup function that runs after upgrade, before the dispatch loop. Its return value replaces the parsed input and is passed to all `WSOn` handlers.
 - **`WSOnError(fn)`** — optional callback for handler errors. If not set, errors are logged and the connection is closed.
 - **`WSOnUnknownMessage(fn)`** — optional callback for unrecognized message types. If not set, unknown types are logged and skipped.
 
@@ -101,6 +102,43 @@ shiftapi.HandleWS(api, "GET /rooms/{room}",
 ```
 
 The parsed `in` value is passed to every `WSOn` handler.
+
+## Connection setup
+
+Use `WSSetup` to initialize per-connection state after the WebSocket upgrade. The setup function receives the parsed input and returns a state value that replaces `in` in all `WSOn` handlers:
+
+```go
+type JoinInput struct {
+    Room string `query:"room"`
+}
+
+type RoomState struct {
+    Room *Room
+    User *User
+}
+
+shiftapi.HandleWS(api, "GET /chat",
+    shiftapi.Websocket[JoinInput](
+        shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in JoinInput) (*RoomState, error) {
+            user, err := authenticate(r)
+            if err != nil {
+                return nil, err // closes connection with StatusInternalError
+            }
+            room := rooms.Join(in.Room, user)
+            return &RoomState{Room: room, User: user}, nil
+        }),
+        shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, state *RoomState, m UserMessage) error {
+            state.Room.Broadcast(ChatMessage{User: state.User.Name, Text: m.Text})
+            return nil
+        }),
+        shiftapi.WSSends(
+            shiftapi.MessageType[ChatMessage]("chat"),
+        ),
+    ),
+)
+```
+
+If the setup function returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Without `WSSetup`, handlers receive the parsed `In` value directly (the default behavior).
 
 ## Error handling
 
@@ -415,6 +453,14 @@ shiftapi.HandleWS(api, "GET /ws",
 | `WithError[T](code)` | Declare an error type at a status code (pre-upgrade only) |
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithWSAcceptOptions(opts)` | Configure WebSocket upgrade (origins, subprotocols) |
+
+The following callbacks are passed to `Websocket[In]()`, not as route options:
+
+| Callback | Description |
+|----------|-------------|
+| `WSSetup[In, State](fn)` | Initialize per-connection state after upgrade (default: pass `In` directly) |
+| `WSOnError(fn)` | Handle errors from `WSOn` handlers (default: log + close) |
+| `WSOnUnknownMessage(fn)` | Handle unrecognized message types (default: log + continue) |
 
 ## When to use HandleWS vs HandleSSE vs Handle
 

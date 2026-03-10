@@ -787,6 +787,106 @@ func TestHandleWS_DuplicateOnNamePanics(t *testing.T) {
 	)
 }
 
+type wsRoomState struct {
+	RoomName string
+}
+
+func TestHandleWS_WSSetup(t *testing.T) {
+	api := shiftapi.New()
+
+	type joinInput struct {
+		Room string `query:"room"`
+	}
+
+	shiftapi.HandleWS(api, "GET /chat",
+		shiftapi.Websocket[joinInput](
+			shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in joinInput) (*wsRoomState, error) {
+				if in.Room == "" {
+					return nil, fmt.Errorf("room required")
+				}
+				return &wsRoomState{RoomName: in.Room}, nil
+			}),
+			shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, state *wsRoomState, msg wsClientMsg) error {
+				return ws.Send(wsServerMsg{Text: "[" + state.RoomName + "] " + msg.Text})
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	// Test successful setup — state is threaded to handlers.
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/chat?room=general", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	envelope := map[string]any{"type": "message", "data": map[string]any{"text": "hello"}}
+	if err := wsjson.Write(ctx, conn, envelope); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var resp struct {
+		Type string      `json:"type"`
+		Data wsServerMsg `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &resp); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if resp.Data.Text != "[general] hello" {
+		t.Errorf("got %q, want %q", resp.Data.Text, "[general] hello")
+	}
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
+}
+
+func TestHandleWS_WSSetup_Error(t *testing.T) {
+	api := shiftapi.New()
+
+	type joinInput struct {
+		Room string `query:"room"`
+	}
+
+	shiftapi.HandleWS(api, "GET /chat",
+		shiftapi.Websocket[joinInput](
+			shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in joinInput) (*wsRoomState, error) {
+				return nil, fmt.Errorf("setup failed")
+			}),
+			shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, state *wsRoomState, msg wsClientMsg) error {
+				return ws.Send(wsServerMsg{Text: "should not reach"})
+			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/chat?room=general", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// The connection should be closed by the server due to setup error.
+	var msg json.RawMessage
+	err = wsjson.Read(ctx, conn, &msg)
+	if err == nil {
+		t.Fatal("expected error reading from connection closed by setup failure")
+	}
+	if websocket.CloseStatus(err) != websocket.StatusInternalError {
+		t.Errorf("close status = %d, want %d (StatusInternalError)", websocket.CloseStatus(err), websocket.StatusInternalError)
+	}
+}
+
 func TestOn_EmptyNamePanics(t *testing.T) {
 	defer func() {
 		r := recover()
