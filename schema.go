@@ -144,7 +144,7 @@ func (a *API) updateSchema(si schemaInput) error {
 			Description: new(http.StatusText(si.status)),
 		}
 		if len(si.eventVariants) > 0 {
-			// SSE with multiple event types — generate oneOf + discriminator.
+			// SSE with registered event variants — generate oneOf + discriminator.
 			var oneOf openapi3.SchemaRefs
 			for _, ev := range si.eventVariants {
 				payloadSchema, err := a.generateSchemaRef(ev.eventPayloadType())
