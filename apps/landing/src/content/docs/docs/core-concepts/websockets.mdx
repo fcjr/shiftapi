@@ -29,6 +29,8 @@ shiftapi.HandleWS(api, "GET /echo",
 - **`Websocket[In](...WebsocketHandler)`** — collects handlers into a `WSMessages[In]` value. `In` is the input struct for path/query/header parsing. Requires at least one `WSOn` and one `WSSends`.
 - **`WSOn[In, Msg]("name", fn)`** — registers a typed handler for messages with the given type name. The framework manages the receive loop and dispatches to the right handler automatically.
 - **`WSSends(variants...)`** — registers named send types for auto-wrap envelopes and AsyncAPI schema generation. Required for TypeScript type generation.
+- **`WSOnError(fn)`** — optional callback for handler errors. If not set, errors are logged and the connection is closed.
+- **`WSOnUnknownMessage(fn)`** — optional callback for unrecognized message types. If not set, unknown types are logged and skipped.
 
 The framework owns the receive loop — you never write `for { msg := ws.Receive(ctx) }` boilerplate.
 
@@ -45,7 +47,7 @@ func(r *http.Request, ws *shiftapi.WSSender, in In, msg Msg) error
 - **`in In`** — the parsed input (path, query, header params)
 - **`msg Msg`** — the decoded message payload
 
-The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped.
+The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped by default — use `WSOnUnknownMessage` to customize this.
 
 ## WSSender
 
@@ -105,8 +107,49 @@ The parsed `in` value is passed to every `WSOn` handler.
 Error behavior depends on when the error occurs:
 
 - **Before upgrade** — if input parsing or validation fails, a JSON error response is written (just like `Handle`).
-- **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged.
+- **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Use `WSOnError` to customize this behavior.
 - **WebSocket close** — if a handler returns an error that is already a WebSocket close (e.g. client disconnect), the framework recognizes it and does not double-close.
+
+## Callbacks
+
+### WSOnError
+
+`WSOnError` registers an error callback that is invoked when a `WSOn` handler returns a non-close error. If not set, the framework logs the error and closes the connection with `WSStatusInternalError`. When set, the callback owns the close decision — the framework will not auto-close after the callback returns.
+
+```go
+shiftapi.HandleWS(api, "GET /chat",
+    shiftapi.Websocket[struct{}](
+        shiftapi.WSOn("message", handleMessage),
+        shiftapi.WSSends(
+            shiftapi.MessageType[ChatMessage]("chat"),
+            shiftapi.MessageType[ErrorMessage]("error"),
+        ),
+        shiftapi.WSOnError(func(r *http.Request, ws *shiftapi.WSSender, err error) {
+            // Send an error message to the client before closing.
+            ws.Send(ErrorMessage{Message: err.Error()})
+            ws.Close(shiftapi.WSStatusInternalError, "handler error")
+        }),
+    ),
+)
+```
+
+### WSOnUnknownMessage
+
+`WSOnUnknownMessage` registers a callback for messages whose `type` field does not match any registered `WSOn` handler. If not set, the framework logs the unknown type and continues reading.
+
+```go
+shiftapi.HandleWS(api, "GET /chat",
+    shiftapi.Websocket[struct{}](
+        shiftapi.WSOn("message", handleMessage),
+        shiftapi.WSSends(
+            shiftapi.MessageType[ChatMessage]("chat"),
+        ),
+        shiftapi.WSOnUnknownMessage(func(r *http.Request, ws *shiftapi.WSSender, msgType string, data json.RawMessage) {
+            log.Printf("unknown message type from %s: %s", r.RemoteAddr, msgType)
+        }),
+    ),
+)
+```
 
 ## AsyncAPI spec
 

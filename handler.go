@@ -235,6 +235,7 @@ func adaptWSMessages[In any](
 	sendVariants map[reflect.Type]string,
 	hc *handlerConfig,
 	wsOpts *WSAcceptOptions,
+	cb wsCallbacks,
 ) http.HandlerFunc {
 	// Convert our public WSAcceptOptions to the underlying library's AcceptOptions.
 	var acceptOpts *websocket.AcceptOptions
@@ -270,7 +271,7 @@ func adaptWSMessages[In any](
 		}
 
 		ws := &WSSender{conn: conn, ctx: r.Context(), sendVariants: sendVariants}
-		runWSDispatchLoop(r, conn, ws, in, dispatch)
+		runWSDispatchLoop(r, conn, ws, in, dispatch, cb)
 	}
 }
 

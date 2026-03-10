@@ -90,8 +90,10 @@ type WebsocketHandler interface {
 // websocketConfig holds the configuration built by [Websocket] from
 // [WebsocketHandler] values.
 type websocketConfig struct {
-	handlers     []wsOnHandler
-	sendVariants []MessageVariant
+	handlers        []wsOnHandler
+	sendVariants    []MessageVariant
+	onError         func(r *http.Request, ws *WSSender, err error)
+	onUnknownMsg    func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
 // wsOnHandler is the internal interface for a typed message handler
@@ -167,6 +169,52 @@ func WSSends(variants ...MessageVariant) WebsocketHandler {
 	return &sendsHandler{variants: variants}
 }
 
+// wsOnErrorHandler stores the user's error callback.
+type wsOnErrorHandler struct {
+	fn func(r *http.Request, ws *WSSender, err error)
+}
+
+func (h *wsOnErrorHandler) applyToWebsocket(cfg *websocketConfig) {
+	cfg.onError = h.fn
+}
+
+// WSOnError registers an error callback for the WebSocket endpoint. The
+// callback is invoked when a [WSOn] handler returns a non-close error.
+// If not set, the framework logs the error and closes the connection with
+// [WSStatusInternalError].
+//
+// The callback may send a final message via [WSSender.Send] before the
+// connection is closed. After the callback returns, the connection is
+// closed with [WSStatusInternalError] unless the callback already closed it.
+//
+//	shiftapi.WSOnError(func(r *http.Request, ws *shiftapi.WSSender, err error) {
+//	    ws.Send(ErrorMsg{Message: err.Error()})
+//	})
+func WSOnError(fn func(r *http.Request, ws *WSSender, err error)) WebsocketHandler {
+	return &wsOnErrorHandler{fn: fn}
+}
+
+// wsOnUnknownMsgHandler stores the user's unknown message callback.
+type wsOnUnknownMsgHandler struct {
+	fn func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
+}
+
+func (h *wsOnUnknownMsgHandler) applyToWebsocket(cfg *websocketConfig) {
+	cfg.onUnknownMsg = h.fn
+}
+
+// WSOnUnknownMessage registers a callback for unrecognized message types.
+// The callback is invoked when the client sends a message whose "type" field
+// does not match any registered [WSOn] handler. If not set, the framework
+// logs the unknown type and continues reading.
+//
+//	shiftapi.WSOnUnknownMessage(func(r *http.Request, ws *shiftapi.WSSender, msgType string, data json.RawMessage) {
+//	    log.Printf("unknown message type: %s", msgType)
+//	})
+func WSOnUnknownMessage(fn func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)) WebsocketHandler {
+	return &wsOnUnknownMsgHandler{fn: fn}
+}
+
 // WSMessages holds the assembled WebSocket endpoint configuration built by
 // [Websocket]. It is passed as a positional argument to [HandleWS].
 type WSMessages[In any] struct {
@@ -230,10 +278,16 @@ func MessageType[T any](name string) MessageVariant {
 	return messageVariant[T]{name: name}
 }
 
+// wsCallbacks holds the optional user callbacks for the dispatch loop.
+type wsCallbacks struct {
+	onError      func(r *http.Request, ws *WSSender, err error)
+	onUnknownMsg func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
+}
+
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
 // WebSocket endpoints. It reads discriminated messages, dispatches to the
 // matching [WSOn] handler, and stops on close or error.
-func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler) {
+func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSender, in In, dispatch map[string]wsOnHandler, cb wsCallbacks) {
 	ctx := r.Context()
 	for {
 		var envelope wsEvent
@@ -248,7 +302,11 @@ func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSend
 
 		handler, ok := dispatch[envelope.Type]
 		if !ok {
-			log.Printf("shiftapi: unknown WS message type: %q", envelope.Type)
+			if cb.onUnknownMsg != nil {
+				cb.onUnknownMsg(r, ws, envelope.Type, envelope.Data)
+			} else {
+				log.Printf("shiftapi: unknown WS message type: %q", envelope.Type)
+			}
 			continue
 		}
 
@@ -256,8 +314,12 @@ func runWSDispatchLoop[In any](r *http.Request, conn *websocket.Conn, ws *WSSend
 			if websocket.CloseStatus(err) != -1 {
 				return // handler triggered a close
 			}
-			log.Printf("shiftapi: WS handler error: %v", err)
-			_ = conn.Close(websocket.StatusInternalError, "internal error")
+			if cb.onError != nil {
+				cb.onError(r, ws, err)
+			} else {
+				log.Printf("shiftapi: WS handler error: %v", err)
+				_ = conn.Close(websocket.StatusInternalError, "internal error")
+			}
 			return
 		}
 	}
