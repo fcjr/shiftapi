@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -19,8 +18,8 @@ type EchoReply struct {
 }
 
 var echoWS = shiftapi.Websocket[struct{}](
-	shiftapi.WSOn("chat", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ChatMsg) error {
-		return ws.Send(ctx, EchoReply{Text: "echo: " + msg.Text})
+	shiftapi.WSOn("chat", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ChatMsg) error {
+		return ws.Send(EchoReply{Text: "echo: " + msg.Text})
 	}),
 	shiftapi.WSSends(
 		shiftapi.MessageType[EchoReply]("echo"),

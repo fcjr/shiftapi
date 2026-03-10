@@ -12,8 +12,8 @@ sidebar:
 ```go
 shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket[struct{}](
-        shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-            return ws.Send(ctx, ServerMsg{Text: "echo: " + msg.Text})
+        shiftapi.WSOn("echo", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+            return ws.Send(ServerMsg{Text: "echo: " + msg.Text})
         }),
         shiftapi.WSSends(
             shiftapi.MessageType[ServerMsg]("server"),
@@ -37,10 +37,10 @@ The framework owns the receive loop — you never write `for { msg := ws.Receive
 Each `WSOn` handler has this signature:
 
 ```go
-func(ctx context.Context, ws *shiftapi.WSSender, in In, msg Msg) error
+func(r *http.Request, ws *shiftapi.WSSender, in In, msg Msg) error
 ```
 
-- **`ctx`** — the connection context (cancelled when the connection closes)
+- **`r *http.Request`** — the original HTTP request (use `r.Context()` for the connection context)
 - **`ws *WSSender`** — for sending messages back to the client
 - **`in In`** — the parsed input (path, query, header params)
 - **`msg Msg`** — the decoded message payload
@@ -56,7 +56,7 @@ The framework reads `{"type": "name", "data": ...}` envelopes from the client, m
 Writes a JSON-encoded message wrapped in a `{"type": name, "data": value}` envelope. The event name is automatically determined from the concrete Go type registered via `WSSends`:
 
 ```go
-ws.Send(ctx, ChatMessage{User: "alice", Text: "hi"})
+ws.Send(ChatMessage{User: "alice", Text: "hi"})
 // → {"type": "chat", "data": {"user": "alice", "text": "hi"}}
 ```
 
@@ -88,8 +88,8 @@ type ChatInput struct {
 
 shiftapi.HandleWS(api, "GET /rooms/{room}",
     shiftapi.Websocket[ChatInput](
-        shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
-            return ws.Send(ctx, ChatMessage{Room: in.Room, Text: m.Text})
+        shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
+            return ws.Send(ChatMessage{Room: in.Room, Text: m.Text})
         }),
         shiftapi.WSSends(
             shiftapi.MessageType[ChatMessage]("chat"),
@@ -115,8 +115,8 @@ WebSocket endpoints are documented in an [AsyncAPI 2.4](https://www.asyncapi.com
 ```go
 shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket[struct{}](
-        shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-            return ws.Send(ctx, ServerMsg{Text: msg.Text})
+        shiftapi.WSOn("echo", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+            return ws.Send(ServerMsg{Text: msg.Text})
         }),
         shiftapi.WSSends(
             shiftapi.MessageType[ServerMsg]("server"),
@@ -245,8 +245,8 @@ Pass `MessageType[T]` descriptors to declare each named send type. `WSSender.Sen
 ```go
 shiftapi.HandleWS(api, "GET /chat",
     shiftapi.Websocket[struct{}](
-        shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m UserMessage) error {
-            return ws.Send(ctx, ChatMessage{User: "server", Text: m.Text})
+        shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+            return ws.Send(ChatMessage{User: "server", Text: m.Text})
         }),
         shiftapi.WSSends(
             shiftapi.MessageType[ChatMessage]("chat"),
@@ -316,11 +316,11 @@ You can register multiple `WSOn` handlers for different client message types:
 ```go
 shiftapi.HandleWS(api, "GET /chat",
     shiftapi.Websocket[struct{}](
-        shiftapi.WSOn("message", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m UserMessage) error {
-            return ws.Send(ctx, ChatMessage{User: "echo", Text: m.Text})
+        shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+            return ws.Send(ChatMessage{User: "echo", Text: m.Text})
         }),
-        shiftapi.WSOn("command", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, cmd UserCommand) error {
-            return ws.Send(ctx, SystemMessage{Info: "executed: " + cmd.Command})
+        shiftapi.WSOn("command", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, cmd UserCommand) error {
+            return ws.Send(SystemMessage{Info: "executed: " + cmd.Command})
         }),
         shiftapi.WSSends(
             shiftapi.MessageType[ChatMessage]("chat"),

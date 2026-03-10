@@ -135,7 +135,9 @@
 //	        }
 //	    }
 //	    return nil
-//	})
+//	}, shiftapi.SSESends(
+//	    shiftapi.SSEEventType[ChatEvent]("chat"),
+//	))
 //
 // [SSEWriter] automatically sets Content-Type, Cache-Control, and Connection
 // headers on the first write. [SSEWriter.Send] automatically determines the

@@ -269,8 +269,8 @@ func adaptWSMessages[In any](
 			return
 		}
 
-		ws := &WSSender{conn: conn, sendVariants: sendVariants}
-		runWSDispatchLoop(r.Context(), conn, ws, in, dispatch)
+		ws := &WSSender{conn: conn, ctx: r.Context(), sendVariants: sendVariants}
+		runWSDispatchLoop(r, conn, ws, in, dispatch)
 	}
 }
 
