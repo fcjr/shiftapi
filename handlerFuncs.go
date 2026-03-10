@@ -310,29 +310,48 @@ func registerSSERoute[In, Event any](
 	method string,
 	path string,
 	fn SSEHandlerFunc[In, Event],
-	options ...RouteOption,
+	sseOpts sseRouteConfig,
 ) {
-	s := prepareRoute[In](router, method, path, false, options)
-
-	// Set content type for the OpenAPI spec. If WithEvents was used,
-	// event variants drive schema generation (oneOf + discriminator).
-	// Otherwise, use the Event type parameter for a single-type schema.
-	s.cfg.contentType = "text/event-stream"
-	var sendVariants map[reflect.Type]string
-	if len(s.cfg.eventVariants) == 0 {
-		s.cfg.responseSchemaType = reflect.TypeFor[Event]()
-	} else {
-		sendVariants = make(map[reflect.Type]string, len(s.cfg.eventVariants))
-		seen := make(map[string]bool, len(s.cfg.eventVariants))
-		for _, ev := range s.cfg.eventVariants {
-			name := ev.eventName()
-			if seen[name] {
-				panic(fmt.Sprintf("shiftapi: duplicate event name %q in WithEvents for %s %s", name, method, path))
-			}
-			seen[name] = true
-			sendVariants[ev.eventPayloadType()] = name
-		}
+	// SSESends is required — it provides both the auto-wrap event names
+	// and the schema for TypeScript type generation.
+	if len(sseOpts.eventVariants) == 0 {
+		panic(fmt.Sprintf("shiftapi: HandleSSE requires SSESends to define event types for %s %s", method, path))
 	}
+	sendVariants := make(map[reflect.Type]string, len(sseOpts.eventVariants))
+	seen := make(map[string]bool, len(sseOpts.eventVariants))
+	for _, ev := range sseOpts.eventVariants {
+		name := ev.eventName()
+		if seen[name] {
+			panic(fmt.Sprintf("shiftapi: duplicate event name %q in SSESends for %s %s", name, method, path))
+		}
+		seen[name] = true
+		sendVariants[ev.eventPayloadType()] = name
+	}
+
+	// Build a routeConfig from the sseRouteConfig so we can reuse prepareRoute.
+	routeOpts := []RouteOption{}
+	if sseOpts.info != nil {
+		routeOpts = append(routeOpts, WithRouteInfo(*sseOpts.info))
+	}
+	for _, e := range sseOpts.errors {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addError(e)
+		}))
+	}
+	if len(sseOpts.middleware) > 0 {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addMiddleware(sseOpts.middleware)
+		}))
+	}
+	for _, h := range sseOpts.staticRespHeaders {
+		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+			cfg.addStaticResponseHeader(h)
+		}))
+	}
+
+	s := prepareRoute[In](router, method, path, false, routeOpts)
+	s.cfg.contentType = "text/event-stream"
+	s.cfg.eventVariants = sseOpts.eventVariants
 
 	si := s.schemaInput(method, nil, false, false)
 	if err := s.api.updateSchema(si); err != nil {
@@ -343,8 +362,6 @@ func registerSSERoute[In, Event any](
 	h := adaptSSE(fn, hc, sendVariants)
 	s.wrapAndRegister(router, h)
 }
-
-
 
 // HandleSSE registers a Server-Sent Events handler for the given pattern.
 // The handler receives a typed [SSEWriter] for sending events to the client.
@@ -360,10 +377,13 @@ func registerSSERoute[In, Event any](
 //	        }
 //	    }
 //	    return nil
-//	})
-func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[In, Event], options ...RouteOption) {
+//	}, shiftapi.SSESends(
+//	    shiftapi.SSEEventType[Message]("message"),
+//	))
+func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[In, Event], options ...SSEOption) {
 	method, path := parsePattern(pattern)
-	registerSSERoute(router, method, path, fn, options...)
+	sseOpts := applySSEOptions(options)
+	registerSSERoute(router, method, path, fn, sseOpts)
 }
 
 

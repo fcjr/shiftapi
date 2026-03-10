@@ -32,7 +32,7 @@ type schemaInput struct {
 	staticHeaders      []staticResponseHeader
 	contentType        string
 	responseSchemaType reflect.Type
-	eventVariants      []EventVariant // SSE event variants for oneOf schema
+	eventVariants      []SSEEventVariant // SSE event variants for oneOf schema
 }
 
 func (a *API) updateSchema(si schemaInput) error {

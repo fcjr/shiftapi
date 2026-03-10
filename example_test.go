@@ -356,15 +356,19 @@ func ExampleHandleSSE() {
 			}
 		}
 		return nil
-	})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[Message]("message"),
+	))
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/events", nil)
 	api.ServeHTTP(w, r)
 	fmt.Println(w.Body.String())
 	// Output:
+	// event: message
 	// data: {"text":"hello"}
 	//
+	// event: message
 	// data: {"text":"world"}
 	//
 }
@@ -384,7 +388,7 @@ type exJoinData struct {
 
 func (exJoinData) exChatEvent() {}
 
-func ExampleWithEvents() {
+func ExampleSSESends() {
 	api := shiftapi.New()
 
 	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[exChatEvent]) error {
@@ -392,9 +396,9 @@ func ExampleWithEvents() {
 			return err
 		}
 		return sse.Send(exJoinData{User: "bob"})
-	}, shiftapi.WithEvents(
-		shiftapi.EventType[exMessageData]("message"),
-		shiftapi.EventType[exJoinData]("join"),
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[exMessageData]("message"),
+		shiftapi.SSEEventType[exJoinData]("join"),
 	))
 
 	w := httptest.NewRecorder()

@@ -138,13 +138,12 @@
 //	})
 //
 // [SSEWriter] automatically sets Content-Type, Cache-Control, and Connection
-// headers on the first write. Use [SSEWriter.Send] for data-only events or
-// [SSEWriter.SendEvent] for named events. The Event type parameter is reflected
-// into the OpenAPI spec under text/event-stream.
+// headers on the first write. [SSEWriter.Send] automatically determines the
+// event name from the concrete Go type registered via [SSESends].
 //
-// For endpoints that emit multiple event types, use [WithEvents] to declare
-// each variant. Define a marker interface and use [SSEWriter.SendEvent] with
-// named events:
+// [SSESends] is required for [HandleSSE]. It registers event types for
+// auto-wrap and OpenAPI schema generation. For multiple event types, define
+// a marker interface:
 //
 //	type ChatEvent interface{ chatEvent() }
 //
@@ -160,14 +159,14 @@
 //	func (JoinData) chatEvent() {}
 //
 //	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
-//	    sse.SendEvent("message", MessageData{User: "alice", Text: "hi"})
-//	    return sse.SendEvent("join", JoinData{User: "bob"})
-//	}, shiftapi.WithEvents(
-//	    shiftapi.EventType[MessageData]("message"),
-//	    shiftapi.EventType[JoinData]("join"),
+//	    sse.Send(MessageData{User: "alice", Text: "hi"})
+//	    return sse.Send(JoinData{User: "bob"})
+//	}, shiftapi.SSESends(
+//	    shiftapi.SSEEventType[MessageData]("message"),
+//	    shiftapi.SSEEventType[JoinData]("join"),
 //	))
 //
-// [WithEvents] generates a oneOf schema with a discriminator in the OpenAPI spec,
+// [SSESends] generates a oneOf schema with a discriminator in the OpenAPI spec,
 // which produces TypeScript discriminated unions in the generated client.
 //
 // The generated TypeScript client includes a typed subscribe function

@@ -11,9 +11,9 @@ type routeConfig struct {
 	errors             []errorEntry
 	middleware          []func(http.Handler) http.Handler
 	staticRespHeaders  []staticResponseHeader
-	contentType        string         // custom response media type
-	responseSchemaType reflect.Type   // optional type for schema generation under the content type
-	eventVariants      []EventVariant // SSE event variants for oneOf schema generation
+	contentType        string            // custom response media type
+	responseSchemaType reflect.Type      // optional type for schema generation under the content type
+	eventVariants      []SSEEventVariant // SSE event variants, set by registerSSERoute
 }
 
 func (c *routeConfig) addError(e errorEntry) {
@@ -44,15 +44,17 @@ type RouteInfo struct {
 	Tags        []string
 }
 
-// routeAndWSOption implements both RouteOption and WSOption for options
-// that need to work on both Handle/HandleSSE and HandleWS routes.
-type routeAndWSOption struct {
+// routeAndWSAndSSEOption implements RouteOption, WSOption, and SSEOption for
+// options that need to work on Handle, HandleSSE, and HandleWS routes.
+type routeAndWSAndSSEOption struct {
 	routeFn func(*routeConfig)
 	wsFn    func(*wsRouteConfig)
+	sseFn   func(*sseRouteConfig)
 }
 
-func (o routeAndWSOption) applyToRoute(cfg *routeConfig)    { o.routeFn(cfg) }
-func (o routeAndWSOption) applyToWS(cfg *wsRouteConfig)     { o.wsFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToRoute(cfg *routeConfig)    { o.routeFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToWS(cfg *wsRouteConfig)     { o.wsFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig)   { o.sseFn(cfg) }
 
 // WithRouteInfo sets the route's OpenAPI metadata (summary, description, tags).
 //
@@ -60,10 +62,11 @@ func (o routeAndWSOption) applyToWS(cfg *wsRouteConfig)     { o.wsFn(cfg) }
 //	    Summary: "Greet a person",
 //	    Tags:    []string{"greetings"},
 //	}))
-func WithRouteInfo(info RouteInfo) routeAndWSOption {
-	return routeAndWSOption{
+func WithRouteInfo(info RouteInfo) routeAndWSAndSSEOption {
+	return routeAndWSAndSSEOption{
 		routeFn: func(cfg *routeConfig) { cfg.info = &info },
 		wsFn:    func(cfg *wsRouteConfig) { cfg.info = &info },
+		sseFn:   func(cfg *sseRouteConfig) { cfg.info = &info },
 	}
 }
 
@@ -111,22 +114,3 @@ func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOpti
 	}
 }
 
-// WithEvents registers named SSE event types for OpenAPI schema generation.
-// Each [EventVariant] maps an event name to a payload type, producing a oneOf
-// schema with a discriminator in the OpenAPI spec. The generated TypeScript
-// client yields a discriminated union type.
-//
-// Use with [HandleSSE] and [SSEWriter.SendEvent] to send different payload
-// types under different event names:
-//
-//	shiftapi.HandleSSE(api, "GET /chat", chatHandler,
-//	    shiftapi.WithEvents(
-//	        shiftapi.EventType[MessageData]("message"),
-//	        shiftapi.EventType[JoinData]("join"),
-//	    ),
-//	)
-func WithEvents(variants ...EventVariant) routeOptionFunc {
-	return func(cfg *routeConfig) {
-		cfg.eventVariants = append(cfg.eventVariants, variants...)
-	}
-}
