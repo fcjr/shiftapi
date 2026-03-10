@@ -164,6 +164,9 @@ func TestHandleWS_InputParsing(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
 				return ws.Send(ctx, wsServerMsg{Text: "channel=" + in.Channel})
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 
@@ -182,12 +185,15 @@ func TestHandleWS_InputParsing(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	var msg wsServerMsg
-	if err := wsjson.Read(ctx, conn, &msg); err != nil {
+	var envelope struct {
+		Type string      `json:"type"`
+		Data wsServerMsg `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &envelope); err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if msg.Text != "channel=general" {
-		t.Errorf("got %q, want %q", msg.Text, "channel=general")
+	if envelope.Data.Text != "channel=general" {
+		t.Errorf("got %q, want %q", envelope.Data.Text, "channel=general")
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 }
@@ -200,6 +206,9 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 			shiftapi.WSOn("echo", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return ws.Send(ctx, wsServerMsg{Text: "echo: " + msg.Text})
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 
@@ -219,13 +228,16 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 		if err := wsjson.Write(ctx, conn, envelope); err != nil {
 			t.Fatalf("write %q: %v", text, err)
 		}
-		var resp wsServerMsg
+		var resp struct {
+			Type string      `json:"type"`
+			Data wsServerMsg `json:"data"`
+		}
 		if err := wsjson.Read(ctx, conn, &resp); err != nil {
 			t.Fatalf("read: %v", err)
 		}
 		want := "echo: " + text
-		if resp.Text != want {
-			t.Errorf("got %q, want %q", resp.Text, want)
+		if resp.Data.Text != want {
+			t.Errorf("got %q, want %q", resp.Data.Text, want)
 		}
 	}
 
@@ -290,6 +302,9 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
 				return nil
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 
@@ -311,6 +326,9 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return fmt.Errorf("something went wrong")
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 
@@ -348,6 +366,9 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return ws.Send(ctx, wsServerMsg{Text: "ok"})
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 		shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
 			Subprotocols: []string{"test-proto"},
@@ -376,12 +397,15 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	var msg wsServerMsg
-	if err := wsjson.Read(ctx, conn, &msg); err != nil {
+	var envelope struct {
+		Type string      `json:"type"`
+		Data wsServerMsg `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &envelope); err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if msg.Text != "ok" {
-		t.Errorf("got %q, want %q", msg.Text, "ok")
+	if envelope.Data.Text != "ok" {
+		t.Errorf("got %q, want %q", envelope.Data.Text, "ok")
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 }
@@ -398,6 +422,9 @@ func TestHandleWS_PathParams(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, in Input, msg wsClientMsg) error {
 				return ws.Send(ctx, wsServerMsg{Text: "room=" + in.ID})
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 
@@ -416,12 +443,15 @@ func TestHandleWS_PathParams(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	var msg wsServerMsg
-	if err := wsjson.Read(ctx, conn, &msg); err != nil {
+	var envelope struct {
+		Type string      `json:"type"`
+		Data wsServerMsg `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &envelope); err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if msg.Text != "room=abc" {
-		t.Errorf("got %q, want %q", msg.Text, "room=abc")
+	if envelope.Data.Text != "room=abc" {
+		t.Errorf("got %q, want %q", envelope.Data.Text, "room=abc")
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 }
@@ -652,6 +682,9 @@ func TestHandleWS_DuplicateOnNamePanics(t *testing.T) {
 			shiftapi.WSOn("msg", func(ctx context.Context, ws *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
 				return nil
 			}),
+			shiftapi.WSSends(
+				shiftapi.MessageType[wsServerMsg]("server"),
+			),
 		),
 	)
 }

@@ -16,28 +16,24 @@ import (
 // handlers. It provides [WSSender.Send] for writing messages and
 // [WSSender.Close] for closing the connection.
 //
-// When [WSSends] is used, [WSSender.Send] automatically wraps the value in a
-// discriminated {"type", "data"} envelope based on the concrete Go type.
-// Without [WSSends], the value is written as raw JSON.
+// [WSSender.Send] automatically wraps the value in a discriminated
+// {"type", "data"} envelope based on the concrete Go type registered
+// via [WSSends].
 type WSSender struct {
 	conn         *websocket.Conn
 	sendVariants map[reflect.Type]string // nil = raw mode
 }
 
-// Send writes a JSON-encoded message to the WebSocket connection. If send
-// message types were registered via [WSSends], the value is automatically
-// wrapped in a {"type": name, "data": value} envelope based on its concrete
-// Go type. Without [WSSends], the value is written as raw JSON.
+// Send writes a JSON-encoded message to the WebSocket connection. The value
+// is automatically wrapped in a {"type": name, "data": value} envelope based
+// on its concrete Go type, using the types registered via [WSSends].
 func (ws *WSSender) Send(ctx context.Context, v any) error {
-	if ws.sendVariants != nil {
-		name, ok := ws.sendVariants[reflect.TypeOf(v)]
-		if !ok {
-			return fmt.Errorf("shiftapi: unregistered send type %T; register with WSSends", v)
-		}
-		envelope := wsEnvelope[any]{Type: name, Data: v}
-		return wsjson.Write(ctx, ws.conn, envelope)
+	name, ok := ws.sendVariants[reflect.TypeOf(v)]
+	if !ok {
+		return fmt.Errorf("shiftapi: unregistered send type %T; register with WSSends", v)
 	}
-	return wsjson.Write(ctx, ws.conn, v)
+	envelope := wsEnvelope[any]{Type: name, Data: v}
+	return wsjson.Write(ctx, ws.conn, envelope)
 }
 
 // Close closes the WebSocket connection with the given status code and reason.
@@ -156,8 +152,8 @@ func (s *sendsHandler) applyToWebsocket(cfg *websocketConfig) {
 }
 
 // Sends registers named server-to-client message types for a WebSocket
-// endpoint. When present, [WSSender.Send] automatically wraps messages in a
-// discriminated {"type", "data"} envelope based on the concrete Go type.
+// endpoint. [WSSender.Send] automatically wraps messages in a discriminated
+// {"type", "data"} envelope based on the concrete Go type. WSSends is required.
 //
 // Each [MessageVariant] maps a type name to a payload type, producing a oneOf
 // schema with a discriminator on the "type" field in the AsyncAPI spec.
@@ -197,6 +193,9 @@ func Websocket[In any](handlers ...WebsocketHandler) WSMessages[In] {
 	}
 	if len(cfg.handlers) == 0 {
 		panic("shiftapi: Websocket requires at least one WSOn handler")
+	}
+	if len(cfg.sendVariants) == 0 {
+		panic("shiftapi: Websocket requires WSSends to define server-to-client message types")
 	}
 	return WSMessages[In]{cfg: cfg}
 }
