@@ -8,7 +8,7 @@ export { dtsTemplate, clientJsTemplate, nextClientJsTemplate, virtualModuleTempl
 export { MODULE_ID, RESOLVED_MODULE_ID, DEV_API_PREFIX } from "./constants";
 export { GoServerManager } from "./goServer";
 export { findFreePort } from "./ports";
-export { createSubscribe } from "./subscribe";
-export type { SSEStream, SubscribeOptions, SubscribeFn } from "./subscribe";
+export { createSSE } from "./sse";
+export type { SSEStream, SubscribeOptions, SSEFn } from "./sse";
 export { createWebSocket } from "./websocket";
 export type { WSConnection, WebSocketOptions, WebSocketFn } from "./websocket";

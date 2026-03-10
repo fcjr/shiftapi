@@ -62,7 +62,7 @@ The plugin handles starting your Go server, proxying requests, and regenerating 
 
 ### Server-Sent Events
 
-The generated client includes a `subscribe` function for SSE endpoints registered with `HandleSSE`. Use it directly or with the `useSSE` hook from your API package:
+The generated client includes an `sse` function for SSE endpoints registered with `HandleSSE`. Use it directly or with the `useSSE` hook from your API package:
 
 ```tsx
 import { useSSE } from "@/api";

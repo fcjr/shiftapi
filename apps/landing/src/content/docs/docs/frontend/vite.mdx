@@ -70,12 +70,12 @@ Types are regenerated automatically when you save a Go file — changes appear i
 
 ### Server-Sent Events
 
-The generated client includes a `subscribe` function for SSE endpoints registered with `HandleSSE`. It returns a typed async iterable:
+The generated client includes an `sse` function for SSE endpoints registered with `HandleSSE`. It returns a typed async iterable:
 
 ```typescript
-import { subscribe } from "@shiftapi/client";
+import { sse } from "@shiftapi/client";
 
-const stream = subscribe("/events");
+const stream = sse("/events");
 
 for await (const event of stream) {
     console.log(event); // fully typed from your Go Event struct

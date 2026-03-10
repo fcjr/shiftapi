@@ -27,7 +27,7 @@ const features = [
   {
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M16 6l4 6-4 6"/></svg>,
     title: "Real-Time",
-    desc: <><code>HandleSSE</code> gives you typed server push with a <code>subscribe</code> helper. <code>HandleWS</code> adds typed bidirectional WebSockets with a <code>connect</code> helper.</>,
+    desc: <><code>HandleSSE</code> gives you typed server push with an <code>sse</code> helper. <code>HandleWS</code> adds typed bidirectional WebSockets with a <code>connect</code> helper.</>,
   },
 ];
 

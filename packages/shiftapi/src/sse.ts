@@ -1,5 +1,5 @@
 /**
- * SSE stream returned by {@link createSubscribe}.
+ * SSE stream returned by {@link createSSE}.
  * An async iterable of parsed events with a `close()` method to abort.
  */
 export interface SSEStream<T> {
@@ -7,7 +7,7 @@ export interface SSEStream<T> {
   close(): void;
 }
 
-/** Options accepted by a `subscribe` function created via {@link createSubscribe}. */
+/** Options accepted by an `sse` function created via {@link createSSE}. */
 export interface SubscribeOptions {
   params?: {
     path?: Record<string, unknown>;
@@ -17,14 +17,14 @@ export interface SubscribeOptions {
   signal?: AbortSignal;
 }
 
-/** A subscribe function returned by {@link createSubscribe}. */
-export type SubscribeFn = (
+/** An SSE function returned by {@link createSSE}. */
+export type SSEFn = (
   path: string,
   options?: SubscribeOptions,
 ) => SSEStream<unknown>;
 
 /**
- * Creates a type-safe SSE `subscribe` function bound to the given base URL.
+ * Creates a type-safe SSE `sse` function bound to the given base URL.
  *
  * The returned function connects to an SSE endpoint via `fetch`, parses the
  * event stream, and yields parsed JSON events as an async iterable.
@@ -32,8 +32,8 @@ export type SubscribeFn = (
  * Named events (with an `event:` field) are yielded as `{ event, data }`.
  * Unnamed events are yielded as the parsed `data` value directly.
  */
-export function createSubscribe(baseUrl: string) {
-  return function subscribe<T>(
+export function createSSE(baseUrl: string) {
+  return function sse<T>(
     path: string,
     options: SubscribeOptions = {},
   ): SSEStream<T> {

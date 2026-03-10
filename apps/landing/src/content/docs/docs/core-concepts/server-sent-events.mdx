@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-`HandleSSE` is a dedicated handler for Server-Sent Events that gives you a typed writer, automatic SSE headers, and end-to-end type safety from Go to TypeScript — including a generated `subscribe` helper and framework-specific hooks.
+`HandleSSE` is a dedicated handler for Server-Sent Events that gives you a typed writer, automatic SSE headers, and end-to-end type safety from Go to TypeScript — including a generated `sse` helper and framework-specific hooks.
 
 ## Registering SSE handlers
 
@@ -167,16 +167,16 @@ You don't need to use `WithContentType` or `ResponseSchema` — `HandleSSE` sets
 
 ## TypeScript client
 
-`shiftapi prepare` generates a fully-typed `subscribe` function constrained to SSE paths only — calling `subscribe` on a non-SSE path is a compile-time error.
+`shiftapi prepare` generates a fully-typed `sse` function constrained to SSE paths only — calling `sse` on a non-SSE path is a compile-time error.
 
-### subscribe
+### sse
 
-`subscribe` returns an async iterable stream with a `close()` method:
+`sse` returns an async iterable stream with a `close()` method:
 
 ```typescript
-import { subscribe } from "@shiftapi/client";
+import { sse } from "@shiftapi/client";
 
-const stream = subscribe("/events", {
+const stream = sse("/events", {
   params: { query: { channel: "general" } },
 });
 
@@ -196,7 +196,7 @@ You can also pass an `AbortSignal`:
 
 ```typescript
 const controller = new AbortController();
-const stream = subscribe("/events", { signal: controller.signal });
+const stream = sse("/events", { signal: controller.signal });
 
 // later...
 controller.abort();
@@ -207,7 +207,7 @@ controller.abort();
 Path parameters and request headers are type-checked. If your Go handler declares `path:"room_id"` or `header:"X-Token"` on the input struct, the generated types require them:
 
 ```typescript
-const stream = subscribe("/rooms/{room_id}/events", {
+const stream = sse("/rooms/{room_id}/events", {
   params: {
     path: { room_id: "abc" },
     header: { "X-Token": "secret" },
@@ -217,17 +217,17 @@ const stream = subscribe("/rooms/{room_id}/events", {
 
 ### React
 
-Use `subscribe` with React state. You control how events are accumulated:
+Use `sse` with React state. You control how events are accumulated:
 
 ```tsx
-import { subscribe } from "@myapp/api";
+import { sse } from "@myapp/api";
 import { useEffect, useState } from "react";
 
 function ChatFeed() {
   const [messages, setMessages] = useState<ChatEvent[]>([]);
 
   useEffect(() => {
-    const stream = subscribe("/chat");
+    const stream = sse("/chat");
     (async () => {
       for await (const event of stream) {
         setMessages((prev) => [...prev, event]);
@@ -253,7 +253,7 @@ function TickerDisplay() {
   const [tick, setTick] = useState<Tick | null>(null);
 
   useEffect(() => {
-    const stream = subscribe("/ticks");
+    const stream = sse("/ticks");
     (async () => {
       for await (const event of stream) setTick(event);
     })();
@@ -269,11 +269,11 @@ function TickerDisplay() {
 
 ```svelte
 <script>
-  import { subscribe } from "$lib/api";
+  import { sse } from "$lib/api";
 
   let messages = [];
 
-  const stream = subscribe("/chat");
+  const stream = sse("/chat");
   (async () => {
     for await (const event of stream) {
       messages = [...messages, event];
@@ -389,9 +389,9 @@ paths:
 The generated TypeScript client automatically narrows event types based on the `event` field:
 
 ```typescript
-import { subscribe } from "@shiftapi/client";
+import { sse } from "@shiftapi/client";
 
-const stream = subscribe("/chat");
+const stream = sse("/chat");
 
 for await (const msg of stream) {
   if (msg.event === "message") {
