@@ -229,7 +229,12 @@ func adaptSSE[In, Event any](fn SSEHandlerFunc[In, Event], hc *handlerConfig) ht
 	}
 }
 
-func adaptWS[In, Send, Recv any](fn WSHandlerFunc[In, Send, Recv], hc *handlerConfig, wsOpts *WSAcceptOptions) http.HandlerFunc {
+func adaptWSMessages[In any](
+	dispatch map[string]wsOnHandler,
+	sendVariants map[reflect.Type]string,
+	hc *handlerConfig,
+	wsOpts *WSAcceptOptions,
+) http.HandlerFunc {
 	// Convert our public WSAcceptOptions to the underlying library's AcceptOptions.
 	var acceptOpts *websocket.AcceptOptions
 	if wsOpts != nil {
@@ -263,15 +268,8 @@ func adaptWS[In, Send, Recv any](fn WSHandlerFunc[In, Send, Recv], hc *handlerCo
 			return
 		}
 
-		ws := &WSConn[Send, Recv]{conn: conn}
-		if err := fn(r, in, ws); err != nil {
-			if websocket.CloseStatus(err) != -1 {
-				// Already a WebSocket close — nothing more to do.
-				return
-			}
-			log.Printf("shiftapi: WS handler error: %v", err)
-			_ = conn.Close(websocket.StatusInternalError, "internal error")
-		}
+		ws := &WSSender{conn: conn, sendVariants: sendVariants}
+		runWSDispatchLoop(r.Context(), conn, ws, in, dispatch)
 	}
 }
 

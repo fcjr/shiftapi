@@ -39,23 +39,27 @@ func (a *API) addWSChannel(
 	}
 
 	// Subscribe = what clients receive = our Send type (server→client).
-	subMsg, err := a.buildWSMessage(sendType, sendVariants)
-	if err != nil {
-		return fmt.Errorf("send message: %w", err)
-	}
-	channelItem.Subscribe = &spec.Operation{
-		ID:      operationID("subscribe", path),
-		Message: subMsg,
+	if sendType != nil || len(sendVariants) > 0 {
+		subMsg, err := a.buildWSMessage(sendType, sendVariants)
+		if err != nil {
+			return fmt.Errorf("send message: %w", err)
+		}
+		channelItem.Subscribe = &spec.Operation{
+			ID:      operationID("subscribe", path),
+			Message: subMsg,
+		}
 	}
 
 	// Publish = what clients send = our Recv type (client→server).
-	pubMsg, err := a.buildWSMessage(recvType, recvVariants)
-	if err != nil {
-		return fmt.Errorf("recv message: %w", err)
-	}
-	channelItem.Publish = &spec.Operation{
-		ID:      operationID("publish", path),
-		Message: pubMsg,
+	if recvType != nil || len(recvVariants) > 0 {
+		pubMsg, err := a.buildWSMessage(recvType, recvVariants)
+		if err != nil {
+			return fmt.Errorf("recv message: %w", err)
+		}
+		channelItem.Publish = &spec.Operation{
+			ID:      operationID("publish", path),
+			Message: pubMsg,
+		}
 	}
 
 	if info != nil {
