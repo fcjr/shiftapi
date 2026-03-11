@@ -1,0 +1,91 @@
+---
+title: CLI (No Framework)
+description: Use shiftapi prepare to generate a typed client without Vite or Next.js.
+sidebar:
+  order: 3
+---
+
+If you're not using the Vite or Next.js plugin, you can generate the typed client directly with the `shiftapi` CLI.
+
+## Installation
+
+```bash
+npm install -D shiftapi
+```
+
+## Configuration
+
+Create a `shiftapi.config.ts` in your project root:
+
+```ts
+// shiftapi.config.ts
+import { defineConfig } from "shiftapi";
+
+export default defineConfig({
+  server: "./cmd/server",
+});
+```
+
+### Config options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `server` | — | Path to your Go server entry point (required) |
+| `url` | `"http://localhost:8080"` | Address your Go server listens on |
+| `baseUrl` | `"/"` | Base URL for the generated client |
+
+## Generate the client
+
+```bash
+npx shiftapi prepare
+```
+
+This will:
+
+1. Run your Go server to extract the OpenAPI 3.1 spec
+2. Generate TypeScript types via `openapi-typescript`
+3. Write `.shiftapi/client.d.ts` and `.shiftapi/client.js`
+4. Patch `tsconfig.json` with the required path mapping
+
+To keep types up to date automatically, add it as a `postinstall` script:
+
+```json
+{
+  "scripts": {
+    "postinstall": "shiftapi prepare"
+  }
+}
+```
+
+## Usage
+
+```typescript
+import { client } from "@shiftapi/client";
+
+const { data } = await client.POST("/hello", {
+    body: { name: "World" },
+});
+
+console.log(data.message);
+//               ^? (property) message: string
+```
+
+### TanStack Query
+
+Wrap the generated client with [`openapi-react-query`](https://openapi-ts.dev/openapi-react-query/) to get typed `useQuery` and `useMutation` hooks:
+
+```bash
+npm install @tanstack/react-query openapi-react-query
+```
+
+```typescript
+import createClient from "openapi-react-query";
+import { client } from "@shiftapi/client";
+
+export const api = createClient(client);
+```
+
+```tsx
+const health = api.useQuery("get", "/health");
+const greet = api.useMutation("post", "/greet");
+```
