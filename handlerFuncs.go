@@ -513,7 +513,7 @@ func registerWSRoute[In any](
 //	    shiftapi.Websocket(
 //	        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
 //	        shiftapi.WSSends(shiftapi.MessageType[ChatMessage]("chat")),
-//	        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+//	        shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
 //	            return s.Send(ChatMessage{User: "echo", Text: m.Text})
 //	        }),
 //	    ),

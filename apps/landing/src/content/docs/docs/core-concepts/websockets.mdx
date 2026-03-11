@@ -21,7 +21,7 @@ shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
         shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
-        shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
             return s.Send(ServerMsg{Text: "echo: " + msg.Text})
         }),
     ),
@@ -34,7 +34,7 @@ shiftapi.HandleWS(api, "GET /echo",
 
 - **`Websocket(setup, sends, handlers...)`** — creates a `*WSMessages[In]` value. Both `In` and `State` are inferred from the setup function's signature. The setup function runs after the WebSocket upgrade, receives the parsed input, and returns a `State` value that is passed to all handlers.
 - **`WSOn("name", fn)`** — registers a typed handler for messages with the given type name. The `State` and `Msg` type parameters are inferred from the handler function. `State` must match the setup function's return type.
-- **`WSSends{variants...}`** — a `[]MessageVariant` that registers named send types for auto-wrap envelopes and AsyncAPI schema generation.
+- **`WSSends{variants...}`** — a `[]WSMessageVariant` that registers named send types for auto-wrap envelopes and AsyncAPI schema generation.
 
 Everything is configured in one place — no mutation after construction.
 
@@ -43,11 +43,10 @@ Everything is configured in one place — no mutation after construction.
 Each `WSOn` handler has this signature:
 
 ```go
-func(r *http.Request, sender *shiftapi.WSSender, state State, msg Msg) error
+func(sender *shiftapi.WSSender, state State, msg Msg) error
 ```
 
-- **`r *http.Request`** — the original HTTP request (use `r.Context()` for the connection context, `r.URL.Query()` and `r.PathValue()` for parsed input)
-- **`sender *WSSender`** — for sending messages back to the client
+- **`sender *WSSender`** — for sending messages and accessing the connection context via `sender.Context()`
 - **`state State`** — the value returned by the setup function for this connection
 - **`msg Msg`** — the decoded message payload
 
@@ -64,6 +63,14 @@ Writes a JSON-encoded message wrapped in a `{"type": name, "data": value}` envel
 ```go
 s.Send(ChatMessage{User: "alice", Text: "hi"})
 // → {"type": "chat", "data": {"user": "alice", "text": "hi"}}
+```
+
+### Context
+
+Returns the connection's context, which is cancelled when the connection closes:
+
+```go
+ctx := s.Context()
 ```
 
 ### Close
@@ -84,22 +91,26 @@ type ChatInput struct {
     Token string `query:"token" validate:"required"`
 }
 
+type ChatState struct {
+    Room  string
+    Token string
+}
+
 shiftapi.HandleWS(api, "GET /rooms/{room}",
     shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, in ChatInput) (struct{}, error) {
+        func(r *http.Request, s *shiftapi.WSSender, in ChatInput) (*ChatState, error) {
             // in.Room and in.Token are parsed and validated before upgrade.
-            return struct{}{}, nil
+            return &ChatState{Room: in.Room, Token: in.Token}, nil
         },
         shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
-        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
-            room := r.PathValue("room")
-            return s.Send(ChatMessage{Room: room, Text: m.Text})
+        shiftapi.WSOn("message", func(s *shiftapi.WSSender, state *ChatState, m UserMessage) error {
+            return s.Send(ChatMessage{Room: state.Room, Text: m.Text})
         }),
     ),
 )
 ```
 
-The setup function receives the parsed `In` value. Handlers access input via `r.PathValue()`, `r.URL.Query()`, etc.
+The setup function receives the parsed `In` value and returns a `State` that carries any needed data to handlers.
 
 ## Connection setup and state
 
@@ -126,7 +137,7 @@ shiftapi.HandleWS(api, "GET /rooms/{room}",
             return &RoomState{Room: room, User: user}, nil
         },
         shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
-        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, state *RoomState, m UserMessage) error {
+        shiftapi.WSOn("message", func(s *shiftapi.WSSender, state *RoomState, m UserMessage) error {
             return s.Send(ChatMessage{Room: state.Room.Name, User: state.User.Name, Text: m.Text})
         }),
     ),
@@ -214,7 +225,7 @@ shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
         shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
-        shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
             return s.Send(ServerMsg{Text: msg.Text})
         }),
     ),
@@ -346,7 +357,7 @@ shiftapi.HandleWS(api, "GET /chat",
             shiftapi.WSMessageType[ChatMessage]("chat"),
             shiftapi.WSMessageType[SystemMessage]("system"),
         },
-        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+        shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
             return s.Send(ChatMessage{User: "server", Text: m.Text})
         }),
     ),
@@ -418,10 +429,10 @@ shiftapi.HandleWS(api, "GET /chat",
             shiftapi.WSMessageType[ChatMessage]("chat"),
             shiftapi.WSMessageType[SystemMessage]("system"),
         },
-        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
+        shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
             return s.Send(ChatMessage{User: "echo", Text: m.Text})
         }),
-        shiftapi.WSOn("command", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, cmd UserCommand) error {
+        shiftapi.WSOn("command", func(s *shiftapi.WSSender, _ struct{}, cmd UserCommand) error {
             return s.Send(SystemMessage{Info: "executed: " + cmd.Command})
         }),
     ),

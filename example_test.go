@@ -427,7 +427,7 @@ func ExampleHandleWS() {
 		shiftapi.Websocket(
 			func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
 			shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
-			shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+			shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
 				return s.Send(ServerMsg{Text: "echo: " + msg.Text})
 			}),
 		),
@@ -459,7 +459,7 @@ func ExampleHandleWS_multiType() {
 				shiftapi.WSMessageType[exChatMessage]("chat"),
 				shiftapi.WSMessageType[exSystemMessage]("system"),
 			},
-			shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
+			shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
 				return s.Send(exChatMessage{User: "server", Text: m.Text})
 			}),
 		),

@@ -33,7 +33,7 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("echo", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("echo", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg(msg))
 			}),
 		),
@@ -162,15 +162,18 @@ func TestHandleWS_InputParsing(t *testing.T) {
 		Channel string `query:"channel" validate:"required"`
 	}
 
+	type inputState struct {
+		Channel string
+	}
+
 	shiftapi.HandleWS(api, "GET /ws",
 		shiftapi.Websocket(
-			func(r *http.Request, sender *shiftapi.WSSender, in Input) (struct{}, error) {
-				return struct{}{}, nil
+			func(r *http.Request, sender *shiftapi.WSSender, in Input) (*inputState, error) {
+				return &inputState{Channel: in.Channel}, nil
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
-				channel := r.URL.Query().Get("channel")
-				return sender.Send(wsServerMsg{Text: "channel=" + channel})
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, state *inputState, msg wsClientMsg) error {
+				return sender.Send(wsServerMsg{Text: "channel=" + state.Channel})
 			}),
 		),
 	)
@@ -210,7 +213,7 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("echo", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("echo", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "echo: " + msg.Text})
 			}),
 		),
@@ -255,7 +258,7 @@ func TestHandleWS_AutoWrapSend(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("ping", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("ping", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "pong"})
 			}),
 		),
@@ -306,7 +309,7 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 				return struct{}{}, nil
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return nil
 			}),
 		),
@@ -329,7 +332,7 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return fmt.Errorf("something went wrong")
 			}),
 		),
@@ -369,7 +372,7 @@ func TestHandleWS_WSOnUnknownMessage(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "ok"})
 			}),
 		),
@@ -418,7 +421,7 @@ func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "ok"})
 			}),
 		),
@@ -469,14 +472,18 @@ func TestHandleWS_PathParams(t *testing.T) {
 		ID string `path:"id"`
 	}
 
+	type pathState struct {
+		ID string
+	}
+
 	shiftapi.HandleWS(api, "GET /rooms/{id}",
 		shiftapi.Websocket(
-			func(r *http.Request, sender *shiftapi.WSSender, in Input) (struct{}, error) {
-				return struct{}{}, nil
+			func(r *http.Request, sender *shiftapi.WSSender, in Input) (*pathState, error) {
+				return &pathState{ID: in.ID}, nil
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
-				return sender.Send(wsServerMsg{Text: "room=" + r.PathValue("id")})
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, state *pathState, msg wsClientMsg) error {
+				return sender.Send(wsServerMsg{Text: "room=" + state.ID})
 			}),
 		),
 	)
@@ -538,10 +545,10 @@ func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 				shiftapi.WSMessageType[wsChatMsg]("chat"),
 				shiftapi.WSMessageType[wsSystemMsg]("system"),
 			},
-			shiftapi.WSOn("message", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+			shiftapi.WSOn("message", func(sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
 				return sender.Send(wsChatMsg{User: "server", Text: "got: " + m.Text})
 			}),
-			shiftapi.WSOn("command", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
+			shiftapi.WSOn("command", func(sender *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
 				return sender.Send(wsSystemMsg{Info: "executed: " + cmd.Command})
 			}),
 		),
@@ -608,10 +615,10 @@ func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
 				shiftapi.WSMessageType[wsChatMsg]("chat"),
 				shiftapi.WSMessageType[wsSystemMsg]("system"),
 			},
-			shiftapi.WSOn("message", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+			shiftapi.WSOn("message", func(sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
 				return nil
 			}),
-			shiftapi.WSOn("command", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
+			shiftapi.WSOn("command", func(sender *shiftapi.WSSender, _ struct{}, cmd wsUserCmd) error {
 				return nil
 			}),
 		),
@@ -711,7 +718,7 @@ func TestHandleWS_DuplicateSendNamePanics(t *testing.T) {
 				shiftapi.WSMessageType[wsChatMsg]("same"),
 				shiftapi.WSMessageType[wsSystemMsg]("same"),
 			},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
 				return nil
 			}),
 		),
@@ -734,10 +741,10 @@ func TestHandleWS_DuplicateOnNamePanics(t *testing.T) {
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
 				return nil
 			}),
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, m wsUserMsg) error {
 				return nil
 			}),
 		),
@@ -751,18 +758,21 @@ func TestHandleWS_Setup(t *testing.T) {
 		Room string `query:"room"`
 	}
 
+	type roomState struct {
+		Room string
+	}
+
 	shiftapi.HandleWS(api, "GET /chat",
 		shiftapi.Websocket(
-			func(r *http.Request, sender *shiftapi.WSSender, in joinInput) (struct{}, error) {
+			func(r *http.Request, sender *shiftapi.WSSender, in joinInput) (*roomState, error) {
 				if in.Room == "" {
-					return struct{}{}, fmt.Errorf("room required")
+					return nil, fmt.Errorf("room required")
 				}
-				return struct{}{}, nil
+				return &roomState{Room: in.Room}, nil
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("message", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
-				room := r.URL.Query().Get("room")
-				return sender.Send(wsServerMsg{Text: "[" + room + "] " + msg.Text})
+			shiftapi.WSOn("message", func(sender *shiftapi.WSSender, state *roomState, msg wsClientMsg) error {
+				return sender.Send(wsServerMsg{Text: "[" + state.Room + "] " + msg.Text})
 			}),
 		),
 	)
@@ -810,7 +820,7 @@ func TestHandleWS_Setup_Error(t *testing.T) {
 				return struct{}{}, fmt.Errorf("setup failed")
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("message", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+			shiftapi.WSOn("message", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "should not reach"})
 			}),
 		),
@@ -848,7 +858,7 @@ func TestOn_EmptyNamePanics(t *testing.T) {
 			t.Errorf("unexpected panic message: %v", r)
 		}
 	}()
-	shiftapi.WSOn("", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
+	shiftapi.WSOn("", func(sender *shiftapi.WSSender, _ struct{}, m wsClientMsg) error {
 		return nil
 	})
 }

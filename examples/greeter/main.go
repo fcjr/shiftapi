@@ -192,7 +192,7 @@ func main() {
 				return &State{ID: req.ID}, nil
 			},
 			shiftapi.WSSends{shiftapi.WSMessageType[EchoReply]("echo")},
-			shiftapi.WSOn("chat", func(r *http.Request, s *shiftapi.WSSender, state *State, msg ChatMsg) error {
+			shiftapi.WSOn("chat", func(s *shiftapi.WSSender, state *State, msg ChatMsg) error {
 				fmt.Println(state)
 				return s.Send(EchoReply{Text: "echo: " + msg.Text})
 			}),
