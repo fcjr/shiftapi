@@ -3,6 +3,7 @@ package shiftapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -103,10 +104,27 @@ func (h *onHandlerImpl[State, Msg]) messagePayloadType() reflect.Type { return r
 func (h *onHandlerImpl[State, Msg]) handle(r *http.Request, sender *WSSender, state any, data json.RawMessage) error {
 	var msg Msg
 	if err := json.Unmarshal(data, &msg); err != nil {
-		return fmt.Errorf("shiftapi: decode %q message: %w", h.name, err)
+		return &WSDecodeError{msgType: h.name, err: err}
 	}
 	return h.fn(r, sender, state.(State), msg)
 }
+
+// WSDecodeError is returned when a WebSocket message payload cannot be
+// decoded into the expected type. Decode errors are non-fatal — the
+// framework logs them and continues reading.
+type WSDecodeError struct {
+	msgType string
+	err     error
+}
+
+// MessageType returns the name of the message type that failed to decode.
+func (e *WSDecodeError) MessageType() string { return e.msgType }
+
+func (e *WSDecodeError) Error() string {
+	return fmt.Sprintf("shiftapi: decode %q message: %v", e.msgType, e.err)
+}
+
+func (e *WSDecodeError) Unwrap() error { return e.err }
 
 // WSMessages holds the WebSocket endpoint configuration. Create one with
 // [Websocket], passing a setup function, [WSSends], and [WSOn] handlers.
@@ -138,6 +156,10 @@ type WSSends []WSMessageVariant
 // parameters In and State are both inferred from the setup function:
 // In from the input parameter, State from the return value. Handlers
 // receive the State value returned by setup on each connection.
+//
+// Use a pointer type for State (e.g. *MyState) when handlers need to
+// mutate shared state across messages. Value types are copied per handler
+// call, so mutations would be lost.
 //
 // Use struct{} for both In and State when no input or state is needed.
 //
@@ -214,7 +236,6 @@ func WSMessageType[T any](name string) WSMessageVariant {
 
 // wsCallbacks holds the optional user callbacks for the dispatch loop.
 type wsCallbacks struct {
-	onError      func(r *http.Request, ws *WSSender, err error)
 	onUnknownMsg func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
@@ -248,12 +269,15 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			if websocket.CloseStatus(err) != -1 {
 				return // handler triggered a close
 			}
-			if cb.onError != nil {
-				cb.onError(r, ws, err)
-			} else {
-				log.Printf("shiftapi: WS handler error: %v", err)
-				_ = conn.Close(websocket.StatusInternalError, "internal error")
+			// Decode errors are non-fatal — log and continue reading.
+			var decErr *WSDecodeError
+			if errors.As(err, &decErr) {
+				log.Printf("shiftapi: %v", err)
+				continue
 			}
+			// Handler errors are fatal — log and close.
+			log.Printf("shiftapi: WS handler error: %v", err)
+			_ = conn.Close(websocket.StatusInternalError, "internal error")
 			return
 		}
 	}
@@ -275,7 +299,6 @@ type wsRouteConfig struct {
 	middleware        []func(http.Handler) http.Handler
 	staticRespHeaders []staticResponseHeader
 	wsAcceptOptions   *WSAcceptOptions
-	onError           func(r *http.Request, ws *WSSender, err error)
 	onUnknownMsg      func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
@@ -326,26 +349,6 @@ type WSAcceptOptions struct {
 func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
 	return func(cfg *wsRouteConfig) {
 		cfg.wsAcceptOptions = &opts
-	}
-}
-
-// WithWSOnError registers an error callback for [HandleWS] routes. The
-// callback is invoked when a [WSOn] handler returns a non-close error.
-// If not set, the framework logs the error and closes the connection with
-// [WSStatusInternalError].
-//
-// When set, the callback owns the close decision — the framework will not
-// auto-close after the callback returns.
-//
-//	shiftapi.HandleWS(api, "GET /ws", ws,
-//	    shiftapi.WithWSOnError(func(r *http.Request, s *shiftapi.WSSender, err error) {
-//	        s.Send(ErrorMsg{Message: err.Error()})
-//	        s.Close(shiftapi.WSStatusInternalError, "handler error")
-//	    }),
-//	)
-func WithWSOnError(fn func(r *http.Request, sender *WSSender, err error)) wsOptionFunc {
-	return func(cfg *wsRouteConfig) {
-		cfg.onError = fn
 	}
 }
 
