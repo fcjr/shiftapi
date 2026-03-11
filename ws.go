@@ -38,6 +38,12 @@ func (ws *WSSender) Send(v any) error {
 	return wsjson.Write(ws.ctx, ws.conn, envelope)
 }
 
+// Context returns the connection's context. It is cancelled when the
+// WebSocket connection is closed.
+func (ws *WSSender) Context() context.Context {
+	return ws.ctx
+}
+
 // Close closes the WebSocket connection with the given status code and reason.
 func (ws *WSSender) Close(status WSStatusCode, reason string) error {
 	return ws.conn.Close(websocket.StatusCode(status), reason)
@@ -88,25 +94,25 @@ type websocketConfig struct {
 type wsOnHandler interface {
 	messageName() string
 	messagePayloadType() reflect.Type
-	handle(r *http.Request, sender *WSSender, state any, data json.RawMessage) error
+	handle(sender *WSSender, state any, data json.RawMessage) error
 }
 
 // onHandlerImpl is the concrete implementation of [wsOnHandler] created
 // by the [WSOn] function.
 type onHandlerImpl[State, Msg any] struct {
 	name string
-	fn   func(r *http.Request, ws *WSSender, state State, msg Msg) error
+	fn   func(ws *WSSender, state State, msg Msg) error
 }
 
 func (h *onHandlerImpl[State, Msg]) messageName() string              { return h.name }
 func (h *onHandlerImpl[State, Msg]) messagePayloadType() reflect.Type { return reflect.TypeFor[Msg]() }
 
-func (h *onHandlerImpl[State, Msg]) handle(r *http.Request, sender *WSSender, state any, data json.RawMessage) error {
+func (h *onHandlerImpl[State, Msg]) handle(sender *WSSender, state any, data json.RawMessage) error {
 	var msg Msg
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return &WSDecodeError{msgType: h.name, err: err}
 	}
-	return h.fn(r, sender, state.(State), msg)
+	return h.fn(sender, state.(State), msg)
 }
 
 // WSDecodeError is returned when a WebSocket message payload cannot be
@@ -169,7 +175,7 @@ type WSSends []WSMessageVariant
 //	            return struct{}{}, nil
 //	        },
 //	        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
-//	        shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+//	        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
 //	            return s.Send(ServerMsg{Text: msg.Text})
 //	        }),
 //	    ),
@@ -191,11 +197,11 @@ func Websocket[In, State any](setup func(r *http.Request, sender *WSSender, in I
 // The State and Msg type parameters are inferred from the handler function.
 // State must match the setup function's return type.
 //
-//	shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, state *Room, msg UserMessage) error {
+//	shiftapi.WSOn("message", func(s *shiftapi.WSSender, state *Room, msg UserMessage) error {
 //	    state.Broadcast(msg)
 //	    return nil
 //	})
-func WSOn[State, Msg any](name string, fn func(r *http.Request, sender *WSSender, state State, msg Msg) error) WSHandler[State] {
+func WSOn[State, Msg any](name string, fn func(sender *WSSender, state State, msg Msg) error) WSHandler[State] {
 	if name == "" {
 		panic("shiftapi: WSOn name must not be empty")
 	}
@@ -266,7 +272,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			continue
 		}
 
-		if err := handler.handle(r, ws, state, envelope.Data); err != nil {
+		if err := handler.handle(ws, state, envelope.Data); err != nil {
 			if websocket.CloseStatus(err) != -1 {
 				return // handler triggered a close
 			}
