@@ -29,6 +29,23 @@
   --sl-color-gray-5: #161920;
   --sl-color-gray-6: #0f1115;
   --sl-color-black: #07080a;
+
+  /* Force dark-mode aside colors so light-mode preference doesn't override */
+  --sl-color-orange-low: hsl(41, 39%, 22%);
+  --sl-color-orange: hsl(41, 82%, 63%);
+  --sl-color-orange-high: hsl(41, 82%, 87%);
+  --sl-color-green-low: hsl(101, 39%, 22%);
+  --sl-color-green: hsl(101, 82%, 63%);
+  --sl-color-green-high: hsl(101, 82%, 80%);
+  --sl-color-blue-low: hsl(234, 54%, 20%);
+  --sl-color-blue: hsl(234, 100%, 60%);
+  --sl-color-blue-high: hsl(234, 100%, 87%);
+  --sl-color-purple-low: hsl(281, 39%, 22%);
+  --sl-color-purple: hsl(281, 82%, 63%);
+  --sl-color-purple-high: hsl(281, 82%, 89%);
+  --sl-color-red-low: hsl(339, 39%, 22%);
+  --sl-color-red: hsl(339, 82%, 63%);
+  --sl-color-red-high: hsl(339, 82%, 87%);
 }
 
 /* Style the logo to match the landing page nav */
