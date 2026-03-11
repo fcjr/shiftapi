@@ -112,7 +112,22 @@ export function createWebSocket(baseUrl: string) {
     let closeError: Event | WSError | undefined;
 
     ws.addEventListener("message", (event) => {
-      const data = JSON.parse(event.data as string) as Recv;
+      const parsed = JSON.parse(event.data as string);
+
+      // Error frames have {"error": true, "code": 4xxx, "data": ...}.
+      // Data frames have {"type": "...", "data": ...}.
+      if (parsed && parsed.error === true && typeof parsed.code === "number") {
+        const wsErr = new WSError(parsed.code, parsed.data);
+        closeError = wsErr;
+        buffer.length = 0;
+        for (const pending of queue) {
+          pending.reject(wsErr);
+        }
+        queue.length = 0;
+        return;
+      }
+
+      const data = parsed as Recv;
       const pending = queue.shift();
       if (pending) {
         pending.resolve(data);
@@ -122,24 +137,10 @@ export function createWebSocket(baseUrl: string) {
     });
 
     ws.addEventListener("close", (event) => {
-      // Application-defined close codes in the 4xxx range indicate that the
-      // server rejected the connection due to input errors. The error payload
-      // was sent as the first (and only) message frame before the close.
-      if (event.code >= 4000 && event.code < 5000 && buffer.length > 0) {
-        const errorPayload = buffer.shift()!;
-        const wsErr = new WSError(event.code, errorPayload);
-        buffer.length = 0;
-        closeError = wsErr;
-        for (const pending of queue) {
-          pending.reject(wsErr);
-        }
-        queue.length = 0;
-        return;
-      }
-      closeError = event;
+      closeError ??= event;
       // Reject all pending receivers.
       for (const pending of queue) {
-        pending.reject(event);
+        pending.reject(closeError);
       }
       queue.length = 0;
     });

@@ -8,7 +8,6 @@ import (
 	"reflect"
 
 	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 // RawHandlerFunc is a handler function that writes directly to the
@@ -284,16 +283,10 @@ func adaptWSMessages[In any](
 			return
 		}
 
-		// If input parsing/validation failed, send the error as the first
-		// frame and close with an application-defined status code that
-		// mirrors the HTTP status. This lets browser clients (which cannot
-		// read HTTP response bodies on failed upgrades) receive structured
-		// error details.
+		// If input parsing/validation failed, send a structured error
+		// frame and close with an application-defined 4xxx status code.
 		if inputErr != nil {
-			ctx := r.Context()
-			_ = wsjson.Write(ctx, conn, inputErr.body)
-			closeCode := websocket.StatusCode(4000 + inputErr.status%1000)
-			_ = conn.Close(closeCode, "input error")
+			writeWSError(r.Context(), conn, 4000+inputErr.status%1000, inputErr.body)
 			return
 		}
 
@@ -302,16 +295,11 @@ func adaptWSMessages[In any](
 		state, err := setup(r, ws, in)
 		if err != nil {
 			// If the error matches a type registered via WithError (or is
-			// a *ValidationError), send it as a typed first frame so the
-			// client receives structured error details, then close with a
-			// 4xxx code mirroring the HTTP status. Unregistered errors
-			// fall back to a plain StatusInternalError close.
+			// a *ValidationError), send it as a structured error frame.
+			// Unregistered errors fall back to a plain StatusInternalError close.
 			status, body := resolveError(hc.internalServerFn, err, hc.errLookup)
 			if status != http.StatusInternalServerError {
-				ctx := r.Context()
-				_ = wsjson.Write(ctx, conn, body)
-				closeCode := websocket.StatusCode(4000 + status%1000)
-				_ = conn.Close(closeCode, "setup error")
+				writeWSError(r.Context(), conn, 4000+status%1000, body)
 			} else {
 				log.Printf("shiftapi: WS setup error: %v", err)
 				_ = conn.Close(websocket.StatusInternalError, "setup error")
@@ -319,7 +307,7 @@ func adaptWSMessages[In any](
 			return
 		}
 
-		runWSDispatchLoop(r, conn, ws, state, dispatch, cb)
+		runWSDispatchLoop(r, conn, ws, state, dispatch, cb, hc)
 	}
 }
 

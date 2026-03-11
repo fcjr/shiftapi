@@ -26,6 +26,32 @@ func noSetup(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, 
 	return struct{}{}, nil
 }
 
+// wsErrorFrame represents the wire format for error frames:
+// {"error": true, "code": 4xxx, "data": ...}
+type wsErrorFrame struct {
+	Error bool            `json:"error"`
+	Code  int             `json:"code"`
+	Data  json.RawMessage `json:"data"`
+}
+
+// readWSError reads an error frame envelope and decodes its data field into v.
+func readWSError(t *testing.T, ctx context.Context, conn *websocket.Conn, v any) wsErrorFrame {
+	t.Helper()
+	var frame wsErrorFrame
+	if err := wsjson.Read(ctx, conn, &frame); err != nil {
+		t.Fatalf("read error frame: %v", err)
+	}
+	if !frame.Error {
+		t.Fatal("expected error frame (error: true)")
+	}
+	if v != nil {
+		if err := json.Unmarshal(frame.Data, v); err != nil {
+			t.Fatalf("unmarshal error data: %v", err)
+		}
+	}
+	return frame
+}
+
 func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
@@ -382,16 +408,17 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
-	// First frame should be the validation error.
+	// First frame should be a structured error envelope.
 	var errResp shiftapi.ValidationError
-	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
-		t.Fatalf("read error frame: %v", err)
+	frame := readWSError(t, ctx, conn, &errResp)
+	if frame.Code != 4422 {
+		t.Errorf("error frame code = %d, want 4422", frame.Code)
 	}
 	if errResp.Message != "validation failed" {
 		t.Errorf("message = %q, want %q", errResp.Message, "validation failed")
 	}
 
-	// Connection should close with 4422 (WSStatusValidationError).
+	// Connection should close with 4422.
 	_, _, err = conn.Read(ctx)
 	if websocket.CloseStatus(err) != 4422 {
 		t.Errorf("close code = %d, want 4422", websocket.CloseStatus(err))
@@ -437,6 +464,55 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	}
 }
 
+func TestHandleWS_ErrorAfterUpgrade_Registered(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			noSetup,
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return &wsAuthError{Message: "token expired", Realm: "api"}
+			}),
+		),
+		shiftapi.WithError[*wsAuthError](http.StatusUnauthorized),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// Send a message to trigger the handler error.
+	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Should receive a structured error envelope, not a data frame.
+	var errResp wsAuthError
+	frame := readWSError(t, ctx, conn, &errResp)
+	if frame.Code != 4401 {
+		t.Errorf("error frame code = %d, want 4401", frame.Code)
+	}
+	if errResp.Message != "token expired" {
+		t.Errorf("message = %q, want %q", errResp.Message, "token expired")
+	}
+	if errResp.Realm != "api" {
+		t.Errorf("realm = %q, want %q", errResp.Realm, "api")
+	}
+
+	// Connection should close with 4401.
+	_, _, err = conn.Read(ctx)
+	if websocket.CloseStatus(err) != 4401 {
+		t.Errorf("close code = %d, want 4401", websocket.CloseStatus(err))
+	}
+}
+
 // wsAuthError is an error type registered via WithError for setup error tests.
 type wsAuthError struct {
 	Message string `json:"message"`
@@ -471,10 +547,11 @@ func TestHandleWS_SetupErrorRegistered(t *testing.T) {
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
-	// First frame should be the typed error payload.
+	// First frame should be a structured error envelope.
 	var errResp wsAuthError
-	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
-		t.Fatalf("read error frame: %v", err)
+	frame := readWSError(t, ctx, conn, &errResp)
+	if frame.Code != 4401 {
+		t.Errorf("error frame code = %d, want 4401", frame.Code)
 	}
 	if errResp.Message != "bad token" {
 		t.Errorf("message = %q, want %q", errResp.Message, "bad token")
@@ -560,10 +637,11 @@ func TestHandleWS_SetupValidationError(t *testing.T) {
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
-	// ValidationError is always matched → sent as first frame with 4422.
+	// ValidationError is always matched → sent as error envelope with 4422.
 	var errResp shiftapi.ValidationError
-	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
-		t.Fatalf("read error frame: %v", err)
+	frame := readWSError(t, ctx, conn, &errResp)
+	if frame.Code != 4422 {
+		t.Errorf("error frame code = %d, want 4422", frame.Code)
 	}
 	if errResp.Message != "validation failed" {
 		t.Errorf("message = %q, want %q", errResp.Message, "validation failed")

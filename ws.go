@@ -82,6 +82,14 @@ type wsEvent struct {
 	Data json.RawMessage `json:"data"`
 }
 
+// wsErrorEnvelope is the wire format for error frames. The "error" field
+// distinguishes it from data frames (which have "type" instead).
+type wsErrorEnvelope struct {
+	Error bool `json:"error"`
+	Code  int  `json:"code"`
+	Data  any  `json:"data"`
+}
+
 // websocketConfig holds the internal configuration for a WebSocket endpoint.
 type websocketConfig struct {
 	handlers      []wsOnHandler
@@ -251,10 +259,20 @@ type wsCallbacks struct {
 	onUnknownMsg  func(ws *WSSender, state any, msgType string, data json.RawMessage)
 }
 
+// writeWSError sends a structured error frame and closes the connection.
+func writeWSError(ctx context.Context, conn *websocket.Conn, code int, body any) {
+	_ = wsjson.Write(ctx, conn, wsErrorEnvelope{
+		Error: true,
+		Code:  code,
+		Data:  body,
+	})
+	_ = conn.Close(websocket.StatusCode(code), "error")
+}
+
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
 // WebSocket endpoints. It reads discriminated messages, dispatches to the
 // matching [WSOn] handler, and stops on close or error.
-func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, state any, dispatch map[string]wsOnHandler, cb wsCallbacks) {
+func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, state any, dispatch map[string]wsOnHandler, cb wsCallbacks, hc *handlerConfig) {
 	ctx := r.Context()
 	for {
 		var envelope wsEvent
@@ -291,9 +309,16 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 				}
 				continue
 			}
-			// Handler errors are fatal — log and close.
-			log.Printf("shiftapi: WS handler error: %v", err)
-			_ = conn.Close(websocket.StatusInternalError, "internal error")
+			// Handler errors are fatal. If the error matches a registered
+			// type, send it as a structured error frame (distinguishable
+			// from data frames by the "error" field) before closing.
+			status, body := resolveError(hc.internalServerFn, err, hc.errLookup)
+			if status != http.StatusInternalServerError {
+				writeWSError(ctx, conn, 4000+status%1000, body)
+			} else {
+				log.Printf("shiftapi: WS handler error: %v", err)
+				_ = conn.Close(websocket.StatusInternalError, "internal error")
+			}
 			return
 		}
 	}
