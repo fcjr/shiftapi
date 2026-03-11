@@ -19,6 +19,7 @@ export default defineConfig({
       },
       customCss: ["./src/docs.css"],
       components: {
+        PageTitle: "./src/components/DocsPageTitle.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
       },
       social: [

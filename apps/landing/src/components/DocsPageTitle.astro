@@ -1,0 +1,117 @@
+---
+const { entry } = Astro.locals.starlightRoute;
+const PAGE_TITLE_ID = "_top";
+const title = entry.data.title;
+const description =
+  typeof entry.data.description === "string" ? entry.data.description.trim() : "";
+const body = (entry.body ?? "").trim();
+const markdown = [`# ${title}`, description, body].filter(Boolean).join("\n\n");
+---
+
+<div class="docs-page-title-row">
+  <h1 id={PAGE_TITLE_ID}>{title}</h1>
+  <button
+    type="button"
+    class="docs-copy-markdown-button"
+    data-markdown={encodeURIComponent(markdown)}
+    data-default-label="Copy as Markdown"
+    data-success-label="Copied"
+    data-error-label="Copy failed"
+    aria-label="Copy this page as Markdown"
+  >
+    Copy as Markdown
+  </button>
+</div>
+
+<script is:inline>
+  const restoreCopyLabel = (button) => {
+    window.clearTimeout(button._copyMarkdownResetTimer);
+    button._copyMarkdownResetTimer = window.setTimeout(() => {
+      button.textContent = button.dataset.defaultLabel;
+      button.dataset.state = "idle";
+    }, 1800);
+  };
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest(".docs-copy-markdown-button")
+      : null;
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    try {
+      const markdown = decodeURIComponent(button.dataset.markdown ?? "");
+      await navigator.clipboard.writeText(markdown);
+      button.textContent = button.dataset.successLabel;
+      button.dataset.state = "success";
+    } catch {
+      button.textContent = button.dataset.errorLabel;
+      button.dataset.state = "error";
+    }
+
+    restoreCopyLabel(button);
+  });
+</script>
+
+<style>
+  @layer starlight.core {
+    .docs-page-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: var(--sl-text-h1);
+      line-height: var(--sl-line-height-headings);
+      font-weight: 600;
+      color: var(--sl-color-white);
+    }
+
+    .docs-copy-markdown-button {
+      flex-shrink: 0;
+      border: 1px solid var(--sl-color-hairline);
+      border-radius: 0.5rem;
+      background: transparent;
+      color: var(--sl-color-gray-2);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      line-height: 1;
+      padding: 0.55rem 0.75rem;
+      transition:
+        border-color 160ms ease,
+        background-color 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+    }
+
+    .docs-copy-markdown-button:hover {
+      border-color: var(--sl-color-gray-3);
+      background: var(--sl-color-bg-inline-code);
+      color: var(--sl-color-text);
+    }
+
+    .docs-copy-markdown-button[data-state="success"] {
+      color: var(--sl-color-accent);
+    }
+
+    .docs-copy-markdown-button[data-state="error"] {
+      color: var(--sl-color-red);
+    }
+
+    @media (max-width: 40rem) {
+      .docs-page-title-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .docs-copy-markdown-button {
+        width: fit-content;
+      }
+    }
+  }
+</style>
