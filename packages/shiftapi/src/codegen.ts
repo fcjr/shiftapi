@@ -16,9 +16,11 @@ export async function regenerateTypes(
   const specs = extractSpecs(serverEntry, resolve(goRoot));
   const types = await generateTypes(specs.openapi as Record<string, unknown>);
   const changed = types !== previousTypes;
+  const hasWebSocket = specs.asyncapi != null;
   const virtualModuleSource = virtualModuleTemplate(
     baseUrl,
     isDev ? DEV_API_PREFIX : undefined,
+    { hasWebSocket },
   );
   return { types, virtualModuleSource, changed, asyncapiSpec: specs.asyncapi };
 }
@@ -39,7 +41,8 @@ export function writeGeneratedFiles(
   }
 
   writeFileSync(resolve(outDir, "client.d.ts"), dtsTemplate(generatedDts, options?.asyncapiSpec ?? null));
-  writeFileSync(resolve(outDir, "client.js"), options?.clientJsContent ?? clientJsTemplate(baseUrl));
+  const hasWebSocket = options?.asyncapiSpec != null;
+  writeFileSync(resolve(outDir, "client.js"), options?.clientJsContent ?? clientJsTemplate(baseUrl, { hasWebSocket }));
   if (options?.openapiSource) {
     writeFileSync(resolve(outDir, "openapi-fetch.js"), options.openapiSource);
   }

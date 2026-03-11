@@ -76,4 +76,31 @@ describe("dtsTemplate", () => {
     // Should not generate WSErrorFor when no channels have x-errors.
     expect(output).not.toContain("WSErrorFor");
   });
+
+  it("exports standalone type aliases for component schemas", () => {
+    // Simulate openapi-typescript output with 4-space indentation
+    const generatedTypes = `export interface components {
+    schemas: {
+        EchoReply: {
+            text: string;
+        };
+        ChatMsg: {
+            user: string;
+            text: string;
+        };
+    };
+}`;
+
+    const output = dtsTemplate(generatedTypes);
+
+    expect(output).toContain('export type EchoReply = components["schemas"]["EchoReply"];');
+    expect(output).toContain('export type ChatMsg = components["schemas"]["ChatMsg"];');
+  });
+
+  it("handles generated types with no schemas gracefully", () => {
+    const output = dtsTemplate("// no schemas here");
+    expect(output).not.toContain("export type ");
+    // Should still produce a valid module declaration
+    expect(output).toContain('declare module "@shiftapi/client"');
+  });
 });

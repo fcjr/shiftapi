@@ -227,7 +227,8 @@ async function initializeDev(
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, true, "");
     generatedDts = result.types;
-    const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
+    const hasWebSocket = result.asyncapiSpec != null;
+    const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX, { hasWebSocket });
     writeGeneratedFiles(configDir, generatedDts, baseUrl, { clientJsContent: clientJs, openapiSource, asyncapiSpec: result.asyncapiSpec });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated.");
@@ -260,7 +261,8 @@ async function initializeDev(
           );
           if (result.changed) {
             generatedDts = result.types;
-            const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX);
+            const hasWebSocket = result.asyncapiSpec != null;
+            const clientJs = nextClientJsTemplate(goPort, baseUrl, DEV_API_PREFIX, { hasWebSocket });
             writeGeneratedFiles(configDir, generatedDts, baseUrl, {
               clientJsContent: clientJs,
               openapiSource,
@@ -313,7 +315,8 @@ async function initializeBuild(
 ): Promise<InitResult> {
   try {
     const result = await _regenerateTypes(serverEntry, goRoot, baseUrl, false, "");
-    const clientJs = nextClientJsTemplate(basePort, baseUrl);
+    const hasWebSocket = result.asyncapiSpec != null;
+    const clientJs = nextClientJsTemplate(basePort, baseUrl, undefined, { hasWebSocket });
     writeGeneratedFiles(configDir, result.types, baseUrl, { clientJsContent: clientJs, openapiSource, asyncapiSpec: result.asyncapiSpec });
     patchTsConfigPaths(projectRoot, configDir);
     console.log("[shiftapi] Types generated for build.");
