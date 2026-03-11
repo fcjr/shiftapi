@@ -20,7 +20,7 @@ sidebar:
 shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
+        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
         shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
             return s.Send(ServerMsg{Text: "echo: " + msg.Text})
         }),
@@ -34,7 +34,7 @@ shiftapi.HandleWS(api, "GET /echo",
 
 - **`Websocket(setup, sends, handlers...)`** — creates a `*WSMessages[In]` value. Both `In` and `State` are inferred from the setup function's signature. The setup function runs after the WebSocket upgrade, receives the parsed input, and returns a `State` value that is passed to all handlers.
 - **`WSOn("name", fn)`** — registers a typed handler for messages with the given type name. The `State` and `Msg` type parameters are inferred from the handler function. `State` must match the setup function's return type.
-- **`WSSends{variants...}`** — a `[]WSMessageVariant` that registers named send types for auto-wrap envelopes and AsyncAPI schema generation.
+- **`WSSends(variants...)`** — a `[]WSMessageVariant` that registers named send types for auto-wrap envelopes and AsyncAPI schema generation.
 
 Everything is configured in one place — no mutation after construction.
 
@@ -102,7 +102,7 @@ shiftapi.HandleWS(api, "GET /rooms/{room}",
             // in.Room and in.Token are parsed and validated before upgrade.
             return &ChatState{Room: in.Room, Token: in.Token}, nil
         },
-        shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+        shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
         shiftapi.WSOn("message", func(s *shiftapi.WSSender, state *ChatState, m UserMessage) error {
             return s.Send(ChatMessage{Room: state.Room, Text: m.Text})
         }),
@@ -136,7 +136,7 @@ shiftapi.HandleWS(api, "GET /rooms/{room}",
             room := rooms.Join(in.Room, user)
             return &RoomState{Room: room, User: user}, nil
         },
-        shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+        shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
         shiftapi.WSOn("message", func(s *shiftapi.WSSender, state *RoomState, m UserMessage) error {
             return s.Send(ChatMessage{Room: state.Room.Name, User: state.User.Name, Text: m.Text})
         }),
@@ -223,7 +223,7 @@ shiftapi.Websocket(
     func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
         return &RoomState{}, nil
     },
-    shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+    shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
     shiftapi.WSOn("message", handleMessage),
     shiftapi.WSOnDecodeError(func(s *shiftapi.WSSender, state *RoomState, err *shiftapi.WSDecodeError) {
         log.Printf("bad payload for %s: %v", err.MessageType(), err.Unwrap())
@@ -240,7 +240,7 @@ shiftapi.Websocket(
     func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
         return &RoomState{}, nil
     },
-    shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+    shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
     shiftapi.WSOn("message", handleMessage),
     shiftapi.WSOnUnknownMessage(func(s *shiftapi.WSSender, state *RoomState, msgType string, data json.RawMessage) {
         log.Printf("unknown message type: %s", msgType)
@@ -256,7 +256,7 @@ WebSocket endpoints are documented in an [AsyncAPI 2.4](https://www.asyncapi.com
 shiftapi.HandleWS(api, "GET /echo",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
+        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
         shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
             return s.Send(ServerMsg{Text: msg.Text})
         }),
@@ -396,10 +396,10 @@ Pass `WSMessageType[T]` descriptors to declare each named send type. `WSSender.S
 shiftapi.HandleWS(api, "GET /chat",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{
+        shiftapi.WSSends(
             shiftapi.WSMessageType[ChatMessage]("chat"),
             shiftapi.WSMessageType[SystemMessage]("system"),
-        },
+        ),
         shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
             return s.Send(ChatMessage{User: "server", Text: m.Text})
         }),
@@ -468,10 +468,10 @@ You can register multiple `WSOn` handlers for different client message types:
 shiftapi.HandleWS(api, "GET /chat",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{
+        shiftapi.WSSends(
             shiftapi.WSMessageType[ChatMessage]("chat"),
             shiftapi.WSMessageType[SystemMessage]("system"),
-        },
+        ),
         shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
             return s.Send(ChatMessage{User: "echo", Text: m.Text})
         }),
@@ -528,7 +528,7 @@ The following are arguments to `Websocket()`:
 | Argument | Description |
 |----------|-------------|
 | `setup` | Connection setup function — returns `(State, error)` (required, first arg) |
-| `WSSends{...}` | Server-to-client message types (required, second arg) |
+| `WSSends(...)` | Server-to-client message types (required, second arg) |
 | `WSOn("name", fn)` | Typed message handler — variadic (required, at least one) |
 | `WSOnDecodeError(fn)` | Handle malformed message payloads (default: log + continue) |
 | `WSOnUnknownMessage(fn)` | Handle unrecognized message types (default: log + continue) |

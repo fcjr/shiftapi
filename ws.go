@@ -158,7 +158,9 @@ type WSHandler[State any] struct {
 //	    shiftapi.WSMessageType[ChatMessage]("chat"),
 //	    shiftapi.WSMessageType[SystemMessage]("system"),
 //	)
-type WSSends []WSMessageVariant
+func WSSends(variants ...WSMessageVariant) []WSMessageVariant {
+	return variants
+}
 
 // Websocket creates a new WebSocket endpoint configuration. The type
 // parameters In and State are both inferred from the setup function:
@@ -182,9 +184,9 @@ type WSSends []WSMessageVariant
 //	        }),
 //	    ),
 //	)
-func Websocket[In, State any](setup func(r *http.Request, sender *WSSender, in In) (State, error), sends WSSends, handlers ...WSHandler[State]) *WSMessages[In] {
+func Websocket[In, State any](setup func(r *http.Request, sender *WSSender, in In) (State, error), sends []WSMessageVariant, handlers ...WSHandler[State]) *WSMessages[In] {
 	cfg := &websocketConfig{
-		sendVariants: []WSMessageVariant(sends),
+		sendVariants: sends,
 		setup: func(r *http.Request, ws *WSSender, input any) (any, error) {
 			return setup(r, ws, input.(In))
 		},
