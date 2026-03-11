@@ -225,7 +225,7 @@ const stream = sse("/rooms/{room_id}/events", {
 Use `sse` with React state. You control how events are accumulated:
 
 ```tsx
-import { sse } from "@myapp/api";
+import { sse } from "@shiftapi/client";
 import { useEffect, useState } from "react";
 
 function ChatFeed() {
