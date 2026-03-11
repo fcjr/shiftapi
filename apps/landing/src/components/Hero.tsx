@@ -36,10 +36,8 @@ export function Hero() {
           </button>
         </div>
         <a
-          href="https://github.com/fcjr/shiftapi"
+          href="/docs/getting-started/quickstart"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-[10px] text-sm font-semibold bg-accent text-bg transition-all duration-200 hover:bg-accent-bright hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(196,240,66,0.2)]"
-          target="_blank"
-          rel="noopener"
         >
           Get Started <ArrowRightIcon />
         </a>
