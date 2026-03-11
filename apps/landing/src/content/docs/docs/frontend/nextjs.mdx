@@ -81,12 +81,12 @@ See [Server-Sent Events](/docs/core-concepts/server-sent-events) for full detail
 
 ### WebSockets
 
-The generated client also includes a `connect` function for WebSocket endpoints registered with `HandleWS`. It returns a typed bidirectional connection:
+The generated client also includes a `websocket` function for WebSocket endpoints registered with `HandleWS`. It returns a typed bidirectional connection:
 
 ```typescript
-import { connect } from "@shiftapi/client";
+import { websocket } from "@shiftapi/client";
 
-const ws = connect("/chat");
+const ws = websocket("/chat");
 
 ws.send({ text: "hello" });
 
