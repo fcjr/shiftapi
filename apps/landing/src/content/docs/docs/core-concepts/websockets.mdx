@@ -143,6 +143,21 @@ Use `struct{}` as the state type when no per-connection state is needed.
 Use a **pointer type** for state (e.g. `*RoomState`) when handlers need to mutate shared state across messages. Value types are copied per handler call, so mutations would be lost.
 :::
 
+### Cleanup on disconnect
+
+The request context (`r.Context()`) is cancelled when the WebSocket connection closes. Use this in the setup function to run cleanup logic:
+
+```go
+func(r *http.Request, s *shiftapi.WSSender, in JoinInput) (*RoomState, error) {
+    room := rooms.Join(in.Room, user)
+    go func() {
+        <-r.Context().Done()
+        rooms.Leave(in.Room, user)
+    }()
+    return &RoomState{Room: room}, nil
+}
+```
+
 ## Error handling
 
 Error behavior depends on when the error occurs:
