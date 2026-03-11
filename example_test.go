@@ -424,13 +424,12 @@ func ExampleHandleWS() {
 	}
 
 	shiftapi.HandleWS(api, "GET /echo",
-		shiftapi.Websocket[struct{}](
-			shiftapi.WSOn("echo", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-				return ws.Send(ServerMsg{Text: "echo: " + msg.Text})
+		shiftapi.Websocket(
+			func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
+			shiftapi.WSSends{shiftapi.WSMessageType[ServerMsg]("server")},
+			shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+				return s.Send(ServerMsg{Text: "echo: " + msg.Text})
 			}),
-			shiftapi.WSSends(
-				shiftapi.MessageType[ServerMsg]("server"),
-			),
 		),
 	)
 
@@ -454,14 +453,15 @@ func ExampleHandleWS_multiType() {
 	api := shiftapi.New()
 
 	shiftapi.HandleWS(api, "GET /chat",
-		shiftapi.Websocket[struct{}](
-			shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
-				return ws.Send(exChatMessage{User: "server", Text: m.Text})
+		shiftapi.Websocket(
+			func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
+			shiftapi.WSSends{
+				shiftapi.WSMessageType[exChatMessage]("chat"),
+				shiftapi.WSMessageType[exSystemMessage]("system"),
+			},
+			shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, m exUserMessage) error {
+				return s.Send(exChatMessage{User: "server", Text: m.Text})
 			}),
-			shiftapi.WSSends(
-				shiftapi.MessageType[exChatMessage]("chat"),
-				shiftapi.MessageType[exSystemMessage]("system"),
-			),
 		),
 	)
 

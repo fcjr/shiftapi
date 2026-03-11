@@ -18,8 +18,8 @@ import (
 func (a *API) addWSChannel(
 	path string,
 	sendType, recvType reflect.Type,
-	sendVariants []MessageVariant,
-	recvVariants []MessageVariant,
+	sendVariants []WSMessageVariant,
+	recvVariants []WSMessageVariant,
 	info *RouteInfo,
 	pathFields map[string]reflect.StructField,
 ) error {
@@ -82,7 +82,7 @@ func (a *API) addWSChannel(
 // buildWSMessage builds an AsyncAPI Message for a single direction of a
 // WebSocket channel. For single-type endpoints it produces a direct message
 // reference. For multi-type endpoints (variants) it produces a oneOf wrapper.
-func (a *API) buildWSMessage(t reflect.Type, variants []MessageVariant) (*spec.Message, error) {
+func (a *API) buildWSMessage(t reflect.Type, variants []WSMessageVariant) (*spec.Message, error) {
 	if len(variants) > 0 {
 		return a.buildWSOneOfMessage(variants)
 	}
@@ -108,7 +108,7 @@ func (a *API) buildWSSingleMessage(t reflect.Type) (*spec.Message, error) {
 
 // buildWSOneOfMessage creates a oneOf message from discriminated variants.
 // Each variant gets an envelope schema {type, data} registered in components.
-func (a *API) buildWSOneOfMessage(variants []MessageVariant) (*spec.Message, error) {
+func (a *API) buildWSOneOfMessage(variants []WSMessageVariant) (*spec.Message, error) {
 	var msgs []spec.Message
 
 	for _, v := range variants {

@@ -17,15 +17,6 @@ type EchoReply struct {
 	Text string `json:"text"`
 }
 
-var echoWS = shiftapi.Websocket[struct{}](
-	shiftapi.WSOn("chat", func(r *http.Request, ws *shiftapi.WSSender, _ struct{}, msg ChatMsg) error {
-		return ws.Send(EchoReply{Text: "echo: " + msg.Text})
-	}),
-	shiftapi.WSSends(
-		shiftapi.MessageType[EchoReply]("echo"),
-	),
-)
-
 type Person struct {
 	Name string `json:"name" validate:"required"`
 }
@@ -187,7 +178,25 @@ func main() {
 		}),
 	)
 
-	shiftapi.HandleWS(api, "GET /echo", echoWS,
+	type JoinReq struct {
+		ID string `path:"id" validate:"required"`
+	}
+
+	type State struct {
+		ID string
+	}
+
+	shiftapi.HandleWS(api, "GET /join/{id}",
+		shiftapi.Websocket(
+			func(r *http.Request, s *shiftapi.WSSender, req JoinReq) (State, error) {
+				return State{ID: req.ID}, nil
+			},
+			shiftapi.WSSends{shiftapi.WSMessageType[EchoReply]("echo")},
+			shiftapi.WSOn("chat", func(r *http.Request, s *shiftapi.WSSender, state State, msg ChatMsg) error {
+				fmt.Println(state)
+				return s.Send(EchoReply{Text: "echo: " + msg.Text})
+			}),
+		),
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Echo WebSocket",
 			Description: "Echoes back any message sent by the client",
