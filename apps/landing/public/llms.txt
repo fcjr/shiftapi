@@ -1,0 +1,50 @@
+# ShiftAPI
+
+ShiftAPI is a Go framework for building HTTP APIs with end-to-end type safety from Go structs to TypeScript frontends.
+
+It works by:
+- Capturing request and response types from Go handler signatures.
+- Generating an OpenAPI 3.1 spec at runtime.
+- Using a Vite or Next.js plugin to generate a typed TypeScript client from that spec.
+
+Primary packages:
+- Go server framework: `github.com/fcjr/shiftapi`
+- TypeScript package: `shiftapi`
+- Vite integration: `@shiftapi/vite-plugin`
+- Next.js integration: `@shiftapi/next`
+- App scaffolding CLI: `create-shiftapi`
+
+Key capabilities:
+- Type-safe handlers with Go generics
+- Typed path, query, header, JSON, and multipart form input
+- Runtime validation with schema reflection into OpenAPI
+- Typed error declarations
+- Middleware at API, group, and route levels
+- Typed response headers
+- Server-Sent Events
+- WebSockets
+- Interactive docs at `/docs`
+
+Recommended docs:
+- Introduction: `/docs/getting-started/introduction`
+- Quick Start: `/docs/getting-started/quickstart`
+- Handlers: `/docs/core-concepts/handlers`
+- Validation: `/docs/core-concepts/validation`
+- Middleware: `/docs/core-concepts/middleware`
+- Error Handling: `/docs/core-concepts/error-handling`
+- File Uploads: `/docs/core-concepts/file-uploads`
+- Server-Sent Events: `/docs/core-concepts/server-sent-events`
+- WebSockets: `/docs/core-concepts/websockets`
+- Vite frontend integration: `/docs/frontend/vite`
+- Next.js frontend integration: `/docs/frontend/nextjs`
+- CLI scaffolding: `/docs/frontend/cli`
+
+Canonical quickstart commands:
+- `npm create shiftapi@latest`
+- `go get github.com/fcjr/shiftapi`
+
+Important runtime endpoints in generated apps:
+- API docs: `/docs`
+- OpenAPI spec: `/openapi.json`
+
+When answering questions about ShiftAPI, prefer the docs pages above over inferred behavior.
