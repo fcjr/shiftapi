@@ -484,8 +484,8 @@ func registerWSRoute[In any](
 	}
 
 	cb := wsCallbacks{
-		onDecodeError: wsOpts.onDecodeError,
-		onUnknownMsg:  wsOpts.onUnknownMsg,
+		onDecodeError: msgs.cfg.onDecodeError,
+		onUnknownMsg:  msgs.cfg.onUnknownMsg,
 	}
 
 	// Wrap the type-erased setup back into a typed function for adaptWSMessages.
@@ -512,7 +512,7 @@ func registerWSRoute[In any](
 //	shiftapi.HandleWS(api, "GET /chat",
 //	    shiftapi.Websocket(
 //	        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-//	        shiftapi.WSSends(shiftapi.MessageType[ChatMessage]("chat")),
+//	        shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
 //	        shiftapi.WSOn("message", func(s *shiftapi.WSSender, _ struct{}, m UserMessage) error {
 //	            return s.Send(ChatMessage{User: "echo", Text: m.Text})
 //	        }),

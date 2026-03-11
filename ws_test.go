@@ -375,11 +375,11 @@ func TestHandleWS_WSOnUnknownMessage(t *testing.T) {
 			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
 				return sender.Send(wsServerMsg{Text: "ok"})
 			}),
+			shiftapi.WSOnUnknownMessage(func(sender *shiftapi.WSSender, _ struct{}, msgType string, data json.RawMessage) {
+				gotType = msgType
+				sender.Send(wsServerMsg{Text: "unknown: " + msgType}) //nolint:errcheck
+			}),
 		),
-		shiftapi.WithWSOnUnknownMessage(func(r *http.Request, sender *shiftapi.WSSender, msgType string, data json.RawMessage) {
-			gotType = msgType
-			sender.Send(wsServerMsg{Text: "unknown: " + msgType}) //nolint:errcheck
-		}),
 	)
 
 	srv := httptest.NewServer(api)
