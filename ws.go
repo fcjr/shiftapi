@@ -74,21 +74,11 @@ type wsEvent struct {
 	Data json.RawMessage `json:"data"`
 }
 
-// WebsocketHandler configures a WebSocket endpoint. Both [WSOn] message
-// handlers and [WSSends] type registrations implement this interface.
-// Pass them to [Websocket] to build a complete endpoint.
-type WebsocketHandler interface {
-	applyToWebsocket(*websocketConfig)
-}
-
-// websocketConfig holds the configuration built by [Websocket] from
-// [WebsocketHandler] values.
+// websocketConfig holds the internal configuration for a WebSocket endpoint.
 type websocketConfig struct {
-	handlers        []wsOnHandler
-	sendVariants    []MessageVariant
-	setup           func(r *http.Request, ws *WSSender, input any) (any, error)
-	onError         func(r *http.Request, ws *WSSender, err error)
-	onUnknownMsg    func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
+	handlers     []wsOnHandler
+	sendVariants []WSMessageVariant
+	setup        func(r *http.Request, ws *WSSender, input any) (any, error)
 }
 
 // wsOnHandler is the internal interface for a typed message handler
@@ -97,196 +87,105 @@ type websocketConfig struct {
 type wsOnHandler interface {
 	messageName() string
 	messagePayloadType() reflect.Type
-	handle(r *http.Request, sender *WSSender, input any, data json.RawMessage) error
+	handle(r *http.Request, sender *WSSender, state any, data json.RawMessage) error
 }
 
 // onHandlerImpl is the concrete implementation of [wsOnHandler] created
 // by the [WSOn] function.
-type onHandlerImpl[In, Msg any] struct {
+type onHandlerImpl[State, Msg any] struct {
 	name string
-	fn   func(r *http.Request, ws *WSSender, in In, msg Msg) error
+	fn   func(r *http.Request, ws *WSSender, state State, msg Msg) error
 }
 
-func (h *onHandlerImpl[In, Msg]) messageName() string              { return h.name }
-func (h *onHandlerImpl[In, Msg]) messagePayloadType() reflect.Type { return reflect.TypeFor[Msg]() }
+func (h *onHandlerImpl[State, Msg]) messageName() string              { return h.name }
+func (h *onHandlerImpl[State, Msg]) messagePayloadType() reflect.Type { return reflect.TypeFor[Msg]() }
 
-func (h *onHandlerImpl[In, Msg]) handle(r *http.Request, sender *WSSender, input any, data json.RawMessage) error {
+func (h *onHandlerImpl[State, Msg]) handle(r *http.Request, sender *WSSender, state any, data json.RawMessage) error {
 	var msg Msg
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return fmt.Errorf("shiftapi: decode %q message: %w", h.name, err)
 	}
-	return h.fn(r, sender, input.(In), msg)
+	return h.fn(r, sender, state.(State), msg)
 }
 
-func (h *onHandlerImpl[In, Msg]) applyToWebsocket(cfg *websocketConfig) {
-	cfg.handlers = append(cfg.handlers, h)
+// WSMessages holds the WebSocket endpoint configuration. Create one with
+// [Websocket], passing a setup function, [WSSends], and [WSOn] handlers.
+// Pass it to [HandleWS] to register the route.
+type WSMessages[In any] struct {
+	cfg *websocketConfig
 }
 
-// WSOn creates a [WebsocketHandler] that handles messages with the given type
-// name. The handler function receives the HTTP request, a [WSSender] for
-// sending responses, the parsed input, and the decoded message payload.
+// WSHandler is a typed message handler for a [Websocket] endpoint. Create
+// one with [WSOn]. The State type parameter must match the setup function's
+// return type.
+type WSHandler[State any] struct {
+	name string
+	impl wsOnHandler
+}
+
+// WSSends declares the named server-to-client message types for a WebSocket
+// endpoint. Pass [WSMessageType] values to register each type.
+// [WSSender.Send] automatically wraps messages in a discriminated
+// {"type", "data"} envelope based on the concrete Go type.
 //
-// Each WSOn handler provides both the runtime dispatch logic and the type
-// information needed for AsyncAPI schema generation. The In type parameter
-// must match the [Websocket] type parameter.
+//	shiftapi.WSSends(
+//	    shiftapi.WSMessageType[ChatMessage]("chat"),
+//	    shiftapi.WSMessageType[SystemMessage]("system"),
+//	)
+type WSSends []WSMessageVariant
+
+// Websocket creates a new WebSocket endpoint configuration. The type
+// parameters In and State are both inferred from the setup function:
+// In from the input parameter, State from the return value. Handlers
+// receive the State value returned by setup on each connection.
 //
-//	shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
-//	    return ws.Send(ChatMessage{User: "echo", Text: m.Text})
+// Use struct{} for both In and State when no input or state is needed.
+//
+//	shiftapi.HandleWS(api, "GET /echo",
+//	    shiftapi.Websocket(
+//	        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+//	            return struct{}{}, nil
+//	        },
+//	        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
+//	        shiftapi.WSOn("echo", func(r *http.Request, s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
+//	            return s.Send(ServerMsg{Text: msg.Text})
+//	        }),
+//	    ),
+//	)
+func Websocket[In, State any](setup func(r *http.Request, sender *WSSender, in In) (State, error), sends WSSends, handlers ...WSHandler[State]) *WSMessages[In] {
+	cfg := &websocketConfig{
+		sendVariants: []WSMessageVariant(sends),
+		setup: func(r *http.Request, ws *WSSender, input any) (any, error) {
+			return setup(r, ws, input.(In))
+		},
+	}
+	for _, h := range handlers {
+		cfg.handlers = append(cfg.handlers, h.impl)
+	}
+	return &WSMessages[In]{cfg: cfg}
+}
+
+// WSOn creates a typed message handler for a [Websocket] endpoint.
+// The State and Msg type parameters are inferred from the handler function.
+// State must match the setup function's return type.
+//
+//	shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, state *Room, msg UserMessage) error {
+//	    state.Broadcast(msg)
+//	    return nil
 //	})
-func WSOn[In, Msg any](name string, fn func(r *http.Request, ws *WSSender, in In, msg Msg) error) WebsocketHandler {
+func WSOn[State, Msg any](name string, fn func(r *http.Request, sender *WSSender, state State, msg Msg) error) WSHandler[State] {
 	if name == "" {
 		panic("shiftapi: WSOn name must not be empty")
 	}
-	return &onHandlerImpl[In, Msg]{name: name, fn: fn}
-}
-
-// sendsHandler registers send message types on the websocket config.
-type sendsHandler struct {
-	variants []MessageVariant
-}
-
-func (s *sendsHandler) applyToWebsocket(cfg *websocketConfig) {
-	cfg.sendVariants = append(cfg.sendVariants, s.variants...)
-}
-
-// Sends registers named server-to-client message types for a WebSocket
-// endpoint. [WSSender.Send] automatically wraps messages in a discriminated
-// {"type", "data"} envelope based on the concrete Go type. WSSends is required.
-//
-// Each [MessageVariant] maps a type name to a payload type, producing a oneOf
-// schema with a discriminator on the "type" field in the AsyncAPI spec.
-//
-//	shiftapi.WSSends(
-//	    shiftapi.MessageType[ChatMessage]("chat"),
-//	    shiftapi.MessageType[SystemMessage]("system"),
-//	)
-func WSSends(variants ...MessageVariant) WebsocketHandler {
-	return &sendsHandler{variants: variants}
-}
-
-// wsOnErrorHandler stores the user's error callback.
-type wsOnErrorHandler struct {
-	fn func(r *http.Request, ws *WSSender, err error)
-}
-
-func (h *wsOnErrorHandler) applyToWebsocket(cfg *websocketConfig) {
-	cfg.onError = h.fn
-}
-
-// WSOnError registers an error callback for the WebSocket endpoint. The
-// callback is invoked when a [WSOn] handler returns a non-close error.
-// If not set, the framework logs the error and closes the connection with
-// [WSStatusInternalError].
-//
-// The callback may send a final message via [WSSender.Send] before the
-// connection is closed. After the callback returns, the connection is
-// closed with [WSStatusInternalError] unless the callback already closed it.
-//
-//	shiftapi.WSOnError(func(r *http.Request, ws *shiftapi.WSSender, err error) {
-//	    ws.Send(ErrorMsg{Message: err.Error()})
-//	})
-func WSOnError(fn func(r *http.Request, ws *WSSender, err error)) WebsocketHandler {
-	return &wsOnErrorHandler{fn: fn}
-}
-
-// wsOnUnknownMsgHandler stores the user's unknown message callback.
-type wsOnUnknownMsgHandler struct {
-	fn func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
-}
-
-func (h *wsOnUnknownMsgHandler) applyToWebsocket(cfg *websocketConfig) {
-	cfg.onUnknownMsg = h.fn
-}
-
-// WSOnUnknownMessage registers a callback for unrecognized message types.
-// The callback is invoked when the client sends a message whose "type" field
-// does not match any registered [WSOn] handler. If not set, the framework
-// logs the unknown type and continues reading.
-//
-//	shiftapi.WSOnUnknownMessage(func(r *http.Request, ws *shiftapi.WSSender, msgType string, data json.RawMessage) {
-//	    log.Printf("unknown message type: %s", msgType)
-//	})
-func WSOnUnknownMessage(fn func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)) WebsocketHandler {
-	return &wsOnUnknownMsgHandler{fn: fn}
-}
-
-// wsSetupHandler stores the user's setup callback.
-type wsSetupHandler struct {
-	fn func(r *http.Request, ws *WSSender, input any) (any, error)
-}
-
-func (h *wsSetupHandler) applyToWebsocket(cfg *websocketConfig) {
-	cfg.setup = h.fn
-}
-
-// WSSetup registers a setup function that runs after the WebSocket upgrade
-// but before the dispatch loop starts. The returned State value replaces the
-// parsed input and is passed to all [WSOn] handlers as the third argument.
-//
-// Use WSSetup to initialize per-connection state such as loading a user from
-// the database, joining a room, or allocating session resources. If the setup
-// function returns an error, the connection is closed immediately.
-//
-// The In type parameter must match the [Websocket] type parameter. The State
-// type parameter must match the first type parameter of [WSOn] handlers.
-//
-//	shiftapi.Websocket[ChatInput](
-//	    shiftapi.WSSetup(func(r *http.Request, ws *shiftapi.WSSender, in ChatInput) (*Room, error) {
-//	        return joinRoom(in.RoomID), nil
-//	    }),
-//	    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, room *Room, m UserMessage) error {
-//	        room.Broadcast(m)
-//	        return nil
-//	    }),
-//	    shiftapi.WSSends(
-//	        shiftapi.MessageType[ChatMessage]("chat"),
-//	    ),
-//	)
-func WSSetup[In, State any](fn func(r *http.Request, ws *WSSender, in In) (State, error)) WebsocketHandler {
-	return &wsSetupHandler{
-		fn: func(r *http.Request, ws *WSSender, input any) (any, error) {
-			return fn(r, ws, input.(In))
-		},
+	return WSHandler[State]{
+		name: name,
+		impl: &onHandlerImpl[State, Msg]{name: name, fn: fn},
 	}
 }
 
-// WSMessages holds the assembled WebSocket endpoint configuration built by
-// [Websocket]. It is passed as a positional argument to [HandleWS].
-type WSMessages[In any] struct {
-	cfg websocketConfig
-}
-
-// Websocket collects [WebsocketHandler] values ([WSOn] handlers and [WSSends]
-// registrations) into a [WSMessages] configuration for [HandleWS].
-//
-// The type parameter In specifies the input struct for path, query, and header
-// parameter parsing. Use struct{} when no input is needed.
-//
-//	shiftapi.Websocket[ChatInput](
-//	    shiftapi.WSOn("message", func(r *http.Request, ws *shiftapi.WSSender, in ChatInput, m UserMessage) error {
-//	        return ws.Send(ChatMessage{Room: in.Room, Text: m.Text})
-//	    }),
-//	    shiftapi.WSSends(
-//	        shiftapi.MessageType[ChatMessage]("chat"),
-//	    ),
-//	)
-func Websocket[In any](handlers ...WebsocketHandler) WSMessages[In] {
-	var cfg websocketConfig
-	for _, h := range handlers {
-		h.applyToWebsocket(&cfg)
-	}
-	if len(cfg.handlers) == 0 {
-		panic("shiftapi: Websocket requires at least one WSOn handler")
-	}
-	if len(cfg.sendVariants) == 0 {
-		panic("shiftapi: Websocket requires WSSends to define server-to-client message types")
-	}
-	return WSMessages[In]{cfg: cfg}
-}
-
-// MessageVariant describes a named WebSocket message type for AsyncAPI schema
-// generation. Created by [MessageType] and passed to [WSSends].
-type MessageVariant interface {
+// WSMessageVariant describes a named WebSocket message type for AsyncAPI schema
+// generation. Created by [WSMessageType] and passed to [WSSends].
+type WSMessageVariant interface {
 	messageName() string
 	messagePayloadType() reflect.Type
 }
@@ -298,17 +197,17 @@ type messageVariant[T any] struct {
 func (m messageVariant[T]) messageName() string              { return m.name }
 func (m messageVariant[T]) messagePayloadType() reflect.Type { return reflect.TypeFor[T]() }
 
-// MessageType creates a [MessageVariant] that maps a message type name to a
+// WSMessageType creates a [WSMessageVariant] that maps a message type name to a
 // payload type T. Use with [WSSends] to register discriminated server-to-client
 // message types for a WebSocket endpoint.
 //
 //	shiftapi.WSSends(
-//	    shiftapi.MessageType[ChatMessage]("chat"),
-//	    shiftapi.MessageType[SystemMessage]("system"),
+//	    shiftapi.WSMessageType[ChatMessage]("chat"),
+//	    shiftapi.WSMessageType[SystemMessage]("system"),
 //	)
-func MessageType[T any](name string) MessageVariant {
+func WSMessageType[T any](name string) WSMessageVariant {
 	if name == "" {
-		panic("shiftapi: MessageType name must not be empty")
+		panic("shiftapi: WSMessageType name must not be empty")
 	}
 	return messageVariant[T]{name: name}
 }
@@ -376,6 +275,8 @@ type wsRouteConfig struct {
 	middleware        []func(http.Handler) http.Handler
 	staticRespHeaders []staticResponseHeader
 	wsAcceptOptions   *WSAcceptOptions
+	onError           func(r *http.Request, ws *WSSender, err error)
+	onUnknownMsg      func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
 func (c *wsRouteConfig) addError(e errorEntry) {
@@ -416,8 +317,7 @@ type WSAcceptOptions struct {
 // WithWSAcceptOptions sets the WebSocket upgrade options for [HandleWS] routes.
 // Use this to configure subprotocols, allowed origins, etc.
 //
-//	shiftapi.HandleWS(api, "GET /ws",
-//	    shiftapi.Websocket[struct{}](...),
+//	shiftapi.HandleWS(api, "GET /ws", ws,
 //	    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
 //	        Subprotocols:   []string{"graphql-ws"},
 //	        OriginPatterns: []string{"example.com"},
@@ -426,6 +326,42 @@ type WSAcceptOptions struct {
 func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
 	return func(cfg *wsRouteConfig) {
 		cfg.wsAcceptOptions = &opts
+	}
+}
+
+// WithWSOnError registers an error callback for [HandleWS] routes. The
+// callback is invoked when a [WSOn] handler returns a non-close error.
+// If not set, the framework logs the error and closes the connection with
+// [WSStatusInternalError].
+//
+// When set, the callback owns the close decision — the framework will not
+// auto-close after the callback returns.
+//
+//	shiftapi.HandleWS(api, "GET /ws", ws,
+//	    shiftapi.WithWSOnError(func(r *http.Request, s *shiftapi.WSSender, err error) {
+//	        s.Send(ErrorMsg{Message: err.Error()})
+//	        s.Close(shiftapi.WSStatusInternalError, "handler error")
+//	    }),
+//	)
+func WithWSOnError(fn func(r *http.Request, sender *WSSender, err error)) wsOptionFunc {
+	return func(cfg *wsRouteConfig) {
+		cfg.onError = fn
+	}
+}
+
+// WithWSOnUnknownMessage registers a callback for unrecognized message types
+// on [HandleWS] routes. The callback is invoked when the client sends a message
+// whose "type" field does not match any registered [WSOn] handler. If not set,
+// the framework logs the unknown type and continues reading.
+//
+//	shiftapi.HandleWS(api, "GET /ws", ws,
+//	    shiftapi.WithWSOnUnknownMessage(func(r *http.Request, s *shiftapi.WSSender, msgType string, data json.RawMessage) {
+//	        log.Printf("unknown message type: %s", msgType)
+//	    }),
+//	)
+func WithWSOnUnknownMessage(fn func(r *http.Request, sender *WSSender, msgType string, data json.RawMessage)) wsOptionFunc {
+	return func(cfg *wsRouteConfig) {
+		cfg.onUnknownMsg = fn
 	}
 }
 
