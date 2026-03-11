@@ -10,5 +10,5 @@ export { GoServerManager } from "./goServer";
 export { findFreePort } from "./ports";
 export { createSSE } from "./sse";
 export type { SSEStream, SubscribeOptions, SSEFn } from "./sse";
-export { createWebSocket } from "./websocket";
+export { createWebSocket, WSError } from "./websocket";
 export type { WSConnection, WebSocketOptions, WebSocketFn } from "./websocket";

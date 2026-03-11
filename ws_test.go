@@ -315,13 +315,30 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 		),
 	)
 
-	// Missing required query param → should get JSON error, not upgrade.
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/ws", nil)
-	api.ServeHTTP(w, r)
+	srv := httptest.NewServer(api)
+	defer srv.Close()
 
-	if w.Code != http.StatusUnprocessableEntity {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusUnprocessableEntity)
+	ctx := context.Background()
+	// Missing required query param → connection opens, error sent as first frame.
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// First frame should be the validation error.
+	var errResp shiftapi.ValidationError
+	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
+		t.Fatalf("read error frame: %v", err)
+	}
+	if errResp.Message != "validation failed" {
+		t.Errorf("message = %q, want %q", errResp.Message, "validation failed")
+	}
+
+	// Connection should close with 4422 (WSStatusValidationError).
+	_, _, err = conn.Read(ctx)
+	if websocket.CloseStatus(err) != 4422 {
+		t.Errorf("close code = %d, want 4422", websocket.CloseStatus(err))
 	}
 }
 

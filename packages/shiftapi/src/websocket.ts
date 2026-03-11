@@ -32,6 +32,32 @@ export type WebSocketFn = (
 ) => WSConnection<unknown, unknown>;
 
 /**
+ * Error thrown when the server rejects a WebSocket connection due to input
+ * validation or parsing errors. The server accepts the connection, sends the
+ * error as the first frame, then closes with an application-defined status
+ * code (4400 for bad request, 4422 for validation errors, etc.).
+ */
+export class WSError extends Error {
+  /** The WebSocket close code (e.g. 4400, 4422). */
+  readonly code: number;
+  /** The structured error payload sent by the server. */
+  readonly details: unknown;
+
+  constructor(code: number, details: unknown) {
+    const msg =
+      typeof details === "object" &&
+      details !== null &&
+      "message" in details
+        ? (details as { message: string }).message
+        : "WebSocket connection error";
+    super(msg);
+    this.name = "WSError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/**
  * Creates a type-safe `websocket` function bound to the given base URL.
  *
  * The returned function opens a WebSocket connection, applying path and query
@@ -75,7 +101,7 @@ export function createWebSocket(baseUrl: string) {
     }[] = [];
     // Buffer of messages received before anyone called receive().
     const buffer: Recv[] = [];
-    let closeError: Event | undefined;
+    let closeError: Event | WSError | undefined;
 
     ws.addEventListener("message", (event) => {
       const data = JSON.parse(event.data as string) as Recv;
@@ -88,6 +114,20 @@ export function createWebSocket(baseUrl: string) {
     });
 
     ws.addEventListener("close", (event) => {
+      // Application-defined close codes in the 4xxx range indicate that the
+      // server rejected the connection due to input errors. The error payload
+      // was sent as the first (and only) message frame before the close.
+      if (event.code >= 4000 && event.code < 5000 && buffer.length > 0) {
+        const errorPayload = buffer.shift()!;
+        const wsErr = new WSError(event.code, errorPayload);
+        buffer.length = 0;
+        closeError = wsErr;
+        for (const pending of queue) {
+          pending.reject(wsErr);
+        }
+        queue.length = 0;
+        return;
+      }
       closeError = event;
       // Reject all pending receivers.
       for (const pending of queue) {
@@ -126,8 +166,9 @@ export function createWebSocket(baseUrl: string) {
           while (true) {
             yield await this.receive();
           }
-        } catch {
-          // Connection closed — stop iteration.
+        } catch (err) {
+          if (err instanceof WSError) throw err;
+          // Normal close — stop iteration.
         }
       },
       close(code?: number, reason?: string): void {

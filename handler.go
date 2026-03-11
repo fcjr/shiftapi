@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 // RawHandlerFunc is a handler function that writes directly to the
@@ -99,53 +100,9 @@ type handlerConfig struct {
 // the parsed value and true on success. On failure it writes an error response
 // and returns the zero value and false.
 func parseInput[In any](w http.ResponseWriter, r *http.Request, hc *handlerConfig) (In, bool) {
-	var in In
-	rv := reflect.ValueOf(&in).Elem()
-
-	if hc.hasForm {
-		if err := parseFormInto(rv, r, hc.maxUploadSize); err != nil {
-			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
-			return in, false
-		}
-		rv = reflect.ValueOf(&in).Elem()
-	} else if hc.decodeBody {
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
-			return in, false
-		}
-		rv = reflect.ValueOf(&in).Elem()
-		if hc.hasQuery {
-			resetQueryFields(rv)
-		}
-		if hc.hasPath {
-			resetPathFields(rv)
-		}
-		if hc.hasHeader {
-			resetHeaderFields(rv)
-		}
-	}
-
-	if hc.hasQuery {
-		if err := parseQueryInto(rv, r.URL.Query()); err != nil {
-			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
-			return in, false
-		}
-	}
-	if hc.hasPath {
-		if err := parsePathInto(rv, r); err != nil {
-			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
-			return in, false
-		}
-	}
-	if hc.hasHeader {
-		if err := parseHeadersInto(rv, r.Header); err != nil {
-			writeJSON(w, http.StatusBadRequest, hc.badRequestFn(err))
-			return in, false
-		}
-	}
-
-	if err := hc.validate(in); err != nil {
-		handleError(w, hc.internalServerFn, err, hc.errLookup)
+	in, inputErr := parseInputForWS[In](r, hc)
+	if inputErr != nil {
+		writeJSON(w, inputErr.status, inputErr.body)
 		return in, false
 	}
 	return in, true
@@ -230,6 +187,65 @@ func adaptSSE[In any](fn SSEHandlerFunc[In], hc *handlerConfig, sendVariants map
 	}
 }
 
+// wsInputError holds the status and body that parseInput would have written
+// as an HTTP response. It is used by adaptWSMessages to send validation errors
+// over the WebSocket connection instead.
+type wsInputError struct {
+	status int
+	body   any
+}
+
+// parseInputForWS decodes and validates the typed input from the request
+// without writing to the ResponseWriter. On failure it returns a *wsInputError
+// containing the status and body that parseInput would have written.
+func parseInputForWS[In any](r *http.Request, hc *handlerConfig) (In, *wsInputError) {
+	var in In
+	rv := reflect.ValueOf(&in).Elem()
+
+	if hc.hasForm {
+		if err := parseFormInto(rv, r, hc.maxUploadSize); err != nil {
+			return in, &wsInputError{http.StatusBadRequest, hc.badRequestFn(err)}
+		}
+		rv = reflect.ValueOf(&in).Elem()
+	} else if hc.decodeBody {
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			return in, &wsInputError{http.StatusBadRequest, hc.badRequestFn(err)}
+		}
+		rv = reflect.ValueOf(&in).Elem()
+		if hc.hasQuery {
+			resetQueryFields(rv)
+		}
+		if hc.hasPath {
+			resetPathFields(rv)
+		}
+		if hc.hasHeader {
+			resetHeaderFields(rv)
+		}
+	}
+
+	if hc.hasQuery {
+		if err := parseQueryInto(rv, r.URL.Query()); err != nil {
+			return in, &wsInputError{http.StatusBadRequest, hc.badRequestFn(err)}
+		}
+	}
+	if hc.hasPath {
+		if err := parsePathInto(rv, r); err != nil {
+			return in, &wsInputError{http.StatusBadRequest, hc.badRequestFn(err)}
+		}
+	}
+	if hc.hasHeader {
+		if err := parseHeadersInto(rv, r.Header); err != nil {
+			return in, &wsInputError{http.StatusBadRequest, hc.badRequestFn(err)}
+		}
+	}
+
+	if err := hc.validate(in); err != nil {
+		status, body := resolveError(hc.internalServerFn, err, hc.errLookup)
+		return in, &wsInputError{status, body}
+	}
+	return in, nil
+}
+
 func adaptWSMessages[In any](
 	dispatch map[string]wsOnHandler,
 	sendVariants map[reflect.Type]string,
@@ -259,15 +275,25 @@ func adaptWSMessages[In any](
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		in, ok := parseInput[In](w, r, hc)
-		if !ok {
-			return
-		}
+		in, inputErr := parseInputForWS[In](r, hc)
 
 		conn, err := websocket.Accept(w, r, acceptOpts)
 		if err != nil {
 			// Accept writes its own error response (e.g. 403 for origin
 			// violations), so we must not write a second one.
+			return
+		}
+
+		// If input parsing/validation failed, send the error as the first
+		// frame and close with an application-defined status code that
+		// mirrors the HTTP status. This lets browser clients (which cannot
+		// read HTTP response bodies on failed upgrades) receive structured
+		// error details.
+		if inputErr != nil {
+			ctx := r.Context()
+			_ = wsjson.Write(ctx, conn, inputErr.body)
+			closeCode := websocket.StatusCode(4000 + inputErr.status%1000)
+			_ = conn.Close(closeCode, "input error")
 			return
 		}
 
@@ -292,28 +318,28 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// handleError matches the returned error against registered error types and
-// writes the appropriate HTTP response. It checks ValidationError first (always
-// 422), then walks the error chain once checking each error's concrete type
+// resolveError matches the error against registered error types and returns
+// the HTTP status code and response body. It checks ValidationError first
+// (always 422), then walks the error chain checking each error's concrete type
 // against the lookup map, and falls back to a 500 response built by
 // internalServerFn.
-func handleError(w http.ResponseWriter, internalServerFn func(error) any, err error, lookup errorLookup) {
-	// Always check ValidationError first.
+func resolveError(internalServerFn func(error) any, err error, lookup errorLookup) (int, any) {
 	if valErr, ok := errors.AsType[*ValidationError](err); ok {
-		writeJSON(w, http.StatusUnprocessableEntity, valErr)
-		return
+		return http.StatusUnprocessableEntity, valErr
 	}
-
-	// Walk the error chain once, checking each error's type against the map.
 	if len(lookup) > 0 {
 		if status, matched, ok := matchError(err, lookup); ok {
-			writeJSON(w, status, matched)
-			return
+			return status, matched
 		}
 	}
+	return http.StatusInternalServerError, internalServerFn(err)
+}
 
-	// Fallback — 500 with the configured internal server error response.
-	writeJSON(w, http.StatusInternalServerError, internalServerFn(err))
+// handleError matches the returned error against registered error types and
+// writes the appropriate HTTP response.
+func handleError(w http.ResponseWriter, internalServerFn func(error) any, err error, lookup errorLookup) {
+	status, body := resolveError(internalServerFn, err, lookup)
+	writeJSON(w, status, body)
 }
 
 // matchError walks the error chain (including multi-errors) and returns the
