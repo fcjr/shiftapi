@@ -236,7 +236,8 @@ func WSMessageType[T any](name string) WSMessageVariant {
 
 // wsCallbacks holds the optional user callbacks for the dispatch loop.
 type wsCallbacks struct {
-	onUnknownMsg func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
+	onDecodeError func(r *http.Request, ws *WSSender, err *WSDecodeError)
+	onUnknownMsg  func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
@@ -272,7 +273,11 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			// Decode errors are non-fatal — log and continue reading.
 			var decErr *WSDecodeError
 			if errors.As(err, &decErr) {
-				log.Printf("shiftapi: %v", err)
+				if cb.onDecodeError != nil {
+					cb.onDecodeError(r, ws, decErr)
+				} else {
+					log.Printf("shiftapi: %v", err)
+				}
 				continue
 			}
 			// Handler errors are fatal — log and close.
@@ -299,6 +304,7 @@ type wsRouteConfig struct {
 	middleware        []func(http.Handler) http.Handler
 	staticRespHeaders []staticResponseHeader
 	wsAcceptOptions   *WSAcceptOptions
+	onDecodeError     func(r *http.Request, ws *WSSender, err *WSDecodeError)
 	onUnknownMsg      func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
@@ -349,6 +355,21 @@ type WSAcceptOptions struct {
 func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
 	return func(cfg *wsRouteConfig) {
 		cfg.wsAcceptOptions = &opts
+	}
+}
+
+// WithWSOnDecodeError registers a callback for message payloads that cannot
+// be decoded into the expected type. If not set, the framework logs the error
+// and continues reading. The connection is never closed for decode errors.
+//
+//	shiftapi.HandleWS(api, "GET /ws", ws,
+//	    shiftapi.WithWSOnDecodeError(func(r *http.Request, s *shiftapi.WSSender, err *shiftapi.WSDecodeError) {
+//	        log.Printf("bad payload for %s: %v", err.MessageType(), err.Unwrap())
+//	    }),
+//	)
+func WithWSOnDecodeError(fn func(r *http.Request, sender *WSSender, err *WSDecodeError)) wsOptionFunc {
+	return func(cfg *wsRouteConfig) {
+		cfg.onDecodeError = fn
 	}
 }
 

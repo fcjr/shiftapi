@@ -484,7 +484,8 @@ func registerWSRoute[In any](
 	}
 
 	cb := wsCallbacks{
-		onUnknownMsg: wsOpts.onUnknownMsg,
+		onDecodeError: wsOpts.onDecodeError,
+		onUnknownMsg:  wsOpts.onUnknownMsg,
 	}
 
 	// Wrap the type-erased setup back into a typed function for adaptWSMessages.
