@@ -83,9 +83,11 @@ type wsEvent struct {
 
 // websocketConfig holds the internal configuration for a WebSocket endpoint.
 type websocketConfig struct {
-	handlers     []wsOnHandler
-	sendVariants []WSMessageVariant
-	setup        func(r *http.Request, ws *WSSender, input any) (any, error)
+	handlers      []wsOnHandler
+	sendVariants  []WSMessageVariant
+	setup         func(r *http.Request, ws *WSSender, input any) (any, error)
+	onDecodeError func(ws *WSSender, state any, err *WSDecodeError)
+	onUnknownMsg  func(ws *WSSender, state any, msgType string, data json.RawMessage)
 }
 
 // wsOnHandler is the internal interface for a typed message handler
@@ -139,12 +141,11 @@ type WSMessages[In any] struct {
 	cfg *websocketConfig
 }
 
-// WSHandler is a typed message handler for a [Websocket] endpoint. Create
-// one with [WSOn]. The State type parameter must match the setup function's
-// return type.
+// WSHandler is a typed configuration unit for a [Websocket] endpoint.
+// Create one with [WSOn], [WSOnDecodeError], or [WSOnUnknownMessage].
+// The State type parameter must match the setup function's return type.
 type WSHandler[State any] struct {
-	name string
-	impl wsOnHandler
+	apply func(cfg *websocketConfig)
 }
 
 // WSSends declares the named server-to-client message types for a WebSocket
@@ -188,7 +189,7 @@ func Websocket[In, State any](setup func(r *http.Request, sender *WSSender, in I
 		},
 	}
 	for _, h := range handlers {
-		cfg.handlers = append(cfg.handlers, h.impl)
+		h.apply(cfg)
 	}
 	return &WSMessages[In]{cfg: cfg}
 }
@@ -206,8 +207,9 @@ func WSOn[State, Msg any](name string, fn func(sender *WSSender, state State, ms
 		panic("shiftapi: WSOn name must not be empty")
 	}
 	return WSHandler[State]{
-		name: name,
-		impl: &onHandlerImpl[State, Msg]{name: name, fn: fn},
+		apply: func(cfg *websocketConfig) {
+			cfg.handlers = append(cfg.handlers, &onHandlerImpl[State, Msg]{name: name, fn: fn})
+		},
 	}
 }
 
@@ -242,8 +244,8 @@ func WSMessageType[T any](name string) WSMessageVariant {
 
 // wsCallbacks holds the optional user callbacks for the dispatch loop.
 type wsCallbacks struct {
-	onDecodeError func(r *http.Request, ws *WSSender, err *WSDecodeError)
-	onUnknownMsg  func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
+	onDecodeError func(ws *WSSender, state any, err *WSDecodeError)
+	onUnknownMsg  func(ws *WSSender, state any, msgType string, data json.RawMessage)
 }
 
 // runWSDispatchLoop runs the framework-managed receive loop for multi-type
@@ -265,7 +267,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 		handler, ok := dispatch[envelope.Type]
 		if !ok {
 			if cb.onUnknownMsg != nil {
-				cb.onUnknownMsg(r, ws, envelope.Type, envelope.Data)
+				cb.onUnknownMsg(ws, state, envelope.Type, envelope.Data)
 			} else {
 				log.Printf("shiftapi: unknown WS message type: %q", envelope.Type)
 			}
@@ -280,7 +282,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			var decErr *WSDecodeError
 			if errors.As(err, &decErr) {
 				if cb.onDecodeError != nil {
-					cb.onDecodeError(r, ws, decErr)
+					cb.onDecodeError(ws, state, decErr)
 				} else {
 					log.Printf("shiftapi: %v", err)
 				}
@@ -310,8 +312,6 @@ type wsRouteConfig struct {
 	middleware        []func(http.Handler) http.Handler
 	staticRespHeaders []staticResponseHeader
 	wsAcceptOptions   *WSAcceptOptions
-	onDecodeError     func(r *http.Request, ws *WSSender, err *WSDecodeError)
-	onUnknownMsg      func(r *http.Request, ws *WSSender, msgType string, data json.RawMessage)
 }
 
 func (c *wsRouteConfig) addError(e errorEntry) {
@@ -364,34 +364,40 @@ func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
 	}
 }
 
-// WithWSOnDecodeError registers a callback for message payloads that cannot
-// be decoded into the expected type. If not set, the framework logs the error
-// and continues reading. The connection is never closed for decode errors.
+// WSOnDecodeError creates a handler that is called when a message payload
+// cannot be decoded into the expected type. If not registered, the framework
+// logs the error and continues reading. The connection is never closed for
+// decode errors. The State type parameter must match the setup function's
+// return type.
 //
-//	shiftapi.HandleWS(api, "GET /ws", ws,
-//	    shiftapi.WithWSOnDecodeError(func(r *http.Request, s *shiftapi.WSSender, err *shiftapi.WSDecodeError) {
-//	        log.Printf("bad payload for %s: %v", err.MessageType(), err.Unwrap())
-//	    }),
-//	)
-func WithWSOnDecodeError(fn func(r *http.Request, sender *WSSender, err *WSDecodeError)) wsOptionFunc {
-	return func(cfg *wsRouteConfig) {
-		cfg.onDecodeError = fn
+//	shiftapi.WSOnDecodeError(func(s *shiftapi.WSSender, state *Room, err *shiftapi.WSDecodeError) {
+//	    log.Printf("bad payload in room %s: %v", state.Name, err)
+//	})
+func WSOnDecodeError[State any](fn func(sender *WSSender, state State, err *WSDecodeError)) WSHandler[State] {
+	return WSHandler[State]{
+		apply: func(cfg *websocketConfig) {
+			cfg.onDecodeError = func(ws *WSSender, state any, err *WSDecodeError) {
+				fn(ws, state.(State), err)
+			}
+		},
 	}
 }
 
-// WithWSOnUnknownMessage registers a callback for unrecognized message types
-// on [HandleWS] routes. The callback is invoked when the client sends a message
-// whose "type" field does not match any registered [WSOn] handler. If not set,
-// the framework logs the unknown type and continues reading.
+// WSOnUnknownMessage creates a handler that is called when the client sends
+// a message whose "type" field does not match any registered [WSOn] handler.
+// If not registered, the framework logs the unknown type and continues reading.
+// The State type parameter must match the setup function's return type.
 //
-//	shiftapi.HandleWS(api, "GET /ws", ws,
-//	    shiftapi.WithWSOnUnknownMessage(func(r *http.Request, s *shiftapi.WSSender, msgType string, data json.RawMessage) {
-//	        log.Printf("unknown message type: %s", msgType)
-//	    }),
-//	)
-func WithWSOnUnknownMessage(fn func(r *http.Request, sender *WSSender, msgType string, data json.RawMessage)) wsOptionFunc {
-	return func(cfg *wsRouteConfig) {
-		cfg.onUnknownMsg = fn
+//	shiftapi.WSOnUnknownMessage(func(s *shiftapi.WSSender, state *Room, msgType string, data json.RawMessage) {
+//	    log.Printf("unknown message in room %s: %s", state.Name, msgType)
+//	})
+func WSOnUnknownMessage[State any](fn func(sender *WSSender, state State, msgType string, data json.RawMessage)) WSHandler[State] {
+	return WSHandler[State]{
+		apply: func(cfg *websocketConfig) {
+			cfg.onUnknownMsg = func(ws *WSSender, state any, msgType string, data json.RawMessage) {
+				fn(ws, state.(State), msgType, data)
+			}
+		},
 	}
 }
 

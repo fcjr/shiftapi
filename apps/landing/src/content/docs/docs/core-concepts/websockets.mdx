@@ -50,7 +50,7 @@ func(sender *shiftapi.WSSender, state State, msg Msg) error
 - **`state State`** — the value returned by the setup function for this connection
 - **`msg Msg`** — the decoded message payload
 
-The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped by default — use `WithWSOnUnknownMessage` to customize this.
+The framework reads `{"type": "name", "data": ...}` envelopes from the client, matches `type` to the registered `WSOn` name, and decodes `data` into `Msg`. Unknown types are logged and skipped by default — use `WSOnUnknownMessage` to customize this.
 
 ## WSSender
 
@@ -175,43 +175,43 @@ Error behavior depends on when the error occurs:
 
 - **Before upgrade** — if input parsing or validation fails, a JSON error response is written (just like `Handle`).
 - **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Handle recoverable errors within the handler itself (return `nil` to continue).
-- **Decode errors** — if a client sends a malformed payload that cannot be decoded into the expected type, the framework logs the error and continues reading. The connection is not closed. Use `WithWSOnDecodeError` to customize this behavior.
+- **Decode errors** — if a client sends a malformed payload that cannot be decoded into the expected type, the framework logs the error and continues reading. The connection is not closed. Use `WSOnDecodeError` to customize this behavior.
 - **WebSocket close** — if a handler returns an error that is already a WebSocket close (e.g. client disconnect), the framework recognizes it and does not double-close.
 
 ## Callbacks
 
-Callbacks are passed as `WSOption` values to `HandleWS` (not to `Websocket`):
+Callbacks are passed as `WSHandler` values to `Websocket()`, alongside `WSOn` handlers. They receive the same `(sender, state)` pair as message handlers:
 
-### WithWSOnDecodeError
+### WSOnDecodeError
 
-`WithWSOnDecodeError` registers a callback for message payloads that cannot be decoded into the expected type. If not set, the framework logs the error and continues reading. The connection is never closed for decode errors.
+`WSOnDecodeError` registers a handler for message payloads that cannot be decoded into the expected type. If not registered, the framework logs the error and continues reading. The connection is never closed for decode errors.
 
 ```go
-shiftapi.HandleWS(api, "GET /chat",
-    shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
-        shiftapi.WSOn("message", handleMessage),
-    ),
-    shiftapi.WithWSOnDecodeError(func(r *http.Request, s *shiftapi.WSSender, err *shiftapi.WSDecodeError) {
+shiftapi.Websocket(
+    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
+        return &RoomState{}, nil
+    },
+    shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+    shiftapi.WSOn("message", handleMessage),
+    shiftapi.WSOnDecodeError(func(s *shiftapi.WSSender, state *RoomState, err *shiftapi.WSDecodeError) {
         log.Printf("bad payload for %s: %v", err.MessageType(), err.Unwrap())
     }),
 )
 ```
 
-### WithWSOnUnknownMessage
+### WSOnUnknownMessage
 
-`WithWSOnUnknownMessage` registers a callback for messages whose `type` field does not match any registered `WSOn` handler. If not set, the framework logs the unknown type and continues reading.
+`WSOnUnknownMessage` registers a handler for messages whose `type` field does not match any registered `WSOn` handler. If not registered, the framework logs the unknown type and continues reading.
 
 ```go
-shiftapi.HandleWS(api, "GET /chat",
-    shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
-        shiftapi.WSOn("message", handleMessage),
-    ),
-    shiftapi.WithWSOnUnknownMessage(func(r *http.Request, s *shiftapi.WSSender, msgType string, data json.RawMessage) {
-        log.Printf("unknown message type from %s: %s", r.RemoteAddr, msgType)
+shiftapi.Websocket(
+    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
+        return &RoomState{}, nil
+    },
+    shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
+    shiftapi.WSOn("message", handleMessage),
+    shiftapi.WSOnUnknownMessage(func(s *shiftapi.WSSender, state *RoomState, msgType string, data json.RawMessage) {
+        log.Printf("unknown message type: %s", msgType)
     }),
 )
 ```
@@ -470,9 +470,6 @@ shiftapi.HandleWS(api, "GET /ws", ws,
     shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
         OriginPatterns: []string{"example.com"},
     }),
-    shiftapi.WithWSOnUnknownMessage(func(r *http.Request, s *shiftapi.WSSender, msgType string, data json.RawMessage) {
-        log.Printf("unknown message type: %s", msgType)
-    }),
 )
 ```
 
@@ -482,8 +479,6 @@ shiftapi.HandleWS(api, "GET /ws", ws,
 | `WithError[T](code)` | Declare an error type at a status code (pre-upgrade only) |
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithWSAcceptOptions(opts)` | Configure WebSocket upgrade (origins, subprotocols) |
-| `WithWSOnDecodeError(fn)` | Handle malformed message payloads (default: log + continue) |
-| `WithWSOnUnknownMessage(fn)` | Handle unrecognized message types (default: log + continue) |
 
 The following are arguments to `Websocket()`:
 
@@ -492,6 +487,8 @@ The following are arguments to `Websocket()`:
 | `setup` | Connection setup function — returns `(State, error)` (required, first arg) |
 | `WSSends{...}` | Server-to-client message types (required, second arg) |
 | `WSOn("name", fn)` | Typed message handler — variadic (required, at least one) |
+| `WSOnDecodeError(fn)` | Handle malformed message payloads (default: log + continue) |
+| `WSOnUnknownMessage(fn)` | Handle unrecognized message types (default: log + continue) |
 
 ## When to use HandleWS vs HandleSSE vs Handle
 
