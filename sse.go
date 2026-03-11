@@ -8,22 +8,22 @@ import (
 )
 
 // SSEHandlerFunc is a handler function for Server-Sent Events. It receives
-// the parsed input and a typed [SSEWriter] for sending events to the client.
+// the parsed input and an [SSEWriter] for sending events to the client.
 //
 // The handler should send events via [SSEWriter.Send] and return nil when
 // the stream is complete. If the handler returns an error before any events
 // have been sent, a JSON error response is written. If the error occurs
 // after events have been sent the error is logged (the response has already
 // started).
-type SSEHandlerFunc[In, Event any] func(r *http.Request, in In, sse *SSEWriter[Event]) error
+type SSEHandlerFunc[In any] func(r *http.Request, in In, sse *SSEWriter) error
 
-// SSEWriter writes typed Server-Sent Events to the client. It is created
+// SSEWriter writes Server-Sent Events to the client. It is created
 // internally by [HandleSSE] and should not be constructed directly.
 //
 // [SSEWriter.Send] automatically determines the event name from the concrete
 // Go type registered via [SSESends]. On the first call, SSEWriter sets the
 // required SSE headers (Content-Type, Cache-Control, Connection).
-type SSEWriter[Event any] struct {
+type SSEWriter struct {
 	w            http.ResponseWriter
 	rc           *http.ResponseController
 	started      bool
@@ -36,7 +36,7 @@ type SSEWriter[Event any] struct {
 //	event: {name}\ndata: {json}\n\n
 //
 // The response is flushed after each event.
-func (s *SSEWriter[Event]) Send(v Event) error {
+func (s *SSEWriter) Send(v any) error {
 	name, ok := s.sendVariants[reflect.TypeOf(v)]
 	if !ok {
 		return fmt.Errorf("shiftapi: unregistered SSE event type %T; register with SSESends", v)
@@ -53,7 +53,7 @@ func (s *SSEWriter[Event]) Send(v Event) error {
 }
 
 // writeHeaders sets SSE headers on the first write.
-func (s *SSEWriter[Event]) writeHeaders() {
+func (s *SSEWriter) writeHeaders() {
 	if s.started {
 		return
 	}

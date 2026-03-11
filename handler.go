@@ -203,7 +203,7 @@ func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc
 	}
 }
 
-func adaptSSE[In, Event any](fn SSEHandlerFunc[In, Event], hc *handlerConfig, sendVariants map[reflect.Type]string) http.HandlerFunc {
+func adaptSSE[In any](fn SSEHandlerFunc[In], hc *handlerConfig, sendVariants map[reflect.Type]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		in, ok := parseInput[In](w, r, hc)
 		if !ok {
@@ -215,7 +215,7 @@ func adaptSSE[In, Event any](fn SSEHandlerFunc[In, Event], hc *handlerConfig, se
 		}
 
 		wt := &writeTracker{ResponseWriter: w}
-		sse := &SSEWriter[Event]{
+		sse := &SSEWriter{
 			w:            wt,
 			rc:           http.NewResponseController(wt),
 			sendVariants: sendVariants,

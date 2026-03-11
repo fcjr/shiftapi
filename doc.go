@@ -128,7 +128,7 @@
 //	    Message string `json:"message"`
 //	}
 //
-//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 //	    for event := range events(r.Context()) {
 //	        if err := sse.Send(event); err != nil {
 //	            return err
@@ -144,23 +144,10 @@
 // event name from the concrete Go type registered via [SSESends].
 //
 // [SSESends] is required for [HandleSSE]. It registers event types for
-// auto-wrap and OpenAPI schema generation. For multiple event types, define
-// a marker interface:
+// auto-wrap and OpenAPI schema generation. For multiple event types, pass
+// multiple [SSEEventType] descriptors:
 //
-//	type ChatEvent interface{ chatEvent() }
-//
-//	type MessageData struct {
-//	    User string `json:"user"`
-//	    Text string `json:"text"`
-//	}
-//	func (MessageData) chatEvent() {}
-//
-//	type JoinData struct {
-//	    User string `json:"user"`
-//	}
-//	func (JoinData) chatEvent() {}
-//
-//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 //	    sse.Send(MessageData{User: "alice", Text: "hi"})
 //	    return sse.Send(JoinData{User: "bob"})
 //	}, shiftapi.SSESends(

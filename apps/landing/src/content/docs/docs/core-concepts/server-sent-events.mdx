@@ -17,7 +17,7 @@ sidebar:
 ## Registering SSE handlers
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Message]) error {
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     for msg := range messages(r.Context()) {
         if err := sse.Send(msg); err != nil {
             return err
@@ -31,21 +31,21 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
 
 ## Handler signature
 
-An SSE handler has two type parameters — input and event:
+An SSE handler has one type parameter — input:
 
 ```go
-func handler(r *http.Request, in InputType, sse *shiftapi.SSEWriter[EventType]) error
+func handler(r *http.Request, in InputType, sse *shiftapi.SSEWriter) error
 ```
 
 - **`r *http.Request`** — the standard HTTP request
 - **`in InputType`** — automatically decoded from path, query, header, body, or form — identical to `Handle`
-- **`sse *shiftapi.SSEWriter[EventType]`** — typed writer for sending events
+- **`sse *shiftapi.SSEWriter`** — writer for sending events
 - **`error`** — return an error to stop the stream
 
 Use `struct{}` when the handler takes no input:
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Event]) error {
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     // ...
 }, shiftapi.SSESends(
     shiftapi.SSEEventType[Event]("event"),
@@ -54,7 +54,7 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
 
 ## SSEWriter
 
-`SSEWriter[Event]` provides a single method for sending events:
+`SSEWriter` provides a single method for sending events:
 
 ### Send
 
@@ -88,7 +88,7 @@ type EventInput struct {
     After   int    `query:"after"`
 }
 
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in EventInput, sse *shiftapi.SSEWriter[Event]) error {
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in EventInput, sse *shiftapi.SSEWriter) error {
     for event := range subscribe(r.Context(), in.Channel, in.After) {
         if err := sse.Send(event); err != nil {
             return err
@@ -107,7 +107,7 @@ type StreamInput struct {
     RoomID string `path:"room_id" validate:"required"`
 }
 
-shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter[Event]) error {
+shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter) error {
     // in.RoomID is parsed and validated
 }, shiftapi.SSESends(
     shiftapi.SSEEventType[Event]("event"),
@@ -122,7 +122,7 @@ Error behavior depends on whether the handler has started sending events:
 - **After sending** — if events have already been sent, it's too late to send an error response. The error is logged and the stream ends.
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Event]) error {
+shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     data, err := loadInitialData()
     if err != nil {
         return err // 500 (no events sent yet)
@@ -140,7 +140,7 @@ shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *sh
 
 ## OpenAPI spec
 
-`HandleSSE` automatically generates the correct OpenAPI spec with `text/event-stream` as the response content type. The `Event` type parameter is reflected into the schema:
+`HandleSSE` automatically generates the correct OpenAPI spec with `text/event-stream` as the response content type. The event types declared via `SSESends` are reflected into the schema:
 
 ```go
 type ChatEvent struct {
@@ -321,31 +321,21 @@ shiftapi.HandleSSE(api, "GET /events", handler,
 
 For endpoints that emit multiple event types, use `SSESends` to declare each variant. This generates a `oneOf` schema with a `discriminator` in the OpenAPI spec, which produces **TypeScript discriminated unions** in the generated client.
 
-### Define a marker interface
-
-Use a Go marker interface to constrain the SSE writer's type parameter:
-
-```go
-type ChatEvent interface{ chatEvent() }
-
-type MessageData struct {
-    User string `json:"user"`
-    Text string `json:"text"`
-}
-func (MessageData) chatEvent() {}
-
-type JoinData struct {
-    User string `json:"user"`
-}
-func (JoinData) chatEvent() {}
-```
-
 ### Register with SSESends
 
 Pass `SSEEventType[T]` descriptors to `SSESends` to declare each named event. When `SSESends` is used, `Send` automatically determines the event name from the concrete Go type — no need to pass the name manually:
 
 ```go
-shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[ChatEvent]) error {
+type MessageData struct {
+    User string `json:"user"`
+    Text string `json:"text"`
+}
+
+type JoinData struct {
+    User string `json:"user"`
+}
+
+shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     if err := sse.Send(MessageData{User: "alice", Text: "hi"}); err != nil {
         return err
     }
@@ -410,19 +400,6 @@ for await (const msg of stream) {
 }
 ```
 
-### Single vs multi-event
-
-`SSESends` is always required. For endpoints with a single event type, pass a single `SSEEventType`:
-
-```go
-shiftapi.HandleSSE(api, "GET /ticks", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Tick]) error {
-    return sse.Send(Tick{Time: time.Now()})
-}, shiftapi.SSESends(
-    shiftapi.SSEEventType[Tick]("tick"),
-))
-```
-
-With a single event type, the schema uses the type directly — no `oneOf`, no discriminator. Multiple event types produce a `oneOf` schema with a discriminator.
 
 ## When to use HandleSSE vs HandleRaw
 

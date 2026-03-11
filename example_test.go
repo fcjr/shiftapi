@@ -348,7 +348,7 @@ func ExampleHandleSSE() {
 		Text string `json:"text"`
 	}
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[Message]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		for _, msg := range []string{"hello", "world"} {
 			if err := sse.Send(Message{Text: msg}); err != nil {
 				return err
@@ -372,25 +372,19 @@ func ExampleHandleSSE() {
 	//
 }
 
-type exChatEvent interface{ exChatEvent() }
-
 type exMessageData struct {
 	User string `json:"user"`
 	Text string `json:"text"`
 }
 
-func (exMessageData) exChatEvent() {}
-
 type exJoinData struct {
 	User string `json:"user"`
 }
 
-func (exJoinData) exChatEvent() {}
-
 func ExampleSSESends() {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[exChatEvent]) error {
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		if err := sse.Send(exMessageData{User: "alice", Text: "hi"}); err != nil {
 			return err
 		}

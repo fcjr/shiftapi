@@ -19,7 +19,7 @@ type sseMessage struct {
 func TestSSEWriter_Send(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		if err := sse.Send(sseMessage{Text: "hello"}); err != nil {
 			return err
 		}
@@ -67,7 +67,7 @@ func TestHandleSSE_InputParsing(t *testing.T) {
 		Channel string `query:"channel" validate:"required"`
 	}
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter) error {
 		return sse.Send(sseMessage{Text: "channel=" + in.Channel})
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[sseMessage]("message"),
@@ -93,7 +93,7 @@ func TestHandleSSE_InputValidationError(t *testing.T) {
 		Channel string `query:"channel" validate:"required"`
 	}
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in Input, sse *shiftapi.SSEWriter) error {
 		return sse.Send(sseMessage{Text: "should not reach"})
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[sseMessage]("message"),
@@ -111,7 +111,7 @@ func TestHandleSSE_InputValidationError(t *testing.T) {
 func TestHandleSSE_ErrorBeforeWrite(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return fmt.Errorf("something went wrong")
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[sseMessage]("message"),
@@ -133,7 +133,7 @@ func TestHandleSSE_PathParams(t *testing.T) {
 		ID string `path:"id"`
 	}
 
-	shiftapi.HandleSSE(api, "GET /streams/{id}", func(r *http.Request, in Input, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /streams/{id}", func(r *http.Request, in Input, sse *shiftapi.SSEWriter) error {
 		return sse.Send(sseMessage{Text: "id=" + in.ID})
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[sseMessage]("message"),
@@ -155,7 +155,7 @@ func TestHandleSSE_PathParams(t *testing.T) {
 func TestHandleSSE_OpenAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return nil
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[sseMessage]("message"),
@@ -201,25 +201,19 @@ func TestHandleSSE_OpenAPISpec(t *testing.T) {
 
 // --- Multi-event (SSESends) tests ---
 
-type chatEvent interface{ chatEvent() }
-
 type messageData struct {
 	User string `json:"user"`
 	Text string `json:"text"`
 }
 
-func (messageData) chatEvent() {}
-
 type joinData struct {
 	User string `json:"user"`
 }
 
-func (joinData) chatEvent() {}
-
 func TestHandleSSE_SSESends_AutoWrapSend(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		if err := sse.Send(messageData{User: "alice", Text: "hi"}); err != nil {
 			return err
 		}
@@ -258,7 +252,7 @@ func TestHandleSSE_SSESends_AutoWrapSend(t *testing.T) {
 func TestHandleSSE_SSESends_OpenAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return nil
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[messageData]("message"),
@@ -337,7 +331,7 @@ func TestHandleSSE_MissingSSESendsPanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[sseMessage]) error {
+	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return nil
 	})
 }
@@ -368,7 +362,7 @@ func TestSSESends_DuplicateNamePanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleSSE(api, "GET /dup", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
+	shiftapi.HandleSSE(api, "GET /dup", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return nil
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[messageData]("same"),
@@ -380,7 +374,7 @@ func TestHandleSSE_SSESends_UnregisteredTypeErrors(t *testing.T) {
 	api := shiftapi.New()
 
 	// joinData satisfies chatEvent but is not registered in SSESends.
-	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter[chatEvent]) error {
+	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 		return sse.Send(joinData{User: "bob"})
 	}, shiftapi.SSESends(
 		shiftapi.SSEEventType[messageData]("message"),

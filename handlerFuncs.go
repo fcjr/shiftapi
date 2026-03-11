@@ -305,11 +305,11 @@ func HandleRaw[In any](router Router, pattern string, fn RawHandlerFunc[In], opt
 	registerRawRoute(router, method, path, fn, options...)
 }
 
-func registerSSERoute[In, Event any](
+func registerSSERoute[In any](
 	router Router,
 	method string,
 	path string,
-	fn SSEHandlerFunc[In, Event],
+	fn SSEHandlerFunc[In],
 	sseOpts sseRouteConfig,
 ) {
 	// SSESends is required — it provides both the auto-wrap event names
@@ -364,13 +364,14 @@ func registerSSERoute[In, Event any](
 }
 
 // HandleSSE registers a Server-Sent Events handler for the given pattern.
-// The handler receives a typed [SSEWriter] for sending events to the client.
+// The handler receives an [SSEWriter] for sending events to the client.
 // Input parsing, validation, and middleware work identically to [Handle].
 //
 // The OpenAPI spec automatically uses "text/event-stream" as the response
-// content type, with the Event type parameter generating the event schema.
+// content type, with the event types declared via [SSESends] generating the
+// event schema.
 //
-//	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in struct{}, sse *shiftapi.SSEWriter[Message]) error {
+//	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in struct{}, sse *shiftapi.SSEWriter) error {
 //	    for msg := range messages(r.Context()) {
 //	        if err := sse.Send(msg); err != nil {
 //	            return err
@@ -380,7 +381,7 @@ func registerSSERoute[In, Event any](
 //	}, shiftapi.SSESends(
 //	    shiftapi.SSEEventType[Message]("message"),
 //	))
-func HandleSSE[In, Event any](router Router, pattern string, fn SSEHandlerFunc[In, Event], options ...SSEOption) {
+func HandleSSE[In any](router Router, pattern string, fn SSEHandlerFunc[In], options ...SSEOption) {
 	method, path := parsePattern(pattern)
 	sseOpts := applySSEOptions(options)
 	registerSSERoute(router, method, path, fn, sseOpts)
