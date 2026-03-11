@@ -56,7 +56,7 @@ export default defineConfig({
 ## Usage
 
 ```typescript
-import { client } from "shiftapi/client";
+import { client } from "@shiftapi/client";
 
 const { data } = await client.POST("/hello", {
     body: { name: "World" },
@@ -80,20 +80,6 @@ const stream = sse("/events");
 for await (const event of stream) {
     console.log(event); // fully typed from your Go Event struct
 }
-```
-
-For Svelte projects, use the `createSSE` store from your API package:
-
-```svelte
-<script>
-  import { createSSE } from "$lib/api";
-
-  const events = createSSE("/events");
-</script>
-
-{#if $events.data}
-  <p>{$events.data.message}</p>
-{/if}
 ```
 
 See [Server-Sent Events](/docs/core-concepts/server-sent-events) for full details.

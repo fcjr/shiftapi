@@ -48,7 +48,7 @@ export default defineConfig({
 ## Usage
 
 ```typescript
-import { client } from "shiftapi/client";
+import { client } from "@shiftapi/client";
 
 const { data } = await client.POST("/hello", {
     body: { name: "World" },
@@ -62,18 +62,15 @@ The plugin handles starting your Go server, proxying requests, and regenerating 
 
 ### Server-Sent Events
 
-The generated client includes an `sse` function for SSE endpoints registered with `HandleSSE`. Use it directly or with the `useSSE` hook from your API package:
+The generated client includes an `sse` function for SSE endpoints registered with `HandleSSE`. It returns a typed async iterable:
 
-```tsx
-import { useSSE } from "@/api";
+```typescript
+import { sse } from "@shiftapi/client";
 
-function EventFeed() {
-    const { data, error } = useSSE("/events");
+const stream = sse("/events");
 
-    if (error) return <div>Error: {error.message}</div>;
-    if (!data) return <div>Connecting...</div>;
-
-    return <div>{data.message}</div>;
+for await (const event of stream) {
+    console.log(event); // fully typed from your Go Event struct
 }
 ```
 

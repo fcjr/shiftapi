@@ -90,7 +90,7 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
 ### Use the typed client
 
 ```typescript
-import { client } from "shiftapi/client";
+import { client } from "@shiftapi/client";
 
 const { data } = await client.POST("/hello", {
     body: { name: "World" },
