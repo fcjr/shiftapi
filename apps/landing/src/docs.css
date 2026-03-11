@@ -1,5 +1,7 @@
 :root,
-:root[data-theme="light"] {
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  color-scheme: dark;
   --sl-font: "Inter", var(--sl-font-system);
   --sl-font-mono: "JetBrains Mono", var(--sl-font-system-mono);
 
