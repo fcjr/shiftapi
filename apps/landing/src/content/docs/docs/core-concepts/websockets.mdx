@@ -117,16 +117,16 @@ type RoomState struct {
 
 shiftapi.HandleWS(api, "GET /rooms/{room}",
     shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, in JoinInput) (RoomState, error) {
+        func(r *http.Request, s *shiftapi.WSSender, in JoinInput) (*RoomState, error) {
             user, err := authenticate(r)
             if err != nil {
-                return RoomState{}, err // closes connection with StatusInternalError
+                return nil, err // closes connection with StatusInternalError
             }
             room := rooms.Join(in.Room, user)
-            return RoomState{Room: room, User: user}, nil
+            return &RoomState{Room: room, User: user}, nil
         },
         shiftapi.WSSends{shiftapi.WSMessageType[ChatMessage]("chat")},
-        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, state RoomState, m UserMessage) error {
+        shiftapi.WSOn("message", func(r *http.Request, s *shiftapi.WSSender, state *RoomState, m UserMessage) error {
             return s.Send(ChatMessage{Room: state.Room.Name, User: state.User.Name, Text: m.Text})
         }),
     ),
@@ -139,39 +139,22 @@ If the setup function returns an error, the connection is closed with `WSStatusI
 
 Use `struct{}` as the state type when no per-connection state is needed.
 
+:::note
+Use a **pointer type** for state (e.g. `*RoomState`) when handlers need to mutate shared state across messages. Value types are copied per handler call, so mutations would be lost.
+:::
+
 ## Error handling
 
 Error behavior depends on when the error occurs:
 
 - **Before upgrade** — if input parsing or validation fails, a JSON error response is written (just like `Handle`).
-- **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Use `WithWSOnError` to customize this behavior.
+- **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Handle recoverable errors within the handler itself (return `nil` to continue).
+- **Decode errors** — if a client sends a malformed payload that cannot be decoded into the expected type, the framework logs the error and continues reading. The connection is not closed.
 - **WebSocket close** — if a handler returns an error that is already a WebSocket close (e.g. client disconnect), the framework recognizes it and does not double-close.
 
 ## Callbacks
 
 Callbacks are passed as `WSOption` values to `HandleWS` (not to `Websocket`):
-
-### WithWSOnError
-
-`WithWSOnError` registers an error callback that is invoked when a `WSOn` handler returns a non-close error. If not set, the framework logs the error and closes the connection with `WSStatusInternalError`. When set, the callback owns the close decision — the framework will not auto-close after the callback returns.
-
-```go
-shiftapi.HandleWS(api, "GET /chat",
-    shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends{
-            shiftapi.WSMessageType[ChatMessage]("chat"),
-            shiftapi.WSMessageType[ErrorMessage]("error"),
-        },
-        shiftapi.WSOn("message", handleMessage),
-    ),
-    shiftapi.WithWSOnError(func(r *http.Request, s *shiftapi.WSSender, err error) {
-        // Send an error message to the client before closing.
-        s.Send(ErrorMessage{Message: err.Error()})
-        s.Close(shiftapi.WSStatusInternalError, "handler error")
-    }),
-)
-```
 
 ### WithWSOnUnknownMessage
 
@@ -444,9 +427,8 @@ shiftapi.HandleWS(api, "GET /ws", ws,
     shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
         OriginPatterns: []string{"example.com"},
     }),
-    shiftapi.WithWSOnError(func(r *http.Request, s *shiftapi.WSSender, err error) {
-        log.Printf("WS error: %v", err)
-        s.Close(shiftapi.WSStatusInternalError, "error")
+    shiftapi.WithWSOnUnknownMessage(func(r *http.Request, s *shiftapi.WSSender, msgType string, data json.RawMessage) {
+        log.Printf("unknown message type: %s", msgType)
     }),
 )
 ```
@@ -457,7 +439,6 @@ shiftapi.HandleWS(api, "GET /ws", ws,
 | `WithError[T](code)` | Declare an error type at a status code (pre-upgrade only) |
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithWSAcceptOptions(opts)` | Configure WebSocket upgrade (origins, subprotocols) |
-| `WithWSOnError(fn)` | Handle errors from `WSOn` handlers (default: log + close) |
 | `WithWSOnUnknownMessage(fn)` | Handle unrecognized message types (default: log + continue) |
 
 The following are arguments to `Websocket()`:

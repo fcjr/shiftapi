@@ -361,52 +361,6 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	}
 }
 
-func TestHandleWS_WSOnError(t *testing.T) {
-	api := shiftapi.New()
-
-	var gotErr error
-	shiftapi.HandleWS(api, "GET /ws",
-		shiftapi.Websocket(
-			noSetup,
-			shiftapi.WSSends{shiftapi.WSMessageType[wsServerMsg]("server")},
-			shiftapi.WSOn("msg", func(r *http.Request, sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
-				return fmt.Errorf("handler failed")
-			}),
-		),
-		shiftapi.WithWSOnError(func(r *http.Request, sender *shiftapi.WSSender, err error) {
-			gotErr = err
-			sender.Close(shiftapi.WSStatusNormalClosure, "handled") //nolint:errcheck
-		}),
-	)
-
-	srv := httptest.NewServer(api)
-	defer srv.Close()
-
-	ctx := context.Background()
-	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow() //nolint:errcheck
-
-	if err := wsjson.Write(ctx, conn, map[string]any{"type": "msg", "data": map[string]any{"text": "hi"}}); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	// The server should close with NormalClosure (from our callback).
-	_, _, err = conn.Read(ctx)
-	if err == nil {
-		t.Fatal("expected error from read")
-	}
-	status := websocket.CloseStatus(err)
-	if status != websocket.StatusNormalClosure {
-		t.Errorf("close status = %d, want %d", status, websocket.StatusNormalClosure)
-	}
-	if gotErr == nil || gotErr.Error() != "handler failed" {
-		t.Errorf("gotErr = %v, want 'handler failed'", gotErr)
-	}
-}
-
 func TestHandleWS_WSOnUnknownMessage(t *testing.T) {
 	api := shiftapi.New()
 

@@ -484,7 +484,6 @@ func registerWSRoute[In any](
 	}
 
 	cb := wsCallbacks{
-		onError:      wsOpts.onError,
 		onUnknownMsg: wsOpts.onUnknownMsg,
 	}
 
