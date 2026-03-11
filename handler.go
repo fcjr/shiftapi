@@ -301,8 +301,21 @@ func adaptWSMessages[In any](
 
 		state, err := setup(r, ws, in)
 		if err != nil {
-			log.Printf("shiftapi: WS setup error: %v", err)
-			_ = conn.Close(websocket.StatusInternalError, "setup error")
+			// If the error matches a type registered via WithError (or is
+			// a *ValidationError), send it as a typed first frame so the
+			// client receives structured error details, then close with a
+			// 4xxx code mirroring the HTTP status. Unregistered errors
+			// fall back to a plain StatusInternalError close.
+			status, body := resolveError(hc.internalServerFn, err, hc.errLookup)
+			if status != http.StatusInternalServerError {
+				ctx := r.Context()
+				_ = wsjson.Write(ctx, conn, body)
+				closeCode := websocket.StatusCode(4000 + status%1000)
+				_ = conn.Close(closeCode, "setup error")
+			} else {
+				log.Printf("shiftapi: WS setup error: %v", err)
+				_ = conn.Close(websocket.StatusInternalError, "setup error")
+			}
 			return
 		}
 

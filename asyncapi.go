@@ -22,6 +22,7 @@ func (a *API) addWSChannel(
 	recvVariants []WSMessageVariant,
 	info *RouteInfo,
 	pathFields map[string]reflect.StructField,
+	errors []errorEntry,
 ) error {
 	channelItem := spec.ChannelItem{}
 
@@ -73,6 +74,39 @@ func (a *API) addWSChannel(
 				op.Tags = append(op.Tags, spec.Tag{Name: t})
 			}
 		}
+	}
+
+	// Register error types as x-errors extension on the channel.
+	// This maps 4xxx close codes to schema names so the TS codegen can
+	// generate narrowed WSError types.
+	if len(errors) > 0 {
+		xErrors := make(map[string]interface{}, len(errors)+1)
+		// ValidationError is always matched by resolveError.
+		valName, err := a.registerWSSchema(reflect.TypeOf(ValidationError{}))
+		if err == nil {
+			xErrors[fmt.Sprintf("%d", 4000+422%1000)] = map[string]interface{}{
+				"$ref": "#/components/schemas/" + valName,
+			}
+		}
+		for _, e := range errors {
+			t := e.typ
+			// registerWSSchema uses the struct type, not the pointer.
+			for t.Kind() == reflect.Pointer {
+				t = t.Elem()
+			}
+			name, err := a.registerWSSchema(t)
+			if err != nil {
+				continue
+			}
+			code := fmt.Sprintf("%d", 4000+e.status%1000)
+			xErrors[code] = map[string]interface{}{
+				"$ref": "#/components/schemas/" + name,
+			}
+		}
+		if channelItem.MapOfAnything == nil {
+			channelItem.MapOfAnything = make(map[string]interface{})
+		}
+		channelItem.MapOfAnything["x-errors"] = xErrors
 	}
 
 	a.asyncSpec.WithChannelsItem(path, channelItem)

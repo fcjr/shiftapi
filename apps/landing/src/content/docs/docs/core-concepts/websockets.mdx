@@ -174,9 +174,53 @@ func(r *http.Request, s *shiftapi.WSSender, in JoinInput) (*RoomState, error) {
 Error behavior depends on when the error occurs:
 
 - **Input errors** — if input parsing or validation fails, the framework accepts the WebSocket connection, sends the structured error as the **first message frame**, then closes the connection with an application-defined close code that mirrors the HTTP status (e.g. `4400` for bad request, `4422` for validation errors). This ensures clients can always read the full error details — the browser `WebSocket` API does not expose HTTP response bodies on failed upgrades, so returning a plain HTTP error would be invisible to the client.
+- **Setup errors** — if the setup function returns an error that matches a type registered with `WithError[T](status)` (or is a `*ValidationError`), the error is sent as a **typed first frame** and the connection closes with the corresponding `4xxx` code (e.g. `4401` for unauthorized). Unregistered errors close with `WSStatusInternalError` and are logged. This is the recommended way to handle authentication and authorization errors — return them from the setup function so the client receives structured error details.
 - **After upgrade** — if a `WSOn` handler returns an error, the connection is closed with `WSStatusInternalError` and the error is logged. Handle recoverable errors within the handler itself (return `nil` to continue).
 - **Decode errors** — if a client sends a malformed payload that cannot be decoded into the expected type, the framework logs the error and continues reading. The connection is not closed. Use `WSOnDecodeError` to customize this behavior.
 - **WebSocket close** — if a handler returns an error that is already a WebSocket close (e.g. client disconnect), the framework recognizes it and does not double-close.
+
+### Setup errors
+
+Register error types with `WithError` and return them from the setup function. The framework sends the error as a typed first frame before closing:
+
+```go
+type AuthError struct {
+    Message string `json:"message"`
+    Realm   string `json:"realm"`
+}
+
+func (e *AuthError) Error() string { return e.Message }
+
+shiftapi.HandleWS(api, "GET /ws",
+    shiftapi.Websocket(
+        func(r *http.Request, s *shiftapi.WSSender, in ChatInput) (*ChatState, error) {
+            user, err := authenticate(r, in.Token)
+            if err != nil {
+                return nil, &AuthError{Message: "invalid token", Realm: "chat"}
+            }
+            return &ChatState{User: user}, nil
+        },
+        shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
+        shiftapi.WSOn("message", handleMessage),
+    ),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+)
+```
+
+The client receives the full `AuthError` payload as a `WSError`:
+
+```typescript
+try {
+  for await (const msg of ws) {
+    console.log(msg);
+  }
+} catch (err) {
+  if (err instanceof WSError) {
+    console.log(err.code);    // 4401
+    console.log(err.details); // { message: "invalid token", realm: "chat" }
+  }
+}
+```
 
 ### Handling input errors on the client
 
@@ -519,7 +563,7 @@ shiftapi.HandleWS(api, "GET /ws", ws,
 | Option | Description |
 |--------|-------------|
 | `WithRouteInfo(info)` | Set AsyncAPI summary, description, and tags |
-| `WithError[T](code)` | Declare an error type at a status code (pre-upgrade only) |
+| `WithError[T](code)` | Declare an error type — matched errors from setup are sent as typed first-frame errors with `4xxx` close codes |
 | `WithMiddleware(mw...)` | Apply HTTP middleware |
 | `WithWSAcceptOptions(opts)` | Configure WebSocket upgrade (origins, subprotocols) |
 

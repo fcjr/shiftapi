@@ -33,17 +33,25 @@ export type WebSocketFn = (
 
 /**
  * Error thrown when the server rejects a WebSocket connection due to input
- * validation or parsing errors. The server accepts the connection, sends the
- * error as the first frame, then closes with an application-defined status
- * code (4400 for bad request, 4422 for validation errors, etc.).
+ * validation, setup errors, or other registered error types. The server
+ * accepts the connection, sends the error as the first frame, then closes
+ * with an application-defined status code (e.g. 4401 for unauthorized,
+ * 4422 for validation errors).
+ *
+ * The type parameters narrow `code` and `details` when error types are
+ * registered via `WithError` on the Go side — the generated `WSErrorFor<P>`
+ * type maps each close code to its typed payload.
  */
-export class WSError extends Error {
-  /** The WebSocket close code (e.g. 4400, 4422). */
-  readonly code: number;
+export class WSError<
+  Code extends number = number,
+  Details = unknown,
+> extends Error {
+  /** The WebSocket close code (e.g. 4401, 4422). */
+  readonly code: Code;
   /** The structured error payload sent by the server. */
-  readonly details: unknown;
+  readonly details: Details;
 
-  constructor(code: number, details: unknown) {
+  constructor(code: Code, details: Details) {
     const msg =
       typeof details === "object" &&
       details !== null &&

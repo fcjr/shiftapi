@@ -479,7 +479,7 @@ func registerWSRoute[In any](
 	if err := s.api.addWSChannel(
 		s.fullPath, sendType, recvType,
 		msgs.cfg.sendVariants, recvVariants,
-		wsOpts.info, pathFields,
+		wsOpts.info, pathFields, s.allErrors,
 	); err != nil {
 		panic(fmt.Sprintf("shiftapi: AsyncAPI generation failed for %s %s: %v", method, s.fullPath, err))
 	}

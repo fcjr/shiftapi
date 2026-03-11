@@ -155,6 +155,62 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	}
 }
 
+func TestHandleWS_AsyncAPISpec_XErrors(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+				return struct{}{}, nil
+			},
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return nil
+			}),
+		),
+		shiftapi.WithError[*wsAuthError](http.StatusUnauthorized),
+	)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/asyncapi.json", nil)
+	api.ServeHTTP(w, r)
+
+	var spec map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&spec); err != nil {
+		t.Fatalf("decode spec: %v", err)
+	}
+
+	channels := spec["channels"].(map[string]any)
+	ch := channels["/ws"].(map[string]any)
+
+	xErrors, ok := ch["x-errors"].(map[string]any)
+	if !ok {
+		t.Fatal("no x-errors on /ws channel")
+	}
+
+	// Should have 4401 for wsAuthError and 4422 for ValidationError.
+	if _, ok := xErrors["4401"]; !ok {
+		t.Error("missing 4401 in x-errors")
+	}
+	if _, ok := xErrors["4422"]; !ok {
+		t.Error("missing 4422 in x-errors")
+	}
+
+	// Verify the 4401 entry references wsAuthError schema.
+	entry := xErrors["4401"].(map[string]any)
+	ref, _ := entry["$ref"].(string)
+	if ref != "#/components/schemas/wsAuthError" {
+		t.Errorf("4401 $ref = %q, want #/components/schemas/wsAuthError", ref)
+	}
+
+	// Verify the schema is registered in both specs.
+	components := spec["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	if _, ok := schemas["wsAuthError"]; !ok {
+		t.Error("missing wsAuthError schema in AsyncAPI components")
+	}
+}
+
 func TestHandleWS_InputParsing(t *testing.T) {
 	api := shiftapi.New()
 
@@ -378,6 +434,147 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	status := websocket.CloseStatus(err)
 	if status != websocket.StatusInternalError {
 		t.Errorf("close status = %d, want %d", status, websocket.StatusInternalError)
+	}
+}
+
+// wsAuthError is an error type registered via WithError for setup error tests.
+type wsAuthError struct {
+	Message string `json:"message"`
+	Realm   string `json:"realm"`
+}
+
+func (e *wsAuthError) Error() string { return e.Message }
+
+func TestHandleWS_SetupErrorRegistered(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+				return struct{}{}, &wsAuthError{Message: "bad token", Realm: "api"}
+			},
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return nil
+			}),
+		),
+		shiftapi.WithError[*wsAuthError](http.StatusUnauthorized),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// First frame should be the typed error payload.
+	var errResp wsAuthError
+	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
+		t.Fatalf("read error frame: %v", err)
+	}
+	if errResp.Message != "bad token" {
+		t.Errorf("message = %q, want %q", errResp.Message, "bad token")
+	}
+	if errResp.Realm != "api" {
+		t.Errorf("realm = %q, want %q", errResp.Realm, "api")
+	}
+
+	// Connection should close with 4401.
+	_, _, err = conn.Read(ctx)
+	if websocket.CloseStatus(err) != 4401 {
+		t.Errorf("close code = %d, want 4401", websocket.CloseStatus(err))
+	}
+}
+
+func TestHandleWS_SetupErrorUnregistered(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+				return struct{}{}, fmt.Errorf("unexpected failure")
+			},
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return nil
+			}),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// Unregistered error → no error frame, just StatusInternalError close.
+	_, _, err = conn.Read(ctx)
+	if err == nil {
+		t.Fatal("expected error from read")
+	}
+	if websocket.CloseStatus(err) != websocket.StatusInternalError {
+		t.Errorf("close status = %d, want %d", websocket.CloseStatus(err), websocket.StatusInternalError)
+	}
+}
+
+func TestHandleWS_SetupValidationError(t *testing.T) {
+	api := shiftapi.New()
+
+	type SetupInput struct {
+		Code string `query:"code"`
+	}
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			func(r *http.Request, sender *shiftapi.WSSender, in SetupInput) (struct{}, error) {
+				if in.Code != "secret" {
+					return struct{}{}, &shiftapi.ValidationError{
+						Message: "validation failed",
+						Errors: []shiftapi.FieldError{{Field: "code", Message: "invalid code"}},
+					}
+				}
+				return struct{}{}, nil
+			},
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("msg", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return nil
+			}),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/ws?code=wrong", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	// ValidationError is always matched → sent as first frame with 4422.
+	var errResp shiftapi.ValidationError
+	if err := wsjson.Read(ctx, conn, &errResp); err != nil {
+		t.Fatalf("read error frame: %v", err)
+	}
+	if errResp.Message != "validation failed" {
+		t.Errorf("message = %q, want %q", errResp.Message, "validation failed")
+	}
+	if len(errResp.Errors) != 1 || errResp.Errors[0].Field != "code" {
+		t.Errorf("field errors = %v, want [{code invalid code}]", errResp.Errors)
+	}
+
+	_, _, err = conn.Read(ctx)
+	if websocket.CloseStatus(err) != 4422 {
+		t.Errorf("close code = %d, want 4422", websocket.CloseStatus(err))
 	}
 }
 

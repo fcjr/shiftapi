@@ -45,11 +45,31 @@ function buildWSChannelsType(asyncapiSpec: object | null): string {
   if (!channels || Object.keys(channels).length === 0) return "";
 
   const entries: string[] = [];
+  let hasErrors = false;
   for (const [path, channel] of Object.entries(channels) as [string, any][]) {
     const sendType = resolveMessageType(channel.subscribe?.message, spec);
     const recvType = resolveMessageType(channel.publish?.message, spec);
-    entries.push(`    ${JSON.stringify(path)}: {\n      send: ${sendType};\n      receive: ${recvType};\n    };`);
+    const xErrors = channel["x-errors"];
+    let errorsType = "Record<number, unknown>";
+    if (xErrors && typeof xErrors === "object") {
+      hasErrors = true;
+      const errEntries = Object.entries(xErrors)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map(([code, schema]: [string, any]) => {
+          const schemaType = resolvePayloadType(schema, spec);
+          return `${code}: ${schemaType}`;
+        })
+        .filter((e) => !e.endsWith("unknown"));
+      if (errEntries.length > 0) {
+        errorsType = `{ ${errEntries.join("; ")} }`;
+      }
+    }
+    entries.push(`    ${JSON.stringify(path)}: {\n      send: ${sendType};\n      receive: ${recvType};\n      errors: ${errorsType};\n    };`);
   }
+
+  const wsErrorType = hasErrors
+    ? `\n  type WSErrorFor<P extends WSPaths> = { [C in keyof WSChannels[P]["errors"]]: WSError<C, WSChannels[P]["errors"][C]> }[keyof WSChannels[P]["errors"]];`
+    : "";
 
   return `
   interface WSChannels {
@@ -58,7 +78,7 @@ ${entries.join("\n")}
 
   type WSPaths = keyof WSChannels;
   type WSSend<P extends WSPaths> = WSChannels[P]["send"];
-  type WSRecv<P extends WSPaths> = WSChannels[P]["receive"];
+  type WSRecv<P extends WSPaths> = WSChannels[P]["receive"];${wsErrorType}
 
   export function websocket<P extends WSPaths>(
     path: P,
