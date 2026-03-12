@@ -52,6 +52,42 @@ func readWSError(t *testing.T, ctx context.Context, conn *websocket.Conn, v any)
 	return frame
 }
 
+type wsNoJsonTags struct {
+	Text string
+}
+
+func TestHandleWS_OpenAPISchemaNoJsonTags(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			noSetup,
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("echo", func(sender *shiftapi.WSSender, _ struct{}, msg wsNoJsonTags) error {
+				return nil
+			}),
+		),
+	)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/openapi.json", nil)
+	api.ServeHTTP(w, r)
+
+	var spec map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&spec); err != nil {
+		t.Fatalf("decode spec: %v", err)
+	}
+
+	oaComponents := spec["components"].(map[string]any)
+	oaSchemas := oaComponents["schemas"].(map[string]any)
+
+	// Even without json tags, the schema should be registered in OpenAPI
+	// so the generated TypeScript type doesn't resolve to any.
+	if _, ok := oaSchemas["wsNoJsonTags"]; !ok {
+		t.Error("missing wsNoJsonTags schema in OpenAPI components — would resolve to any in generated client")
+	}
+}
+
 func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
