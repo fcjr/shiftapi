@@ -82,16 +82,16 @@ func isNoBodyStatus(status int) bool {
 // parameter lists that were previously passed to parseInput, adapt, and
 // adaptRaw.
 type handlerConfig struct {
-	hasPath      bool
-	hasQuery     bool
-	hasHeader    bool
-	decodeBody   bool
-	hasForm      bool
-	maxUploadSize int64
-	staticHeaders []staticResponseHeader
-	errLookup     errorLookup
-	validate      func(any) error
-	badRequestFn  func(error) any
+	hasPath          bool
+	hasQuery         bool
+	hasHeader        bool
+	decodeBody       bool
+	hasForm          bool
+	maxUploadSize    int64
+	staticHeaders    []staticResponseHeader
+	errLookup        errorLookup
+	validate         func(any) error
+	badRequestFn     func(error) any
 	internalServerFn func(error) any
 }
 

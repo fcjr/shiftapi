@@ -91,19 +91,22 @@ func buildErrorLookup(entries []errorEntry) errorLookup {
 // [errors.As]), it is serialized as JSON with the declared status code.
 //
 // WithError returns an [Option] that works at any level:
+//
 //   - [New] — applies to all routes (API-level)
+//
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
+//
 //   - [Handle] — applies to a single route
 //
-//	api := shiftapi.New(
-//	    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
-//	)
-//	v1 := api.Group("/api/v1",
-//	    shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
-//	)
-//	shiftapi.Handle(v1, "GET /users/{id}", getUser,
-//	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
-//	)
+//     api := shiftapi.New(
+//     shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+//     )
+//     v1 := api.Group("/api/v1",
+//     shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
+//     )
+//     shiftapi.Handle(v1, "GET /users/{id}", getUser,
+//     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+//     )
 func WithError[T error](status int) Option {
 	t := reflect.TypeFor[T]()
 	// Normalize to pointer so errors.As works correctly.
@@ -119,19 +122,22 @@ func WithError[T error](status int) Option {
 // applied in order: the first argument wraps outermost.
 //
 // WithMiddleware returns an [Option] that works at any level:
+//
 //   - [New] — applies to all routes (API-level)
+//
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
+//
 //   - [Handle] — applies to a single route
 //
-//	api := shiftapi.New(
-//	    shiftapi.WithMiddleware(cors, logging),
-//	)
-//	v1 := api.Group("/api/v1",
-//	    shiftapi.WithMiddleware(auth),
-//	)
-//	shiftapi.Handle(v1, "GET /admin", getAdmin,
-//	    shiftapi.WithMiddleware(adminOnly),
-//	)
+//     api := shiftapi.New(
+//     shiftapi.WithMiddleware(cors, logging),
+//     )
+//     v1 := api.Group("/api/v1",
+//     shiftapi.WithMiddleware(auth),
+//     )
+//     shiftapi.Handle(v1, "GET /admin", getAdmin,
+//     shiftapi.WithMiddleware(adminOnly),
+//     )
 func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 	return func(c sharedConfig) {
 		c.addMiddleware(mw)

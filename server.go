@@ -19,18 +19,18 @@ import (
 // API automatically serves the OpenAPI spec at GET /openapi.json and
 // interactive documentation at GET /docs.
 type API struct {
-	spec             *openapi3.T
-	asyncSpec        *spec.AsyncAPI
-	specGen          *openapi3gen.Generator
-	mux              *http.ServeMux
-	validate         *validator.Validate
-	maxUploadSize    int64
-	badRequestFn     func(error) any // builds the 400 response body from a parse error
-	internalServerFn func(error) any // builds the 500 response body from an unmatched error
-	enumRegistry          map[reflect.Type][]any            // enum values registered via WithEnum
-	globalErrors          []errorEntry                      // error types registered at the API level via WithError
-	middleware            []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
-	staticRespHeaders     []staticResponseHeader            // static response headers registered at the API level
+	spec              *openapi3.T
+	asyncSpec         *spec.AsyncAPI
+	specGen           *openapi3gen.Generator
+	mux               *http.ServeMux
+	validate          *validator.Validate
+	maxUploadSize     int64
+	badRequestFn      func(error) any                   // builds the 400 response body from a parse error
+	internalServerFn  func(error) any                   // builds the 500 response body from an unmatched error
+	enumRegistry      map[reflect.Type][]any            // enum values registered via WithEnum
+	globalErrors      []errorEntry                      // error types registered at the API level via WithError
+	middleware        []func(http.Handler) http.Handler // middleware registered at the API level via WithMiddleware
+	staticRespHeaders []staticResponseHeader            // static response headers registered at the API level
 }
 
 // New creates a new API with the given options. By default the API uses a
@@ -137,7 +137,7 @@ func (a *API) routerImpl() routerData {
 		api:               a,
 		prefix:            "",
 		errors:            a.globalErrors,
-		middleware:         a.middleware,
+		middleware:        a.middleware,
 		staticRespHeaders: a.staticRespHeaders,
 	}
 }

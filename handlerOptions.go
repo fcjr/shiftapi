@@ -9,7 +9,7 @@ type routeConfig struct {
 	info               *RouteInfo
 	status             int
 	errors             []errorEntry
-	middleware          []func(http.Handler) http.Handler
+	middleware         []func(http.Handler) http.Handler
 	staticRespHeaders  []staticResponseHeader
 	contentType        string            // custom response media type
 	responseSchemaType reflect.Type      // optional type for schema generation under the content type
@@ -52,9 +52,9 @@ type routeAndWSAndSSEOption struct {
 	sseFn   func(*sseRouteConfig)
 }
 
-func (o routeAndWSAndSSEOption) applyToRoute(cfg *routeConfig)    { o.routeFn(cfg) }
-func (o routeAndWSAndSSEOption) applyToWS(cfg *wsRouteConfig)     { o.wsFn(cfg) }
-func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig)   { o.sseFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToRoute(cfg *routeConfig)  { o.routeFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToWS(cfg *wsRouteConfig)   { o.wsFn(cfg) }
+func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig) { o.sseFn(cfg) }
 
 // WithRouteInfo sets the route's OpenAPI metadata (summary, description, tags).
 //
@@ -113,4 +113,3 @@ func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOpti
 		}
 	}
 }
-

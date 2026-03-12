@@ -36,24 +36,24 @@ func parsePattern(pattern string) (method, path string) {
 // routeSetup holds the computed values from input type reflection that are
 // shared between registerRoute and registerRawRoute.
 type routeSetup struct {
-	api             *API
-	cfg             routeConfig
-	fullPath        string
-	inType          reflect.Type
-	rawInType       reflect.Type
-	hasPath         bool
-	hasQuery        bool
-	hasHeader       bool
-	hasBody         bool
-	hasForm         bool
-	queryType       reflect.Type
-	headerType      reflect.Type
-	pathType        reflect.Type
-	bodyType        reflect.Type
-	allErrors       []errorEntry
+	api              *API
+	cfg              routeConfig
+	fullPath         string
+	inType           reflect.Type
+	rawInType        reflect.Type
+	hasPath          bool
+	hasQuery         bool
+	hasHeader        bool
+	hasBody          bool
+	hasForm          bool
+	queryType        reflect.Type
+	headerType       reflect.Type
+	pathType         reflect.Type
+	bodyType         reflect.Type
+	allErrors        []errorEntry
 	allStaticHeaders []staticResponseHeader
-	errLookup       errorLookup
-	muxPattern      string
+	errLookup        errorLookup
+	muxPattern       string
 }
 
 // prepareRoute performs the input type reflection, path validation, and schema
@@ -387,8 +387,6 @@ func HandleSSE[In any](router Router, pattern string, fn SSEHandlerFunc[In], opt
 	registerSSERoute(router, method, path, fn, sseOpts)
 }
 
-
-
 func registerWSRoute[In any](
 	router Router,
 	method string,
@@ -499,8 +497,6 @@ func registerWSRoute[In any](
 	s.wrapAndRegister(router, h)
 }
 
-
-
 // HandleWS registers a WebSocket endpoint for the given pattern. Message
 // handling is defined by [WSOn] handlers collected in a [Websocket] block.
 // The framework manages the receive loop, dispatching incoming messages
@@ -548,4 +544,3 @@ func validateWSMessageVariants(variants []WSMessageVariant, optName, method, pat
 		seen[name] = true
 	}
 }
-

@@ -3013,10 +3013,10 @@ func TestSpecFormNoAcceptNoEncoding(t *testing.T) {
 // --- Required field inference tests ---
 
 type RequiredInferenceResponse struct {
-	Name    string  `json:"name"`
-	Age     int     `json:"age"`
+	Name     string  `json:"name"`
+	Age      int     `json:"age"`
 	Nickname *string `json:"nickname"`
-	Bio     *string `json:"bio" validate:"required"`
+	Bio      *string `json:"bio" validate:"required"`
 }
 
 func TestSpecNonPointerFieldsAreRequired(t *testing.T) {
@@ -3098,8 +3098,8 @@ func TestSpecNestedStructFieldsAreRequired(t *testing.T) {
 }
 
 type OptionalAddress struct {
-	Home    *NestedAddress `json:"home"`
-	Work    *NestedAddress `json:"work" validate:"required"`
+	Home *NestedAddress `json:"home"`
+	Work *NestedAddress `json:"work" validate:"required"`
 }
 
 func TestSpecPointerStructFieldRequired(t *testing.T) {
@@ -5496,8 +5496,8 @@ func TestOmitemptyPointerNotRequired(t *testing.T) {
 	api := newTestAPI(t)
 
 	type Resp struct {
-		Name  string  `json:"name"`
-		Score *int    `json:"score,omitempty"`
+		Name  string `json:"name"`
+		Score *int   `json:"score,omitempty"`
 	}
 
 	shiftapi.Handle(api, "GET /user", func(r *http.Request, _ struct{}) (*Resp, error) {

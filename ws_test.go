@@ -693,7 +693,7 @@ func TestHandleWS_SetupValidationError(t *testing.T) {
 				if in.Code != "secret" {
 					return struct{}{}, &shiftapi.ValidationError{
 						Message: "validation failed",
-						Errors: []shiftapi.FieldError{{Field: "code", Message: "invalid code"}},
+						Errors:  []shiftapi.FieldError{{Field: "code", Message: "invalid code"}},
 					}
 				}
 				return struct{}{}, nil

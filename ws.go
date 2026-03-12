@@ -62,7 +62,6 @@ const (
 	WSStatusInternalError   WSStatusCode = 1011
 )
 
-
 // WSCloseStatus extracts the WebSocket close status code from an error.
 // Returns -1 if the error is nil or not a WebSocket close error.
 func WSCloseStatus(err error) WSStatusCode {
