@@ -39,7 +39,7 @@ func (a *API) addWSChannel(
 		channelItem.Parameters[name] = spec.Parameter{Schema: paramSchema}
 	}
 
-	// Subscribe = what clients receive = our Send type (server→client).
+	// Subscribe = what clients receive = our Send type (server -> client).
 	if sendType != nil || len(sendVariants) > 0 {
 		subMsg, err := a.buildWSMessage(sendType, sendVariants)
 		if err != nil {
@@ -51,7 +51,7 @@ func (a *API) addWSChannel(
 		}
 	}
 
-	// Publish = what clients send = our Recv type (client→server).
+	// Publish = what clients send = our Recv type (client -> server).
 	if recvType != nil || len(recvVariants) > 0 {
 		pubMsg, err := a.buildWSMessage(recvType, recvVariants)
 		if err != nil {
@@ -82,7 +82,7 @@ func (a *API) addWSChannel(
 	if len(errors) > 0 {
 		xErrors := make(map[string]interface{}, len(errors)+1)
 		// ValidationError is always matched by resolveError.
-		valName, err := a.registerWSSchema(reflect.TypeOf(ValidationError{}))
+		valName, err := a.registerWSSchema(reflect.TypeFor[ValidationError]())
 		if err == nil {
 			xErrors[fmt.Sprintf("%d", 4000+422%1000)] = map[string]interface{}{
 				"$ref": "#/components/schemas/" + valName,
