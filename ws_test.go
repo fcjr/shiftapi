@@ -181,6 +181,48 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	}
 }
 
+func TestHandleWS_OpenAPISchemaProperties(t *testing.T) {
+	api := shiftapi.New()
+
+	shiftapi.HandleWS(api, "GET /ws",
+		shiftapi.Websocket(
+			noSetup,
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("echo", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return sender.Send(wsServerMsg(msg))
+			}),
+		),
+	)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/openapi.json", nil)
+	api.ServeHTTP(w, r)
+
+	var spec map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&spec); err != nil {
+		t.Fatalf("decode spec: %v", err)
+	}
+
+	oaComponents := spec["components"].(map[string]any)
+	oaSchemas := oaComponents["schemas"].(map[string]any)
+
+	// Verify WS schemas have actual properties, not just empty entries.
+	// This ensures openapi-typescript generates real types (not any).
+	for _, name := range []string{"wsServerMsg", "wsClientMsg"} {
+		schema, ok := oaSchemas[name].(map[string]any)
+		if !ok {
+			t.Fatalf("missing %s schema in OpenAPI components", name)
+		}
+		props, ok := schema["properties"].(map[string]any)
+		if !ok || len(props) == 0 {
+			t.Errorf("schema %s has no properties; would resolve to any in generated client", name)
+		}
+		if _, ok := props["text"]; !ok {
+			t.Errorf("schema %s missing 'text' property", name)
+		}
+	}
+}
+
 func TestHandleWS_AsyncAPISpec_XErrors(t *testing.T) {
 	api := shiftapi.New()
 

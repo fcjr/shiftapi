@@ -24,6 +24,10 @@
     "./internal": {
       "types": "./dist/internal.d.mts",
       "default": "./dist/internal.mjs"
+    },
+    "./internal/browser": {
+      "types": "./dist/browser.d.mts",
+      "default": "./dist/browser.mjs"
     }
   },
   "bin": {
