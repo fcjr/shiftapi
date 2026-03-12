@@ -97,4 +97,4 @@ MIT
 
 ---
 
-<p align="center">Made with love at the <a href="https://www.recurse.com">Recurse Center</a></p>
+<p align="center">Made with love for types at the <a href="https://www.recurse.com">Recurse Center</a></p>

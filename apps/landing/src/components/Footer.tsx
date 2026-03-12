@@ -9,7 +9,7 @@ export function Footer() {
           <span>ShiftAPI</span>
         </div>
         <div className="flex-1 text-center text-[13px] text-text-muted">
-          Made with love at the{" "}
+          Made with love for types at the{" "}
           <a
             href="https://www.recurse.com"
             target="_blank"
