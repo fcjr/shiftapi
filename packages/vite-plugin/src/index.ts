@@ -81,6 +81,7 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
             proxy: {
               [DEV_API_PREFIX]: {
                 target: targetUrl,
+                ws: true,
                 rewrite: (path: string) =>
                   path.replace(new RegExp(`^${DEV_API_PREFIX}`), "") || "/",
               },

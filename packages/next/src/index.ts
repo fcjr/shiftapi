@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 import { readFileSync, watch, type FSWatcher } from "node:fs";
 import { createRequire } from "node:module";
+import { Server as HttpServer, request as httpRequest } from "node:http";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import {
   loadConfig,
   findConfigDir,
@@ -43,6 +46,81 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as Record<string, unknown>).then === "function"
   );
+}
+
+/**
+ * Intercepts the Next.js dev server's HTTP server to proxy WebSocket upgrade
+ * requests matching the dev API prefix to the Go server. This works with both
+ * webpack and Turbopack since it operates at the Node.js http layer.
+ *
+ * Temporarily patches `http.Server.prototype.listen` to capture the first
+ * server that starts listening, attaches the upgrade handler, then restores
+ * the original method. The Go port is resolved asynchronously, so the handler
+ * buffers upgrade requests until the port is known via `setPort()`.
+ */
+function setupWSUpgradeProxy(prefix: string): { setPort: (port: number) => void } {
+  let goPort = 0;
+
+  function attachUpgradeHandler(server: HttpServer) {
+    server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+      if (!req.url?.startsWith(prefix) || goPort === 0) return;
+
+      const targetPath = req.url.slice(prefix.length) || "/";
+      const proxyReq = httpRequest({
+        hostname: "localhost",
+        port: goPort,
+        path: targetPath,
+        method: "GET",
+        headers: { ...req.headers, host: `localhost:${goPort}` },
+      });
+
+      proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
+        if (socket.destroyed) {
+          proxySocket.destroy();
+          return;
+        }
+        const headers = Object.entries(_proxyRes.headers)
+          .filter(([, v]) => v != null)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n");
+        socket.write(
+          `HTTP/1.1 101 Switching Protocols\r\n${headers}\r\n\r\n`,
+        );
+        if (proxyHead && proxyHead.length > 0) {
+          socket.write(proxyHead);
+        }
+        proxySocket.on("error", () => socket.destroy());
+        socket.on("error", () => proxySocket.destroy());
+        proxySocket.pipe(socket);
+        socket.pipe(proxySocket);
+      });
+
+      proxyReq.on("error", () => socket.destroy());
+
+      // Forward the head buffer (initial bytes after the upgrade request).
+      if (head && head.length > 0) {
+        proxyReq.write(head);
+      }
+      proxyReq.end();
+    });
+  }
+
+  // TODO: Temporarily patch listen to capture the Next.js HTTP server. In
+  // practice Next.js calls listen after config is resolved, so this fires
+  // reliably. If a future Next.js version changes this ordering, we may need
+  // to fall back to scanning process._getActiveHandles() to find the server.
+  const origListen = HttpServer.prototype.listen;
+  HttpServer.prototype.listen = function (this: HttpServer, ...args: unknown[]) {
+    HttpServer.prototype.listen = origListen;
+    attachUpgradeHandler(this);
+    return origListen.apply(this, args as Parameters<typeof origListen>);
+  } as typeof origListen;
+
+  return {
+    setPort(port: number) {
+      goPort = port;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -106,10 +184,15 @@ function applyShiftAPI(
   const openapiDistDir = resolve(require.resolve("openapi-fetch/package.json"), "..", "dist");
   const openapiSource = readFileSync(resolve(openapiDistDir, "index.js"), "utf-8");
 
+  // In dev mode, set up WebSocket upgrade proxy before Next.js creates its
+  // HTTP server. The proxy intercepts upgrade requests on DEV_API_PREFIX and
+  // forwards them to the Go server. The actual port is set once known.
+  const wsProxy = isDev ? setupWSUpgradeProxy(DEV_API_PREFIX) : undefined;
+
   // Kick off async initialization (Go server, type generation) immediately.
   // The promise is awaited lazily by the rewrites hook, which Next.js
   // resolves before compilation starts.
-  const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, opts);
+  const initPromise = initializeAsync(projectRoot, configDir, isDev, openapiSource, opts, wsProxy);
 
   const patched: NextConfigObject = { ...nextConfig };
 
@@ -167,8 +250,8 @@ async function initializeAsync(
   configDir: string,
   isDev: boolean,
   openapiSource: string,
-
   opts?: ShiftAPIPluginOptions,
+  wsProxy?: { setPort: (port: number) => void },
 ): Promise<InitResult> {
   const { config } = await loadConfig(projectRoot, opts?.configPath);
 
@@ -188,6 +271,7 @@ async function initializeAsync(
       parsedUrl,
       basePort,
       openapiSource,
+      wsProxy,
     );
   }
 
@@ -203,12 +287,15 @@ async function initializeDev(
   parsedUrl: URL,
   basePort: number,
   openapiSource: string,
-
+  wsProxy?: { setPort: (port: number) => void },
 ): Promise<InitResult> {
   const goPort = await findFreePort(basePort);
   if (goPort !== basePort) {
     console.log(`[shiftapi] Port ${basePort} is in use, using ${goPort}`);
   }
+
+  // Activate the WebSocket upgrade proxy now that we know the Go port.
+  wsProxy?.setPort(goPort);
 
   const goServer = new GoServerManager(serverEntry, goRoot);
 
