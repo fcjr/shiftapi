@@ -204,7 +204,7 @@ func (a *API) registerWSSchema(t reflect.Type) (string, error) {
 	}
 
 	// Register in OpenAPI components (for openapi-typescript type generation).
-	if schema.Ref != "" && len(schema.Value.Properties) > 0 {
+	if schema.Value != nil && len(schema.Value.Properties) > 0 {
 		a.spec.Components.Schemas[name] = &openapi3.SchemaRef{Value: schema.Value}
 	}
 
