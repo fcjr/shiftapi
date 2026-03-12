@@ -18,7 +18,7 @@ The WebSocket client API is experimental. The API may change in future releases.
 ```typescript
 import { websocket, WSError } from "@shiftapi/client";
 
-const ws = websocket("/echo", {
+const ws = websocket("/ws", {
   params: { query: { token: "abc" } },
 });
 
@@ -28,7 +28,7 @@ await ws.send({ text: "hello" });
 // Receive a single message
 const msg = await ws.receive();
 console.log(msg);
-//          ^? ServerMsg — fully typed
+//          ^? EchoReply — fully typed
 
 // Or iterate over all messages
 try {
@@ -66,7 +66,7 @@ Connections automatically reconnect on unexpected disconnections using exponenti
 Use `onopen` and `onclose` to observe connection state:
 
 ```typescript
-const ws = websocket("/chat");
+const ws = websocket("/ws");
 ws.onopen = () => console.log("connected");
 ws.onclose = () => console.log("disconnected, reconnecting...");
 ```
@@ -79,10 +79,10 @@ To customize or disable reconnection:
 
 ```typescript
 // Disable reconnection
-const ws = websocket("/echo", { reconnect: false });
+const ws = websocket("/ws", { reconnect: false });
 
 // Custom backoff
-const ws = websocket("/echo", {
+const ws = websocket("/ws", {
   reconnect: {
     maxRetries: 5,       // give up after 5 attempts (default: Infinity)
     baseDelay: 500,      // first retry after 500ms (default: 1000)
@@ -167,8 +167,8 @@ The generated `WSChannels` interface includes an `errors` map for each path, and
 ```typescript
 interface WSChannels {
   "/ws": {
-    send: components["schemas"]["ChatMessage"];
-    receive: components["schemas"]["UserMessage"];
+    send: components["schemas"]["EchoRequest"];
+    receive: components["schemas"]["EchoReply"];
     errors: {
       4401: components["schemas"]["AuthError"];
       4422: components["schemas"]["ValidationError"];
@@ -206,13 +206,13 @@ import { websocket, WSError } from "@shiftapi/client";
 import { useEffect, useRef, useState } from "react";
 
 function Chat() {
-  const [messages, setMessages] = useState<ServerMsg[]>([]);
+  const [messages, setMessages] = useState<EchoReply[]>([]);
   const [error, setError] = useState<WSError | null>(null);
   const [connected, setConnected] = useState(false);
-  const wsRef = useRef<ReturnType<typeof websocket<"/echo">> | null>(null);
+  const wsRef = useRef<ReturnType<typeof websocket<"/ws">> | null>(null);
 
   useEffect(() => {
-    const ws = websocket("/echo");
+    const ws = websocket("/ws");
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     wsRef.current = ws;

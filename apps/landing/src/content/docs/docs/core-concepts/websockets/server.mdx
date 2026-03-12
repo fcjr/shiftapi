@@ -14,12 +14,22 @@ sidebar:
 ## Registering WebSocket handlers
 
 ```go
-shiftapi.HandleWS(api, "GET /echo",
+type EchoReply struct {
+    Text string `json:"text"`
+}
+
+type EchoRequest struct {
+    Text string `json:"text"`
+}
+
+shiftapi.HandleWS(api, "GET /ws",
     shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
-        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-            return s.Send(ServerMsg{Text: "echo: " + msg.Text})
+        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+            return struct{}{}, nil
+        },
+        shiftapi.WSSends(shiftapi.WSMessageType[EchoReply]("echo")),
+        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, req EchoRequest) error {
+            return s.Send(EchoReply{Text: "echo: " + req.Text})
         }),
     ),
 )
@@ -58,8 +68,8 @@ The framework reads `{"type": "name", "data": ...}` envelopes from the client, m
 Writes a JSON-encoded message wrapped in a `{"type": name, "data": value}` envelope. The event name is automatically determined from the concrete Go type registered via `WSSends`:
 
 ```go
-s.Send(ChatMessage{User: "alice", Text: "hi"})
-// → {"type": "chat", "data": {"user": "alice", "text": "hi"}}
+s.Send(EchoReply{Text: "hello"})
+// → {"type": "echo", "data": {"text": "hello"}}
 ```
 
 ### Context
@@ -214,12 +224,14 @@ Callbacks are passed as `WSHandler` values to `Websocket()`, alongside `WSOn` ha
 
 ```go
 shiftapi.Websocket(
-    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
-        return &RoomState{}, nil
+    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+        return struct{}{}, nil
     },
-    shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
-    shiftapi.WSOn("message", handleMessage),
-    shiftapi.WSOnDecodeError(func(s *shiftapi.WSSender, state *RoomState, err *shiftapi.WSDecodeError) {
+    shiftapi.WSSends(shiftapi.WSMessageType[EchoReply]("echo")),
+    shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, req EchoRequest) error {
+        return s.Send(EchoReply{Text: "echo: " + req.Text})
+    }),
+    shiftapi.WSOnDecodeError(func(s *shiftapi.WSSender, _ struct{}, err *shiftapi.WSDecodeError) {
         log.Printf("bad payload for %s: %v", err.MessageType(), err.Unwrap())
     }),
 )
@@ -231,12 +243,14 @@ shiftapi.Websocket(
 
 ```go
 shiftapi.Websocket(
-    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (*RoomState, error) {
-        return &RoomState{}, nil
+    func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+        return struct{}{}, nil
     },
-    shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
-    shiftapi.WSOn("message", handleMessage),
-    shiftapi.WSOnUnknownMessage(func(s *shiftapi.WSSender, state *RoomState, msgType string, data json.RawMessage) {
+    shiftapi.WSSends(shiftapi.WSMessageType[EchoReply]("echo")),
+    shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, req EchoRequest) error {
+        return s.Send(EchoReply{Text: "echo: " + req.Text})
+    }),
+    shiftapi.WSOnUnknownMessage(func(s *shiftapi.WSSender, _ struct{}, msgType string, data json.RawMessage) {
         log.Printf("unknown message type: %s", msgType)
     }),
 )
@@ -247,12 +261,14 @@ shiftapi.Websocket(
 WebSocket endpoints are documented in an [AsyncAPI 2.4](https://www.asyncapi.com/) spec served at `GET /asyncapi.json`. Each `HandleWS` call creates a channel with `subscribe` (server→client) and `publish` (client→server) operations derived from `WSSends` and `WSOn` registrations:
 
 ```go
-shiftapi.HandleWS(api, "GET /echo",
+shiftapi.HandleWS(api, "GET /ws",
     shiftapi.Websocket(
-        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
-        shiftapi.WSSends(shiftapi.WSMessageType[ServerMsg]("server")),
-        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, msg ClientMsg) error {
-            return s.Send(ServerMsg{Text: msg.Text})
+        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+            return struct{}{}, nil
+        },
+        shiftapi.WSSends(shiftapi.WSMessageType[EchoReply]("echo")),
+        shiftapi.WSOn("echo", func(s *shiftapi.WSSender, _ struct{}, req EchoRequest) error {
+            return s.Send(EchoReply{Text: "echo: " + req.Text})
         }),
     ),
 )
@@ -264,17 +280,17 @@ Produces:
 asyncapi: 2.4.0
 defaultContentType: application/json
 channels:
-  /echo:
+  /ws:
     subscribe:
       message:
-        name: server
+        name: echo
         payload:
-          $ref: '#/components/schemas/ServerMsg'
+          $ref: '#/components/schemas/EchoReply'
     publish:
       message:
         name: echo
         payload:
-          $ref: '#/components/schemas/ClientMsg'
+          $ref: '#/components/schemas/EchoRequest'
 ```
 
 Message schemas are also registered in the OpenAPI spec's `components/schemas` so the TypeScript codegen can generate types from a single `openapi-typescript` pass.
