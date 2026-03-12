@@ -7,7 +7,7 @@ sidebar:
 
 ShiftAPI's `Handle` function owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: file downloads, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
 
-For SSE and WebSocket use cases, prefer [`HandleSSE`](/docs/core-concepts/server-sent-events) and [`HandleWS`](/docs/core-concepts/websockets) which provide typed abstractions. Use `HandleRaw` when you need custom framing or non-standard behavior.
+For SSE and WebSocket use cases, prefer [`HandleSSE`](/docs/core-concepts/server-sent-events/server) and [`HandleWS`](/docs/core-concepts/websockets/server) which provide typed abstractions. Use `HandleRaw` when you need custom framing or non-standard behavior.
 
 ## Registering raw handlers
 
@@ -243,8 +243,8 @@ shiftapi.HandleRaw(api, "GET /events", sseHandler,
 | Use case | Recommendation |
 |----------|---------------|
 | JSON API endpoint | `Handle` — let the framework encode the response |
-| Server-Sent Events (SSE) | [`HandleSSE`](/docs/core-concepts/server-sent-events) — typed writer, auto headers, typed TS client |
-| Bidirectional WebSocket | [`HandleWS`](/docs/core-concepts/websockets) — typed send/receive, auto upgrade, typed TS client |
+| Server-Sent Events (SSE) | [`HandleSSE`](/docs/core-concepts/server-sent-events/server) — typed writer, auto headers, typed TS client |
+| Bidirectional WebSocket | [`HandleWS`](/docs/core-concepts/websockets/server) — typed send/receive, auto upgrade, typed TS client |
 | SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
 | File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
 | Custom WebSocket framing | `HandleRaw` (no `WithContentType` needed) |

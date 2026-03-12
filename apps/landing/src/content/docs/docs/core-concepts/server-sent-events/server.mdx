@@ -1,11 +1,8 @@
 ---
-title: Server-Sent Events
+title: Server
 description: Use HandleSSE for type-safe Server-Sent Events with automatic OpenAPI spec generation and typed TypeScript clients.
 sidebar:
-  order: 8
-  badge:
-    text: Experimental
-    variant: caution
+  order: 1
 ---
 
 :::caution
@@ -172,150 +169,7 @@ You don't need to use `WithContentType` or `ResponseSchema` — `HandleSSE` sets
 
 ## TypeScript client
 
-`shiftapi prepare` generates a fully-typed `sse` function constrained to SSE paths only — calling `sse` on a non-SSE path is a compile-time error.
-
-### sse
-
-`sse` returns an async iterable stream with a `close()` method:
-
-```typescript
-import { sse } from "@shiftapi/client";
-
-const stream = sse("/events", {
-  params: { query: { channel: "general" } },
-});
-
-for await (const event of stream) {
-  console.log(event);
-  //          ^? ChatEvent — fully typed
-}
-```
-
-To stop the stream:
-
-```typescript
-stream.close();
-```
-
-You can also pass an `AbortSignal`:
-
-```typescript
-const controller = new AbortController();
-const stream = sse("/events", { signal: controller.signal });
-
-// later...
-controller.abort();
-```
-
-### Path parameters and headers
-
-Path parameters and request headers are type-checked. If your Go handler declares `path:"room_id"` or `header:"X-Token"` on the input struct, the generated types require them:
-
-```typescript
-const stream = sse("/rooms/{room_id}/events", {
-  params: {
-    path: { room_id: "abc" },
-    header: { "X-Token": "secret" },
-  },
-});
-```
-
-### React
-
-Use `sse` with React state. You control how events are accumulated:
-
-```tsx
-import { sse } from "@shiftapi/client";
-import { useEffect, useState } from "react";
-
-function ChatFeed() {
-  const [messages, setMessages] = useState<ChatEvent[]>([]);
-
-  useEffect(() => {
-    const stream = sse("/chat");
-    (async () => {
-      for await (const event of stream) {
-        setMessages((prev) => [...prev, event]);
-      }
-    })();
-    return () => stream.close();
-  }, []);
-
-  return (
-    <ul>
-      {messages.map((msg, i) => (
-        <li key={i}>{msg.user}: {msg.message}</li>
-      ))}
-    </ul>
-  );
-}
-```
-
-For a "latest value" pattern (dashboards, tickers):
-
-```tsx
-function TickerDisplay() {
-  const [tick, setTick] = useState<Tick | null>(null);
-
-  useEffect(() => {
-    const stream = sse("/ticks");
-    (async () => {
-      for await (const event of stream) setTick(event);
-    })();
-    return () => stream.close();
-  }, []);
-
-  if (!tick) return <div>Connecting...</div>;
-  return <div>Last tick: {tick.time}</div>;
-}
-```
-
-### Svelte
-
-```svelte
-<script>
-  import { sse } from "@shiftapi/client";
-
-  let messages = [];
-
-  const stream = sse("/chat");
-  (async () => {
-    for await (const event of stream) {
-      messages = [...messages, event];
-    }
-  })();
-</script>
-
-<ul>
-  {#each messages as msg}
-    <li>{msg.user}: {msg.message}</li>
-  {/each}
-</ul>
-```
-
-## Route options
-
-All standard route options work with `HandleSSE`:
-
-```go
-shiftapi.HandleSSE(api, "GET /events", handler,
-    shiftapi.SSESends(shiftapi.SSEEventType[Event]("event")),
-    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
-        Summary: "Subscribe to events",
-        Tags:    []string{"events"},
-    }),
-    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
-    shiftapi.WithMiddleware(auth),
-)
-```
-
-| Option | Description |
-|--------|-------------|
-| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
-| `WithError[T](code)` | Declare an error type at a status code |
-| `WithMiddleware(mw...)` | Apply HTTP middleware |
-| `WithResponseHeader(name, value)` | Set a static response header |
-| `SSESends(variants...)` | Declare discriminated union event types (see above) |
+See [SSE Client](/docs/core-concepts/server-sent-events/client) for the full TypeScript client documentation, including the generated `sse()` function, framework-specific examples, and discriminated unions.
 
 ## Discriminated union events
 
@@ -380,26 +234,29 @@ paths:
                   propertyName: event
 ```
 
-### TypeScript discriminated unions
+## Route options
 
-The generated TypeScript client automatically narrows event types based on the `event` field:
+All standard route options work with `HandleSSE`:
 
-```typescript
-import { sse } from "@shiftapi/client";
-
-const stream = sse("/chat");
-
-for await (const msg of stream) {
-  if (msg.event === "message") {
-    console.log(msg.data.text);
-    //                  ^? string — narrowed to MessageData
-  } else if (msg.event === "join") {
-    console.log(msg.data.user);
-    //                  ^? string — narrowed to JoinData
-  }
-}
+```go
+shiftapi.HandleSSE(api, "GET /events", handler,
+    shiftapi.SSESends(shiftapi.SSEEventType[Event]("event")),
+    shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+        Summary: "Subscribe to events",
+        Tags:    []string{"events"},
+    }),
+    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
+    shiftapi.WithMiddleware(auth),
+)
 ```
 
+| Option | Description |
+|--------|-------------|
+| `WithRouteInfo(info)` | Set OpenAPI summary, description, and tags |
+| `WithError[T](code)` | Declare an error type at a status code |
+| `WithMiddleware(mw...)` | Apply HTTP middleware |
+| `WithResponseHeader(name, value)` | Set a static response header |
+| `SSESends(variants...)` | Declare discriminated union event types (see above) |
 
 ## When to use HandleSSE vs HandleRaw
 
@@ -408,7 +265,7 @@ for await (const msg of stream) {
 | SSE with typed events | `HandleSSE` — typed writer, auto headers, typed TS client |
 | SSE with custom framing | `HandleRaw` + `WithContentType("text/event-stream")` |
 | File download | `HandleRaw` + `WithContentType("application/octet-stream")` |
-| Bidirectional real-time | [`HandleWS`](/docs/core-concepts/websockets) — typed handlers, auto dispatch |
+| Bidirectional real-time | [`HandleWS`](/docs/core-concepts/websockets/server) — typed handlers, auto dispatch |
 | JSON API endpoint | `Handle` |
 
 `HandleSSE` is the recommended approach for SSE. Use [`HandleRaw`](/docs/core-concepts/raw-handlers) only when you need custom SSE framing or non-standard behavior.

@@ -1,11 +1,8 @@
 ---
-title: WebSockets
+title: Server
 description: Use HandleWS for type-safe bidirectional WebSocket communication with automatic AsyncAPI spec generation and typed TypeScript clients.
 sidebar:
   order: 9
-  badge:
-    text: Experimental
-    variant: caution
 ---
 
 :::caution
@@ -205,73 +202,7 @@ shiftapi.HandleWS(api, "GET /ws",
 )
 ```
 
-Error types registered via `WithError` are included in the generated TypeScript types. The codegen produces a `WSErrorFor<P>` type that narrows `WSError` by close code:
-
-```typescript
-import { websocket, WSError } from "@shiftapi/client";
-
-const ws = websocket("/ws");
-
-try {
-  for await (const msg of ws) {
-    console.log(msg);
-  }
-} catch (err) {
-  if (err instanceof WSError) {
-    if (err.code === 4401) {
-      console.log(err.details.realm);
-      //                      ^? string — narrowed to AuthError
-    }
-  }
-}
-```
-
-The generated `WSChannels` interface includes an `errors` map for each path:
-
-```typescript
-interface WSChannels {
-  "/ws": {
-    send: components["schemas"]["ChatMessage"];
-    receive: components["schemas"]["UserMessage"];
-    errors: {
-      4401: components["schemas"]["AuthError"];
-      4422: components["schemas"]["ValidationError"];
-    };
-  };
-}
-```
-
-### Handling input errors on the client
-
-The generated TypeScript client detects input errors automatically. When the server closes the connection with a `4xxx` code, the error payload (sent as the first frame) is wrapped in a `WSError`. Input errors are thrown from `for await`, `receive()`, and `send()`. Normal disconnects stop iteration silently.
-
-```typescript
-import { websocket, WSError } from "@shiftapi/client";
-
-const ws = websocket("/rooms/{room}", {
-  params: { path: { room: "general" } },
-  // missing required query param "token"
-});
-
-try {
-  for await (const msg of ws) {
-    console.log(msg);
-  }
-} catch (err) {
-  if (err instanceof WSError) {
-    console.log(err.code);    // 4422
-    console.log(err.message);  // "validation failed"
-    console.log(err.details);
-    // { message: "validation failed", errors: [{ field: "Token", message: "this field is required" }] }
-  }
-}
-```
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `code` | `Code` | The WebSocket close code (e.g. `4401`, `4422`). Narrows to a literal type when error types are registered via `WithError`. |
-| `message` | `string` | The error message from the server |
-| `details` | `Details` | The structured error payload. Narrows to the registered error type based on `code` when using the generated `WSErrorFor<P>` type. |
+Error types registered via `WithError` are included in the generated TypeScript types. See [WebSocket Client — Error handling](/docs/core-concepts/websockets/client#error-handling) for how errors surface on the client.
 
 ## Callbacks
 
@@ -350,102 +281,7 @@ Message schemas are also registered in the OpenAPI spec's `components/schemas` s
 
 ## TypeScript client
 
-`shiftapi prepare` generates a fully-typed `websocket` function constrained to WebSocket paths only — calling `websocket` on a non-WebSocket path is a compile-time error.
-
-### websocket
-
-`websocket` returns a `WSConnection` with typed `send`, `receive`, async iteration, and `close`:
-
-```typescript
-import { websocket, WSError } from "@shiftapi/client";
-
-const ws = websocket("/echo", {
-  params: { query: { token: "abc" } },
-});
-
-// Send a message
-await ws.send({ text: "hello" });
-
-// Receive a single message
-const msg = await ws.receive();
-console.log(msg);
-//          ^? ServerMsg — fully typed
-
-// Or iterate over all messages
-try {
-  for await (const msg of ws) {
-    console.log(msg.text);
-  }
-} catch (err) {
-  if (err instanceof WSError) console.error(err.message);
-}
-```
-
-To close the connection:
-
-```typescript
-ws.close(1000, "done");
-```
-
-### Path parameters
-
-Path parameters are type-checked. If your Go handler declares `path:"room"` on the input struct, the generated types require it:
-
-```typescript
-const ws = websocket("/rooms/{room}", {
-  params: {
-    path: { room: "general" },
-    query: { token: "secret" },
-  },
-});
-```
-
-### React
-
-Use `websocket` with React state for a chat-style component:
-
-```tsx
-import { websocket, WSError } from "@shiftapi/client";
-import { useEffect, useRef, useState } from "react";
-
-function Chat() {
-  const [messages, setMessages] = useState<ServerMsg[]>([]);
-  const [error, setError] = useState<WSError | null>(null);
-  const wsRef = useRef<ReturnType<typeof websocket<"/echo">> | null>(null);
-
-  useEffect(() => {
-    const ws = websocket("/echo");
-    wsRef.current = ws;
-    (async () => {
-      try {
-        for await (const msg of ws) {
-          setMessages((prev) => [...prev, msg]);
-        }
-      } catch (err) {
-        if (err instanceof WSError) setError(err);
-      }
-    })();
-    return () => ws.close();
-  }, []);
-
-  const send = (text: string) => {
-    wsRef.current?.send({ text });
-  };
-
-  if (error) return <div>Connection error: {error.message}</div>;
-
-  return (
-    <div>
-      <ul>
-        {messages.map((msg, i) => (
-          <li key={i}>{msg.text}</li>
-        ))}
-      </ul>
-      <button onClick={() => send("hello")}>Send</button>
-    </div>
-  );
-}
-```
+See [WebSocket Client](/docs/core-concepts/websockets/client) for the full TypeScript client documentation, including the generated `websocket()` function, reconnection, error handling on the client, and React examples.
 
 ## Multi-type messages
 
@@ -488,45 +324,6 @@ Error frames use a distinct `{error, code, data}` envelope so the client can alw
 
 ```json
 {"error": true, "code": 4401, "data": {"message": "invalid token", "realm": "chat"}}
-```
-
-### Generated AsyncAPI schema
-
-`WSSends` produces `oneOf` message definitions in the AsyncAPI spec with `{type, data}` envelope payloads:
-
-```yaml
-channels:
-  /chat:
-    subscribe:
-      message:
-        oneOf:
-          - $ref: '#/components/messages/chat_ChatMessage'
-          - $ref: '#/components/messages/system_SystemMessage'
-    publish:
-      message:
-        name: message
-        payload:
-          $ref: '#/components/schemas/UserMessage'
-```
-
-### TypeScript discriminated unions
-
-The generated TypeScript client automatically narrows message types based on the `type` field:
-
-```typescript
-import { websocket } from "@shiftapi/client";
-
-const ws = websocket("/chat");
-
-for await (const msg of ws) {
-  if (msg.type === "chat") {
-    console.log(msg.data.text);
-    //                  ^? string — narrowed to ChatMessage
-  } else if (msg.type === "system") {
-    console.log(msg.data.info);
-    //                  ^? string — narrowed to SystemMessage
-  }
-}
 ```
 
 ### Multiple receive handlers
@@ -607,6 +404,6 @@ The following are arguments to `Websocket()`:
 | Use case | Recommendation |
 |----------|---------------|
 | Bidirectional real-time (chat, games) | `HandleWS` — typed handlers, auto dispatch, auto upgrade |
-| Server push only (feeds, notifications) | [`HandleSSE`](/docs/core-concepts/server-sent-events) — simpler, works through proxies |
+| Server push only (feeds, notifications) | [`HandleSSE`](/docs/core-concepts/server-sent-events/server) — simpler, works through proxies |
 | JSON API endpoint | `Handle` — let the framework encode the response |
 | Custom WebSocket framing | `HandleRaw` — direct `ResponseWriter` control |

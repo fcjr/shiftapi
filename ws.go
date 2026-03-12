@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"reflect"
@@ -279,6 +280,11 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 		if err := wsjson.Read(ctx, conn, &envelope); err != nil {
 			if websocket.CloseStatus(err) != -1 {
 				return // clean close
+			}
+			// EOF / broken pipe means the peer disconnected (e.g. browser
+			// reload or dev-server restart). Treat as a normal close.
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return
 			}
 			log.Printf("shiftapi: WS read error: %v", err)
 			_ = conn.Close(websocket.StatusInternalError, "internal error")

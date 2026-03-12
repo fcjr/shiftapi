@@ -184,7 +184,6 @@ export default function shiftapiPlugin(opts?: ShiftAPIPluginOptions): Plugin {
             const mod = server.moduleGraph.getModuleById(RESOLVED_MODULE_ID);
             if (mod) {
               server.moduleGraph.invalidateModule(mod);
-              server.ws.send({ type: "full-reload" });
             }
             console.log("[shiftapi] Types regenerated.");
           }

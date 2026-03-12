@@ -1,0 +1,151 @@
+---
+title: Client
+description: Use the generated sse() function for type-safe Server-Sent Event streams with React, Svelte, and vanilla TypeScript.
+sidebar:
+  order: 2
+---
+
+:::caution
+The SSE client API is experimental. The API may change in future releases.
+:::
+
+`shiftapi prepare` generates a fully-typed `sse` function constrained to SSE paths only — calling `sse` on a non-SSE path is a compile-time error.
+
+## Basic usage
+
+`sse` returns an async iterable stream with a `close()` method:
+
+```typescript
+import { sse } from "@shiftapi/client";
+
+const stream = sse("/events", {
+  params: { query: { channel: "general" } },
+});
+
+for await (const event of stream) {
+  console.log(event);
+  //          ^? ChatEvent — fully typed
+}
+```
+
+To stop the stream:
+
+```typescript
+stream.close();
+```
+
+You can also pass an `AbortSignal`:
+
+```typescript
+const controller = new AbortController();
+const stream = sse("/events", { signal: controller.signal });
+
+// later...
+controller.abort();
+```
+
+## Path parameters and headers
+
+Path parameters and request headers are type-checked. If your Go handler declares `path:"room_id"` or `header:"X-Token"` on the input struct, the generated types require them:
+
+```typescript
+const stream = sse("/rooms/{room_id}/events", {
+  params: {
+    path: { room_id: "abc" },
+    header: { "X-Token": "secret" },
+  },
+});
+```
+
+## Discriminated unions
+
+For endpoints that emit multiple event types (registered with `SSESends` on the Go side), the generated client narrows event types based on the `event` field:
+
+```typescript
+import { sse } from "@shiftapi/client";
+
+const stream = sse("/chat");
+
+for await (const msg of stream) {
+  if (msg.event === "message") {
+    console.log(msg.data.text);
+    //                  ^? string — narrowed to MessageData
+  } else if (msg.event === "join") {
+    console.log(msg.data.user);
+    //                  ^? string — narrowed to JoinData
+  }
+}
+```
+
+## React
+
+Use `sse` with React state. You control how events are accumulated:
+
+```tsx
+import { sse } from "@shiftapi/client";
+import { useEffect, useState } from "react";
+
+function ChatFeed() {
+  const [messages, setMessages] = useState<ChatEvent[]>([]);
+
+  useEffect(() => {
+    const stream = sse("/chat");
+    (async () => {
+      for await (const event of stream) {
+        setMessages((prev) => [...prev, event]);
+      }
+    })();
+    return () => stream.close();
+  }, []);
+
+  return (
+    <ul>
+      {messages.map((msg, i) => (
+        <li key={i}>{msg.user}: {msg.message}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+For a "latest value" pattern (dashboards, tickers):
+
+```tsx
+function TickerDisplay() {
+  const [tick, setTick] = useState<Tick | null>(null);
+
+  useEffect(() => {
+    const stream = sse("/ticks");
+    (async () => {
+      for await (const event of stream) setTick(event);
+    })();
+    return () => stream.close();
+  }, []);
+
+  if (!tick) return <div>Connecting...</div>;
+  return <div>Last tick: {tick.time}</div>;
+}
+```
+
+## Svelte
+
+```svelte
+<script>
+  import { sse } from "@shiftapi/client";
+
+  let messages = [];
+
+  const stream = sse("/chat");
+  (async () => {
+    for await (const event of stream) {
+      messages = [...messages, event];
+    }
+  })();
+</script>
+
+<ul>
+  {#each messages as msg}
+    <li>{msg.user}: {msg.message}</li>
+  {/each}
+</ul>
+```

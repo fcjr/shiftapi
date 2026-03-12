@@ -1,0 +1,251 @@
+---
+title: Client
+description: Use the generated websocket() function for type-safe WebSocket connections with automatic reconnection, error handling, and React integration.
+sidebar:
+  order: 10
+---
+
+:::caution
+The WebSocket client API is experimental. The API may change in future releases.
+:::
+
+`shiftapi prepare` generates a fully-typed `websocket` function constrained to WebSocket paths only — calling `websocket` on a non-WebSocket path is a compile-time error.
+
+## Basic usage
+
+`websocket` returns a `WSConnection` with typed `send`, `receive`, async iteration, and `close`:
+
+```typescript
+import { websocket, WSError } from "@shiftapi/client";
+
+const ws = websocket("/echo", {
+  params: { query: { token: "abc" } },
+});
+
+// Send a message
+await ws.send({ text: "hello" });
+
+// Receive a single message
+const msg = await ws.receive();
+console.log(msg);
+//          ^? ServerMsg — fully typed
+
+// Or iterate over all messages
+try {
+  for await (const msg of ws) {
+    console.log(msg.text);
+  }
+} catch (err) {
+  if (err instanceof WSError) console.error(err.message);
+}
+```
+
+To close the connection:
+
+```typescript
+ws.close(1000, "done");
+```
+
+## Path parameters
+
+Path parameters are type-checked. If your Go handler declares `path:"room"` on the input struct, the generated types require it:
+
+```typescript
+const ws = websocket("/rooms/{room}", {
+  params: {
+    path: { room: "general" },
+    query: { token: "secret" },
+  },
+});
+```
+
+## Reconnection
+
+Connections automatically reconnect on unexpected disconnections using exponential backoff. This covers network blips, server restarts, and dev-server hot reloads. `send()` throws if the connection is not currently open — messages are never silently buffered, since server state may have been lost.
+
+Use `onopen` and `onclose` to observe connection state:
+
+```typescript
+const ws = websocket("/chat");
+ws.onopen = () => console.log("connected");
+ws.onclose = () => console.log("disconnected, reconnecting...");
+```
+
+Reconnection does **not** occur when:
+- You call `ws.close()` explicitly
+- The server sends a `WSError` (application-level rejection like `4401` or `4422`)
+
+To customize or disable reconnection:
+
+```typescript
+// Disable reconnection
+const ws = websocket("/echo", { reconnect: false });
+
+// Custom backoff
+const ws = websocket("/echo", {
+  reconnect: {
+    maxRetries: 5,       // give up after 5 attempts (default: Infinity)
+    baseDelay: 500,      // first retry after 500ms (default: 1000)
+    maxDelay: 10000,     // cap backoff at 10s (default: 30000)
+  },
+});
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `reconnect` | `true` | `true` to reconnect with defaults, `false` to disable, or a `ReconnectOptions` object |
+| `reconnect.maxRetries` | `Infinity` | Maximum reconnect attempts before giving up |
+| `reconnect.baseDelay` | `1000` | Initial delay in ms (doubled each attempt) |
+| `reconnect.maxDelay` | `30000` | Maximum delay in ms between attempts |
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `onopen` | `null` | Called when the connection opens (including after reconnection) |
+| `onclose` | `null` | Called when the connection closes unexpectedly (not after explicit `close()`) |
+
+## Error handling
+
+### WSError
+
+When the server rejects a connection (input validation, setup errors, or registered error types), it sends a structured error frame before closing with a `4xxx` code. The client wraps this in a `WSError`:
+
+```typescript
+import { websocket, WSError } from "@shiftapi/client";
+
+const ws = websocket("/ws");
+
+try {
+  for await (const msg of ws) {
+    console.log(msg);
+  }
+} catch (err) {
+  if (err instanceof WSError) {
+    if (err.code === 4401) {
+      console.log(err.details.realm);
+      //                      ^? string — narrowed to AuthError
+    }
+  }
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `code` | `Code` | The WebSocket close code (e.g. `4401`, `4422`). Narrows to a literal type when error types are registered via `WithError`. |
+| `message` | `string` | The error message from the server |
+| `details` | `Details` | The structured error payload. Narrows to the registered error type based on `code` when using the generated `WSErrorFor<P>` type. |
+
+### Input validation errors
+
+When the server closes the connection with a `4xxx` code, the error payload is wrapped in a `WSError`. Input errors are thrown from `for await`, `receive()`, and `send()`. Normal disconnects stop iteration silently.
+
+```typescript
+import { websocket, WSError } from "@shiftapi/client";
+
+const ws = websocket("/rooms/{room}", {
+  params: { path: { room: "general" } },
+  // missing required query param "token"
+});
+
+try {
+  for await (const msg of ws) {
+    console.log(msg);
+  }
+} catch (err) {
+  if (err instanceof WSError) {
+    console.log(err.code);    // 4422
+    console.log(err.message);  // "validation failed"
+    console.log(err.details);
+    // { message: "validation failed", errors: [{ field: "Token", message: "this field is required" }] }
+  }
+}
+```
+
+### Generated error types
+
+The generated `WSChannels` interface includes an `errors` map for each path, and the codegen produces a `WSErrorFor<P>` type that narrows `WSError` by close code:
+
+```typescript
+interface WSChannels {
+  "/ws": {
+    send: components["schemas"]["ChatMessage"];
+    receive: components["schemas"]["UserMessage"];
+    errors: {
+      4401: components["schemas"]["AuthError"];
+      4422: components["schemas"]["ValidationError"];
+    };
+  };
+}
+```
+
+## Discriminated unions
+
+For endpoints that send multiple message types (registered with `WSSends` on the Go side), the generated client narrows message types based on the `type` field:
+
+```typescript
+import { websocket } from "@shiftapi/client";
+
+const ws = websocket("/chat");
+
+for await (const msg of ws) {
+  if (msg.type === "chat") {
+    console.log(msg.data.text);
+    //                  ^? string — narrowed to ChatMessage
+  } else if (msg.type === "system") {
+    console.log(msg.data.info);
+    //                  ^? string — narrowed to SystemMessage
+  }
+}
+```
+
+## React
+
+Use `websocket` with React state for a chat-style component. The `onClose` callback drives a "reconnecting" indicator, and `onOpen` clears it:
+
+```tsx
+import { websocket, WSError } from "@shiftapi/client";
+import { useEffect, useRef, useState } from "react";
+
+function Chat() {
+  const [messages, setMessages] = useState<ServerMsg[]>([]);
+  const [error, setError] = useState<WSError | null>(null);
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<ReturnType<typeof websocket<"/echo">> | null>(null);
+
+  useEffect(() => {
+    const ws = websocket("/echo");
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+    wsRef.current = ws;
+    (async () => {
+      try {
+        for await (const msg of ws) {
+          setMessages((prev) => [...prev, msg]);
+        }
+      } catch (err) {
+        if (err instanceof WSError) setError(err);
+      }
+    })();
+    return () => ws.close();
+  }, []);
+
+  const send = (text: string) => {
+    wsRef.current?.send({ text });
+  };
+
+  if (error) return <div>Connection error: {error.message}</div>;
+
+  return (
+    <div>
+      {!connected && <div>Reconnecting…</div>}
+      <ul>
+        {messages.map((msg, i) => (
+          <li key={i}>{msg.text}</li>
+        ))}
+      </ul>
+      <button onClick={() => send("hello")} disabled={!connected}>
+        Send
+      </button>
+    </div>
+  );
+}
+```

@@ -32,7 +32,31 @@ export default defineConfig({
         },
         {
           label: "Core Concepts",
-          autogenerate: { directory: "docs/core-concepts" },
+          items: [
+            { slug: "docs/core-concepts/handlers" },
+            { slug: "docs/core-concepts/validation" },
+            { slug: "docs/core-concepts/error-handling" },
+            { slug: "docs/core-concepts/middleware" },
+            { slug: "docs/core-concepts/options" },
+            { slug: "docs/core-concepts/file-uploads" },
+            { slug: "docs/core-concepts/raw-handlers" },
+            {
+              label: "Server-Sent Events",
+              badge: { text: "Experimental", variant: "caution" },
+              items: [
+                { slug: "docs/core-concepts/server-sent-events/server" },
+                { slug: "docs/core-concepts/server-sent-events/client" },
+              ],
+            },
+            {
+              label: "WebSockets",
+              badge: { text: "Experimental", variant: "caution" },
+              items: [
+                { slug: "docs/core-concepts/websockets/server" },
+                { slug: "docs/core-concepts/websockets/client" },
+              ],
+            },
+          ],
         },
         {
           label: "Frontend",
