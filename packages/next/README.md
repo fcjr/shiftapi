@@ -94,3 +94,7 @@ const api = createClient({ baseUrl: "https://api.example.com" });
 ## License
 
 MIT
+
+---
+
+<p align="center">Made with love at the <a href="https://www.recurse.com">Recurse Center</a></p>

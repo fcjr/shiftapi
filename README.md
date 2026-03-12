@@ -506,3 +506,7 @@ Go tests can also be run directly:
 ```bash
 go test -count=1 -tags shiftapidev ./...
 ```
+
+---
+
+<p align="center">Made with love at the <a href="https://www.recurse.com">Recurse Center</a></p>

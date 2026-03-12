@@ -50,3 +50,7 @@ npm run dev
 This starts the Go server and dev server together. The frontend gets fully typed API clients generated from your Go handlers — edit a struct in Go, get instant type errors in TypeScript.
 
 API docs are served at `http://localhost:8080/docs`.
+
+---
+
+<p align="center">Made with love at the <a href="https://www.recurse.com">Recurse Center</a></p>

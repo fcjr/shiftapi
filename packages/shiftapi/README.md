@@ -64,3 +64,7 @@ Typically used in a `postinstall` script:
 ## License
 
 MIT
+
+---
+
+<p align="center">Made with love at the <a href="https://www.recurse.com">Recurse Center</a></p>
