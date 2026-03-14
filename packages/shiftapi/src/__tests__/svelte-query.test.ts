@@ -1,27 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  createQuery as mockCreateQueryFn,
-  createMutation as mockCreateMutationFn,
-  createInfiniteQuery as mockCreateInfiniteQueryFn,
-} from "@tanstack/svelte-query";
 
-// Mock @tanstack/svelte-query before importing the module under test
+// Minimal mock — @tanstack/svelte-query v6 uses Svelte 5 runes (.svelte.js)
+// which can't run outside a Svelte compiler. We mock only to verify the
+// calling convention (Accessor pattern) and capture the options our wrapper
+// passes through to tanstack.
 vi.mock("@tanstack/svelte-query", () => ({
-  createQuery: vi.fn((...args: unknown[]) => {
-    // Svelte query takes a function that returns options
-    const optsFn = args[0] as () => Record<string, unknown>;
-    return { _opts: optsFn() };
-  }),
-  createMutation: vi.fn((...args: unknown[]) => {
-    const optsFn = args[0] as () => Record<string, unknown>;
-    return { _opts: optsFn() };
-  }),
-  createInfiniteQuery: vi.fn((...args: unknown[]) => {
-    const optsFn = args[0] as () => Record<string, unknown>;
-    return { _opts: optsFn() };
-  }),
+  createQuery: vi.fn((optsFn: () => any, qcFn?: () => any) => ({
+    _optsFn: optsFn,
+    _qcFn: qcFn,
+  })),
+  createMutation: vi.fn((optsFn: () => any, qcFn?: () => any) => ({
+    _optsFn: optsFn,
+    _qcFn: qcFn,
+  })),
+  createInfiniteQuery: vi.fn((optsFn: () => any, qcFn?: () => any) => ({
+    _optsFn: optsFn,
+    _qcFn: qcFn,
+  })),
 }));
 
+import {
+  createQuery as tanstackCreateQuery,
+  createMutation as tanstackCreateMutation,
+  createInfiniteQuery as tanstackCreateInfiniteQuery,
+} from "@tanstack/svelte-query";
 import createClient from "../svelte-query";
 import type { Client as FetchClient } from "openapi-fetch";
 
@@ -46,7 +48,7 @@ type MockPaths = {
 };
 
 function createMockFetchClient() {
-  const mockClient = {
+  return {
     GET: vi.fn(),
     POST: vi.fn(),
     PUT: vi.fn(),
@@ -55,11 +57,10 @@ function createMockFetchClient() {
     HEAD: vi.fn(),
     OPTIONS: vi.fn(),
     TRACE: vi.fn(),
-  };
-  return mockClient as unknown as FetchClient<MockPaths>;
+  } as unknown as FetchClient<MockPaths>;
 }
 
-describe("createClient", () => {
+describe("svelte-query createClient", () => {
   let fetchClient: FetchClient<MockPaths>;
   let api: ReturnType<typeof createClient<MockPaths>>;
 
@@ -69,7 +70,7 @@ describe("createClient", () => {
     api = createClient(fetchClient);
   });
 
-  it("returns an object with all expected methods", () => {
+  it("returns all expected methods", () => {
     expect(api).toHaveProperty("queryOptions");
     expect(api).toHaveProperty("createQuery");
     expect(api).toHaveProperty("createInfiniteQuery");
@@ -78,6 +79,9 @@ describe("createClient", () => {
     expect(api).toHaveProperty("prefetchInfiniteQuery");
   });
 
+  // -------------------------------------------------------------------
+  // queryOptions — pure logic, no tanstack dependency
+  // -------------------------------------------------------------------
   describe("queryOptions", () => {
     it("builds query key without init", () => {
       const opts = api.queryOptions("get", "/health");
@@ -96,7 +100,7 @@ describe("createClient", () => {
       ]);
     });
 
-    it("spreads additional options", () => {
+    it("spreads additional options through", () => {
       const opts = api.queryOptions("get", "/health", undefined, {
         enabled: false,
       } as any);
@@ -104,184 +108,292 @@ describe("createClient", () => {
     });
   });
 
+  // -------------------------------------------------------------------
+  // queryFn — pure logic, exercises the openapi-fetch client wrapper
+  // -------------------------------------------------------------------
   describe("queryFn", () => {
-    it("calls the correct client method and returns data", async () => {
-      const mockGet = fetchClient.GET as ReturnType<typeof vi.fn>;
-      mockGet.mockResolvedValue({
+    const queryFnContext = (queryKey: any) => ({
+      queryKey,
+      signal: new AbortController().signal,
+      meta: undefined,
+      client: null as any,
+    });
+
+    it("calls GET on the fetch client and returns data", async () => {
+      (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: { status: "ok" },
         error: undefined,
       });
 
       const opts = api.queryOptions("get", "/health");
-      const result = await opts.queryFn({
-        queryKey: ["get", "/health"] as any,
-        signal: new AbortController().signal,
-        meta: undefined,
-        client: null as any,
-      });
+      const result = await opts.queryFn(queryFnContext(["get", "/health"]));
 
-      expect(mockGet).toHaveBeenCalledWith("/health", {
+      expect(fetchClient.GET).toHaveBeenCalledWith("/health", {
         signal: expect.any(AbortSignal),
       });
       expect(result).toEqual({ status: "ok" });
     });
 
-    it("passes init params to the client", async () => {
-      const mockGet = fetchClient.GET as ReturnType<typeof vi.fn>;
-      mockGet.mockResolvedValue({
+    it("calls POST on the fetch client for post methods", async () => {
+      (fetchClient.POST as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: { message: "hi" },
+        error: undefined,
+      });
+
+      const init = { body: { message: "hi" } };
+      const opts = api.queryOptions("post", "/echo" as any, init);
+      await opts.queryFn(queryFnContext(["post", "/echo", init]));
+
+      expect(fetchClient.POST).toHaveBeenCalledWith("/echo", {
+        signal: expect.any(AbortSignal),
+        body: { message: "hi" },
+      });
+    });
+
+    it("forwards init params to the fetch client", async () => {
+      (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: { items: ["a"], next: 1 },
         error: undefined,
       });
 
       const init = { params: { query: { cursor: 10 } } };
       const opts = api.queryOptions("get", "/items", init);
-      await opts.queryFn({
-        queryKey: ["get", "/items", init] as any,
-        signal: new AbortController().signal,
-        meta: undefined,
-        client: null as any,
-      });
+      await opts.queryFn(queryFnContext(["get", "/items", init]));
 
-      expect(mockGet).toHaveBeenCalledWith("/items", {
+      expect(fetchClient.GET).toHaveBeenCalledWith("/items", {
         signal: expect.any(AbortSignal),
         params: { query: { cursor: 10 } },
       });
     });
 
-    it("throws on error response", async () => {
-      const mockGet = fetchClient.GET as ReturnType<typeof vi.fn>;
-      mockGet.mockResolvedValue({
+    it("throws the error when the fetch client returns an error", async () => {
+      (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: undefined,
         error: { message: "not found" },
       });
 
       const opts = api.queryOptions("get", "/health");
       await expect(
-        opts.queryFn({
-          queryKey: ["get", "/health"] as any,
-          signal: new AbortController().signal,
-          meta: undefined,
-          client: null as any,
-        }),
+        opts.queryFn(queryFnContext(["get", "/health"])),
       ).rejects.toEqual({ message: "not found" });
     });
   });
 
-  describe("createQuery", () => {
-    it("delegates to @tanstack/svelte-query createQuery", () => {
-      api.createQuery("get", "/health");
-      expect(mockCreateQueryFn).toHaveBeenCalledTimes(1);
+  // -------------------------------------------------------------------
+  // v6 Accessor contract — verify options/queryClient are passed as
+  // functions, not raw objects (the v5→v6 breaking change)
+  // -------------------------------------------------------------------
+  describe("v6 Accessor contract", () => {
+    describe("createQuery", () => {
+      it("passes options as a function to tanstack createQuery", () => {
+        api.createQuery("get", "/health");
+        expect(tanstackCreateQuery).toHaveBeenCalledTimes(1);
+        const [optsFn] = (tanstackCreateQuery as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(optsFn).toBeTypeOf("function");
+      });
+
+      it("accessor returns correct queryKey and queryFn", () => {
+        const result = api.createQuery("get", "/health") as any;
+        const opts = result._optsFn();
+        expect(opts.queryKey).toEqual(["get", "/health"]);
+        expect(opts.queryFn).toBeTypeOf("function");
+      });
+
+      it("accessor includes init in queryKey", () => {
+        const result = api.createQuery("get", "/items", {
+          params: { query: { cursor: 3 } },
+        }) as any;
+        const opts = result._optsFn();
+        expect(opts.queryKey).toEqual([
+          "get",
+          "/items",
+          { params: { query: { cursor: 3 } } },
+        ]);
+      });
+
+      it("wraps queryClient in an Accessor when provided", () => {
+        const qc = {} as any;
+        const result = api.createQuery("get", "/health", undefined, undefined, qc) as any;
+        expect(result._qcFn).toBeTypeOf("function");
+        expect(result._qcFn()).toBe(qc);
+      });
+
+      it("passes undefined queryClient Accessor when not provided", () => {
+        const result = api.createQuery("get", "/health") as any;
+        expect(result._qcFn).toBeUndefined();
+      });
     });
 
-    it("passes the correct query key and queryFn", () => {
-      const result = api.createQuery("get", "/health") as any;
-      expect(result._opts.queryKey).toEqual(["get", "/health"]);
-      expect(result._opts.queryFn).toBeTypeOf("function");
+    describe("createMutation", () => {
+      it("passes options as a function to tanstack createMutation", () => {
+        api.createMutation("post", "/echo");
+        expect(tanstackCreateMutation).toHaveBeenCalledTimes(1);
+        const [optsFn] = (tanstackCreateMutation as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(optsFn).toBeTypeOf("function");
+      });
+
+      it("accessor returns correct mutationKey and mutationFn", () => {
+        const result = api.createMutation("post", "/echo") as any;
+        const opts = result._optsFn();
+        expect(opts.mutationKey).toEqual(["post", "/echo"]);
+        expect(opts.mutationFn).toBeTypeOf("function");
+      });
+
+      it("mutationFn calls the correct fetch client method", async () => {
+        (fetchClient.POST as ReturnType<typeof vi.fn>).mockResolvedValue({
+          data: { message: "hello" },
+          error: undefined,
+        });
+
+        const result = api.createMutation("post", "/echo") as any;
+        const opts = result._optsFn();
+        const data = await opts.mutationFn({ body: { message: "hello" } });
+
+        expect(fetchClient.POST).toHaveBeenCalledWith("/echo", {
+          body: { message: "hello" },
+        });
+        expect(data).toEqual({ message: "hello" });
+      });
+
+      it("mutationFn throws on error response", async () => {
+        (fetchClient.POST as ReturnType<typeof vi.fn>).mockResolvedValue({
+          data: undefined,
+          error: { code: 400, message: "bad request" },
+        });
+
+        const result = api.createMutation("post", "/echo") as any;
+        const opts = result._optsFn();
+        await expect(
+          opts.mutationFn({ body: { message: "hello" } }),
+        ).rejects.toEqual({ code: 400, message: "bad request" });
+      });
+
+      it("wraps queryClient in an Accessor when provided", () => {
+        const qc = {} as any;
+        const result = api.createMutation("post", "/echo", undefined, qc) as any;
+        expect(result._qcFn).toBeTypeOf("function");
+        expect(result._qcFn()).toBe(qc);
+      });
+
+      it("passes undefined queryClient Accessor when not provided", () => {
+        const result = api.createMutation("post", "/echo") as any;
+        expect(result._qcFn).toBeUndefined();
+      });
     });
 
-    it("includes init in query key when provided", () => {
-      const result = api.createQuery("get", "/items", {
-        params: { query: { cursor: 3 } },
-      }) as any;
-      expect(result._opts.queryKey).toEqual([
-        "get",
-        "/items",
-        { params: { query: { cursor: 3 } } },
-      ]);
+    describe("createInfiniteQuery", () => {
+      const infiniteOpts = {
+        initialPageParam: 0,
+        getNextPageParam: (lastPage: any) => lastPage.next,
+      } as any;
+
+      it("passes options as a function to tanstack createInfiniteQuery", () => {
+        api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          infiniteOpts,
+        );
+        expect(tanstackCreateInfiniteQuery).toHaveBeenCalledTimes(1);
+        const [optsFn] = (tanstackCreateInfiniteQuery as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(optsFn).toBeTypeOf("function");
+      });
+
+      it("accessor returns correct queryKey and queryFn", () => {
+        const result = api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          infiniteOpts,
+        ) as any;
+        const opts = result._optsFn();
+        expect(opts.queryKey).toEqual([
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+        ]);
+        expect(opts.queryFn).toBeTypeOf("function");
+      });
+
+      it("strips pageParamName from options passed to tanstack", () => {
+        const result = api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          { ...infiniteOpts, pageParamName: "offset" },
+        ) as any;
+        const opts = result._optsFn();
+        expect(opts).not.toHaveProperty("pageParamName");
+      });
+
+      it("infinite queryFn merges pageParam into query using default cursor key", async () => {
+        (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+          data: { items: ["a"], next: 1 },
+          error: undefined,
+        });
+
+        const result = api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          infiniteOpts,
+        ) as any;
+        const opts = result._optsFn();
+
+        await opts.queryFn({
+          queryKey: ["get", "/items", { params: { query: { cursor: 0 } } }],
+          pageParam: 42,
+          signal: new AbortController().signal,
+        });
+
+        expect(fetchClient.GET).toHaveBeenCalledWith("/items", expect.objectContaining({
+          params: { query: { cursor: 42 } },
+        }));
+      });
+
+      it("infinite queryFn uses custom pageParamName", async () => {
+        (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+          data: { items: ["a"], next: 1 },
+          error: undefined,
+        });
+
+        const result = api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          { ...infiniteOpts, pageParamName: "offset" },
+        ) as any;
+        const opts = result._optsFn();
+
+        await opts.queryFn({
+          queryKey: ["get", "/items", { params: { query: { cursor: 0 } } }],
+          pageParam: 7,
+          signal: new AbortController().signal,
+        });
+
+        expect(fetchClient.GET).toHaveBeenCalledWith("/items", expect.objectContaining({
+          params: { query: { cursor: 0, offset: 7 } },
+        }));
+      });
+
+      it("wraps queryClient in an Accessor when provided", () => {
+        const qc = {} as any;
+        const result = api.createInfiniteQuery(
+          "get", "/items",
+          { params: { query: { cursor: 0 } } },
+          infiniteOpts,
+          qc,
+        ) as any;
+        expect(result._qcFn).toBeTypeOf("function");
+        expect(result._qcFn()).toBe(qc);
+      });
     });
   });
 
-  describe("createMutation", () => {
-    it("delegates to @tanstack/svelte-query createMutation", () => {
-      api.createMutation("post", "/echo");
-      expect(mockCreateMutationFn).toHaveBeenCalledTimes(1);
-    });
-
-    it("sets the correct mutation key", () => {
-      const result = api.createMutation("post", "/echo") as any;
-      expect(result._opts.mutationKey).toEqual(["post", "/echo"]);
-    });
-
-    it("mutationFn calls the correct client method", async () => {
-      const mockPost = fetchClient.POST as ReturnType<typeof vi.fn>;
-      mockPost.mockResolvedValue({
-        data: { message: "hello" },
-        error: undefined,
-      });
-
-      const result = api.createMutation("post", "/echo") as any;
-      const data = await result._opts.mutationFn({
-        body: { message: "hello" },
-      });
-
-      expect(mockPost).toHaveBeenCalledWith("/echo", {
-        body: { message: "hello" },
-      });
-      expect(data).toEqual({ message: "hello" });
-    });
-
-    it("mutationFn throws on error", async () => {
-      const mockPost = fetchClient.POST as ReturnType<typeof vi.fn>;
-      mockPost.mockResolvedValue({
-        data: undefined,
-        error: { code: 400, message: "bad request" },
-      });
-
-      const result = api.createMutation("post", "/echo") as any;
-      await expect(
-        result._opts.mutationFn({ body: { message: "hello" } }),
-      ).rejects.toEqual({ code: 400, message: "bad request" });
-    });
-  });
-
-  describe("createInfiniteQuery", () => {
-    it("delegates to @tanstack/svelte-query createInfiniteQuery", () => {
-      api.createInfiniteQuery(
-        "get",
-        "/items",
-        { params: { query: { cursor: 0 } } },
-        {
-          initialPageParam: 0,
-          getNextPageParam: (lastPage: any) => lastPage.next,
-        } as any,
-      );
-      expect(mockCreateInfiniteQueryFn).toHaveBeenCalledTimes(1);
-    });
-
-    it("uses custom pageParamName", () => {
-      const mockGet = fetchClient.GET as ReturnType<typeof vi.fn>;
-      mockGet.mockResolvedValue({
-        data: { items: ["a"], next: 1 },
-        error: undefined,
-      });
-
-      const result = api.createInfiniteQuery(
-        "get",
-        "/items",
-        { params: { query: { cursor: 0 } } },
-        {
-          initialPageParam: 0,
-          getNextPageParam: (lastPage: any) => lastPage.next,
-          pageParamName: "offset",
-        } as any,
-      ) as any;
-
-      // The pageParamName should not leak into rest options
-      expect(result._opts).not.toHaveProperty("pageParamName");
-    });
-  });
-
+  // -------------------------------------------------------------------
+  // prefetchQuery / prefetchInfiniteQuery — pass-through to QueryClient
+  // -------------------------------------------------------------------
   describe("prefetchQuery", () => {
-    it("calls queryClient.prefetchQuery with correct options", async () => {
+    it("calls queryClient.prefetchQuery with queryKey and queryFn", async () => {
       const mockQueryClient = {
         prefetchQuery: vi.fn().mockResolvedValue(undefined),
       };
 
-      await api.prefetchQuery(
-        mockQueryClient as any,
-        "get",
-        "/health",
-      );
+      await api.prefetchQuery(mockQueryClient as any, "get", "/health");
 
       expect(mockQueryClient.prefetchQuery).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -289,6 +401,82 @@ describe("createClient", () => {
           queryFn: expect.any(Function),
         }),
       );
+    });
+
+    it("includes init in prefetch queryKey", async () => {
+      const mockQueryClient = {
+        prefetchQuery: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await api.prefetchQuery(
+        mockQueryClient as any,
+        "get", "/items",
+        { params: { query: { cursor: 5 } } },
+      );
+
+      expect(mockQueryClient.prefetchQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ["get", "/items", { params: { query: { cursor: 5 } } }],
+        }),
+      );
+    });
+  });
+
+  describe("prefetchInfiniteQuery", () => {
+    it("calls queryClient.prefetchInfiniteQuery with queryKey and queryFn", async () => {
+      const mockQueryClient = {
+        prefetchInfiniteQuery: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await api.prefetchInfiniteQuery(
+        mockQueryClient as any,
+        "get", "/items",
+        { params: { query: { cursor: 0 } } },
+        {
+          initialPageParam: 0,
+          getNextPageParam: (lastPage: any) => lastPage.next,
+        } as any,
+      );
+
+      expect(mockQueryClient.prefetchInfiniteQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ["get", "/items", { params: { query: { cursor: 0 } } }],
+          queryFn: expect.any(Function),
+        }),
+      );
+    });
+
+    it("prefetchInfiniteQuery queryFn merges pageParam", async () => {
+      (fetchClient.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: { items: ["a"], next: 1 },
+        error: undefined,
+      });
+
+      const mockQueryClient = {
+        prefetchInfiniteQuery: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await api.prefetchInfiniteQuery(
+        mockQueryClient as any,
+        "get", "/items",
+        { params: { query: { cursor: 0 } } },
+        {
+          initialPageParam: 0,
+          getNextPageParam: (lastPage: any) => lastPage.next,
+        } as any,
+      );
+
+      // Extract the queryFn and call it with a pageParam
+      const passedOpts = mockQueryClient.prefetchInfiniteQuery.mock.calls[0][0];
+      await passedOpts.queryFn({
+        queryKey: ["get", "/items", { params: { query: { cursor: 0 } } }],
+        pageParam: 99,
+        signal: new AbortController().signal,
+      });
+
+      expect(fetchClient.GET).toHaveBeenCalledWith("/items", expect.objectContaining({
+        params: { query: { cursor: 99 } },
+      }));
     });
   });
 });

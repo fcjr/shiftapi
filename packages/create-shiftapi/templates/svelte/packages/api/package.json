@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@tanstack/svelte-query": "^5.0.0",
+    "@tanstack/svelte-query": "^6.0.0",
     "shiftapi": "^0.0.40"
   }
 }

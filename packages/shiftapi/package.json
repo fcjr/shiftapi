@@ -46,7 +46,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@tanstack/svelte-query": "^5.0.0",
+    "@tanstack/svelte-query": "^6.0.0",
     "openapi-fetch": "^0.13.0"
   },
   "peerDependenciesMeta": {
@@ -64,7 +64,7 @@
     "openapi-typescript-helpers": "^0.0.15"
   },
   "devDependencies": {
-    "@tanstack/svelte-query": "^5.0.0",
+    "@tanstack/svelte-query": "^6.0.0",
     "@types/node": "^25.2.3",
     "openapi-fetch": "^0.15.0",
     "openapi-typescript-helpers": "^0.0.15",

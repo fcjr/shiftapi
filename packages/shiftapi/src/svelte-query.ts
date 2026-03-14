@@ -30,12 +30,6 @@ import type {
   RequiredKeysOf,
 } from "openapi-typescript-helpers";
 
-type InferSelectReturnType<TData, TSelect> = TSelect extends (
-  data: TData,
-) => infer R
-  ? R
-  : TData;
-
 type InitWithUnknowns<Init> = Init & { [key: string]: unknown };
 
 export type QueryKey<
@@ -59,7 +53,7 @@ export type QueryOptionsFunction<
     CreateQueryOptions<
       Response["data"],
       Response["error"],
-      InferSelectReturnType<Response["data"], Options["select"]>,
+      Response["data"],
       QueryKey<Paths, Method, Path>
     >,
     "queryKey" | "queryFn"
@@ -75,7 +69,7 @@ export type QueryOptionsFunction<
     CreateQueryOptions<
       Response["data"],
       Response["error"],
-      InferSelectReturnType<Response["data"], Options["select"]>,
+      Response["data"],
       QueryKey<Paths, Method, Path>
     >,
     "queryFn"
@@ -84,7 +78,7 @@ export type QueryOptionsFunction<
       CreateQueryOptions<
         Response["data"],
         Response["error"],
-        InferSelectReturnType<Response["data"], Options["select"]>,
+        Response["data"],
         QueryKey<Paths, Method, Path>
       >["queryFn"],
       SkipToken | undefined
@@ -104,7 +98,7 @@ export type CreateQueryMethod<
     CreateQueryOptions<
       Response["data"],
       Response["error"],
-      InferSelectReturnType<Response["data"], Options["select"]>,
+      Response["data"],
       QueryKey<Paths, Method, Path>
     >,
     "queryKey" | "queryFn"
@@ -115,10 +109,7 @@ export type CreateQueryMethod<
   ...[init, options, queryClient]: RequiredKeysOf<Init> extends never
     ? [InitWithUnknowns<Init>?, Options?, QueryClient?]
     : [InitWithUnknowns<Init>, Options?, QueryClient?]
-) => CreateQueryResult<
-  InferSelectReturnType<Response["data"], Options["select"]>,
-  Response["error"]
->;
+) => CreateQueryResult<Response["data"], Response["error"]>;
 
 export type CreateInfiniteQueryMethod<
   Paths extends Record<string, Record<HttpMethod, {}>>,
@@ -294,7 +285,7 @@ export default function createClient<
           queryFn,
           ...options,
         })) as any,
-        queryClient,
+        queryClient ? () => queryClient : undefined,
       ),
     createInfiniteQuery: (method, path, init, options, queryClient) => {
       const { pageParamName = "cursor", ...restOptions } = options;
@@ -332,7 +323,7 @@ export default function createClient<
           },
           ...restOptions,
         })) as any,
-        queryClient,
+        queryClient ? () => queryClient : undefined,
       );
     },
     createMutation: (method, path, options, queryClient) =>
@@ -357,7 +348,7 @@ export default function createClient<
           },
           ...options,
         })) as any,
-        queryClient,
+        queryClient ? () => queryClient : undefined,
       ),
     prefetchQuery: (queryClient, method, path, ...[init, options]) => {
       return queryClient.prefetchQuery(
@@ -378,9 +369,9 @@ export default function createClient<
           queryKey: [method, path, init],
           pageParam = 0,
           signal,
-        }) => {
-          const mth = method.toUpperCase() as Uppercase<typeof method>;
-          const fn = client[mth] as ClientMethod<Paths, typeof method, Media>;
+        }: any) => {
+          const mth = (method as string).toUpperCase() as Uppercase<typeof method>;
+          const fn = client[mth as keyof typeof client] as ClientMethod<Paths, typeof method, Media>;
           const mergedInit = {
             ...init,
             signal,

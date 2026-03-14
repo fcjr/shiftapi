@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@{{name}}/api": "*",
-    "@tanstack/svelte-query": "^5.0.0",
+    "@tanstack/svelte-query": "^6.0.0",
     "svelte": "^5.0.0"
   },
   "devDependencies": {
