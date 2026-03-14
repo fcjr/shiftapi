@@ -153,6 +153,9 @@ importers:
       openapi-typescript:
         specifier: ^7.0.0
         version: 7.13.0(typescript@5.9.3)
+      openapi-typescript-helpers:
+        specifier: ^0.0.15
+        version: 0.0.15
     devDependencies:
       '@tanstack/svelte-query':
         specifier: ^5.0.0
@@ -163,9 +166,6 @@ importers:
       openapi-fetch:
         specifier: ^0.15.0
         version: 0.15.2
-      openapi-typescript-helpers:
-        specifier: ^0.0.15
-        version: 0.0.15
       tsdown:
         specifier: ^0.21.1
         version: 0.21.1(typescript@5.9.3)
