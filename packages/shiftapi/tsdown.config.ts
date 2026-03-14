@@ -6,5 +6,6 @@ export default defineConfig({
     "src/internal.ts",
     "src/browser.ts",
     "src/prepare.ts",
+    "src/svelte-query.ts",
   ],
 });

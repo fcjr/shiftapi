@@ -28,6 +28,10 @@
     "./internal/browser": {
       "types": "./dist/browser.d.mts",
       "default": "./dist/browser.mjs"
+    },
+    "./client/svelte": {
+      "types": "./dist/svelte-query.d.mts",
+      "default": "./dist/svelte-query.mjs"
     }
   },
   "bin": {
@@ -41,13 +45,29 @@
     "dev": "tsdown --watch",
     "test": "vitest run"
   },
+  "peerDependencies": {
+    "@tanstack/svelte-query": "^5.0.0",
+    "openapi-fetch": "^0.13.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/svelte-query": {
+      "optional": true
+    },
+    "openapi-fetch": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "comment-json": "^4.5.1",
     "jiti": "^2.6.1",
-    "openapi-typescript": "^7.0.0"
+    "openapi-typescript": "^7.0.0",
+    "openapi-typescript-helpers": "^0.0.15"
   },
   "devDependencies": {
+    "@tanstack/svelte-query": "^5.0.0",
     "@types/node": "^25.2.3",
+    "openapi-fetch": "^0.15.0",
+    "openapi-typescript-helpers": "^0.0.15",
     "tsdown": "^0.21.1",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"

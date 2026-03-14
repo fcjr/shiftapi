@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "@tanstack/svelte-query": "^5.0.0",
-    "openapi-svelte-query": "^0.2.0"
+    "shiftapi": "^0.0.40"
   }
 }

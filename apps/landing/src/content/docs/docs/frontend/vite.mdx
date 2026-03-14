@@ -70,23 +70,50 @@ Types are regenerated automatically when you save a Go file — changes appear i
 
 ### TanStack Query
 
-Wrap the generated client with [`openapi-react-query`](https://openapi-ts.dev/openapi-react-query/) to get typed `useQuery` and `useMutation` hooks:
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
-```bash
-npm install @tanstack/react-query openapi-react-query
-```
+<Tabs>
+  <TabItem label="React">
+    Wrap the generated client with [`openapi-react-query`](https://openapi-ts.dev/openapi-react-query/) to get typed `useQuery` and `useMutation` hooks:
 
-```typescript
-import createClient from "openapi-react-query";
-import { client } from "@shiftapi/client";
+    ```bash
+    npm install @tanstack/react-query openapi-react-query
+    ```
 
-export const api = createClient(client);
-```
+    ```typescript
+    import createClient from "openapi-react-query";
+    import { client } from "@shiftapi/client";
 
-```tsx
-const health = api.useQuery("get", "/health");
-const greet = api.useMutation("post", "/greet");
-```
+    export const api = createClient(client);
+    ```
+
+    ```tsx
+    const health = api.useQuery("get", "/health");
+    const greet = api.useMutation("post", "/greet");
+    ```
+  </TabItem>
+  <TabItem label="Svelte">
+    ShiftAPI ships a built-in Svelte Query wrapper. Install the peer dependencies and use `shiftapi/client/svelte` to get typed `createQuery` and `createMutation` functions:
+
+    ```bash
+    npm install @tanstack/svelte-query
+    ```
+
+    ```typescript
+    import createClient from "shiftapi/client/svelte";
+    import { client } from "@shiftapi/client";
+
+    export const api = createClient(client);
+    ```
+
+    ```svelte
+    <script lang="ts">
+      const health = api.createQuery("get", "/health");
+      const greet = api.createMutation("post", "/greet");
+    </script>
+    ```
+  </TabItem>
+</Tabs>
 
 ### Server-Sent Events
 
