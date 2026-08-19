@@ -15,6 +15,9 @@ This scaffolds a full-stack Go + TypeScript app with end-to-end types.
 
 ### Install the Go package
 
+ShiftAPI requires Go 1.27 or later. Route registration uses generic methods,
+which landed in that release.
+
 ```bash
 go get github.com/fcjr/shiftapi
 ```
@@ -45,7 +48,7 @@ func main() {
         Version: "1.0.0",
     }))
 
-    shiftapi.Handle(api, "POST /hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
+    api.Handle("POST /hello", func(r *http.Request, in HelloRequest) (*HelloResponse, error) {
         return &HelloResponse{Message: "Hello, " + in.Name + "!"}, nil
     })
 

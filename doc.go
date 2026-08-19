@@ -4,10 +4,13 @@
 // generates an OpenAPI 3.1 spec, validates requests, and produces a
 // fully-typed TypeScript client — all from a single source of truth.
 //
+// ShiftAPI requires Go 1.27 or later. Route registration uses generic methods,
+// which landed in that release.
+//
 // # Quick start
 //
 //	api := shiftapi.New()
-//	shiftapi.Handle(api, "POST /greet", greet)
+//	api.Handle("POST /greet", greet)
 //	shiftapi.ListenAndServe(":8080", api)
 //
 // where greet is a typed handler:
@@ -112,7 +115,7 @@
 // Content-Type header will be written. Response headers (both static and dynamic)
 // are still sent.
 //
-//	shiftapi.Handle(api, "DELETE /items/{id}", deleteItem,
+//	api.Handle("DELETE /items/{id}", deleteItem,
 //	    shiftapi.WithStatus(http.StatusNoContent),
 //	)
 //
@@ -121,14 +124,14 @@
 //
 // # Server-Sent Events
 //
-// Use [HandleSSE] for Server-Sent Events with a typed event writer:
+// Use [API.HandleSSE] for Server-Sent Events with a typed event writer:
 //
 //	type ChatEvent struct {
 //	    User    string `json:"user"`
 //	    Message string `json:"message"`
 //	}
 //
-//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+//	api.HandleSSE("GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 //	    for event := range events(r.Context()) {
 //	        if err := sse.Send(event); err != nil {
 //	            return err
@@ -143,11 +146,11 @@
 // headers on the first write. [SSEWriter.Send] automatically determines the
 // event name from the concrete Go type registered via [SSESends].
 //
-// [SSESends] is required for [HandleSSE]. It registers event types for
+// [SSESends] is required for [API.HandleSSE]. It registers event types for
 // auto-wrap and OpenAPI schema generation. For multiple event types, pass
 // multiple [SSEEventType] descriptors:
 //
-//	shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+//	api.HandleSSE("GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
 //	    sse.Send(MessageData{User: "alice", Text: "hi"})
 //	    return sse.Send(JoinData{User: "bob"})
 //	}, shiftapi.SSESends(
@@ -163,7 +166,7 @@
 // substitution, SSE stream parsing, and yields typed events as an async
 // iterable.
 //
-// For custom SSE framing or non-standard behavior, use [HandleRaw] with
+// For custom SSE framing or non-standard behavior, use [API.HandleRaw] with
 // [WithContentType]("text/event-stream") instead.
 //
 // # Route groups
@@ -174,12 +177,26 @@
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithMiddleware(auth),
 //	)
-//	shiftapi.Handle(v1, "GET /users", listUsers) // registers GET /api/v1/users
+//	v1.Handle("GET /users", listUsers) // registers GET /api/v1/users
 //
 //	admin := v1.Group("/admin",
 //	    shiftapi.WithError[*ForbiddenError](http.StatusForbidden),
 //	)
-//	shiftapi.Handle(admin, "GET /stats", getStats) // registers GET /api/v1/admin/stats
+//	admin.Handle("GET /stats", getStats) // registers GET /api/v1/admin/stats
+//
+// Groups are also how you split route registration across files. Write a
+// function that takes a [*Group] and let the caller decide where it mounts:
+//
+//	func UserRoutes(g *shiftapi.Group) {
+//	    g.Handle("GET /users", listUsers)
+//	    g.Handle("POST /users", createUser)
+//	}
+//
+//	UserRoutes(api.Group("/api/v1"))
+//
+// Pass api.Group("") to mount at the root. These functions should take [*Group]
+// rather than [*API]. Go does not allow generic methods on interfaces, so no
+// single interface covers both types, and a group works everywhere an API does.
 //
 // # Middleware
 //
@@ -191,7 +208,7 @@
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithMiddleware(auth),                   // group routes
 //	)
-//	shiftapi.Handle(v1, "GET /admin", getAdmin,
+//	v1.Handle("GET /admin", getAdmin,
 //	    shiftapi.WithMiddleware(adminOnly),               // single route
 //	)
 //
@@ -237,7 +254,7 @@
 //	api := shiftapi.New(
 //	    shiftapi.WithError[*AuthError](http.StatusUnauthorized),
 //	)
-//	shiftapi.Handle(api, "GET /users/{id}", getUser,
+//	api.Handle("GET /users/{id}", getUser,
 //	    shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 //	)
 //
@@ -254,12 +271,12 @@
 // # Options
 //
 // [Option] is the primary option type. It works at all three levels: [New],
-// [API.Group]/[Group.Group], and [Handle].
+// [API.Group]/[Group.Group], and [API.Handle].
 // [WithError], [WithMiddleware], and [WithResponseHeader] all return [Option].
 //
 // Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
 // with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with
-// [Handle] ([RouteOption]).
+// [API.Handle] ([RouteOption]).
 //
 // Use [ComposeOptions] to bundle multiple [Option] values into a reusable option:
 //

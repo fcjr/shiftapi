@@ -12,6 +12,11 @@ ShiftAPI is a Go framework that generates an OpenAPI 3.1 spec from your handler 
 3. **TypeScript types generated at build time** — Vite or Next.js plugins regenerate types on every save
 4. **Fully-typed client** — your frontend gets auto-complete and compile-time type checking
 
+## Requirements
+
+Go 1.27 or later. Route registration uses generic methods, which landed in that
+release.
+
 ## Features
 
 - **Type-safe handlers** — Go generics capture request/response types

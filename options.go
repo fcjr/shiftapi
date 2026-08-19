@@ -96,7 +96,7 @@ func buildErrorLookup(entries []errorEntry) errorLookup {
 //
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
 //
-//   - [Handle] — applies to a single route
+//   - [API.Handle] — applies to a single route
 //
 //     api := shiftapi.New(
 //     shiftapi.WithError[*AuthError](http.StatusUnauthorized),
@@ -104,7 +104,7 @@ func buildErrorLookup(entries []errorEntry) errorLookup {
 //     v1 := api.Group("/api/v1",
 //     shiftapi.WithError[*RateLimitError](http.StatusTooManyRequests),
 //     )
-//     shiftapi.Handle(v1, "GET /users/{id}", getUser,
+//     v1.Handle("GET /users/{id}", getUser,
 //     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 //     )
 func WithError[T error](status int) Option {
@@ -127,7 +127,7 @@ func WithError[T error](status int) Option {
 //
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
 //
-//   - [Handle] — applies to a single route
+//   - [API.Handle] — applies to a single route
 //
 //     api := shiftapi.New(
 //     shiftapi.WithMiddleware(cors, logging),
@@ -135,7 +135,7 @@ func WithError[T error](status int) Option {
 //     v1 := api.Group("/api/v1",
 //     shiftapi.WithMiddleware(auth),
 //     )
-//     shiftapi.Handle(v1, "GET /admin", getAdmin,
+//     v1.Handle("GET /admin", getAdmin,
 //     shiftapi.WithMiddleware(adminOnly),
 //     )
 func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
@@ -150,7 +150,7 @@ func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 // WithResponseHeader returns an [Option] that works at any level:
 //   - [New] — applies to all routes (API-level)
 //   - [API.Group] / [Group.Group] — applies to all routes in the group
-//   - [Handle] — applies to a single route
+//   - [API.Handle] — applies to a single route
 //
 // Static headers are applied in API → Group → Route order. If the same header
 // name is declared at multiple levels, the later level wins. Dynamic headers
@@ -163,7 +163,7 @@ func WithMiddleware(mw ...func(http.Handler) http.Handler) Option {
 //	v1 := api.Group("/api/v1",
 //	    shiftapi.WithResponseHeader("X-API-Version", "1"),
 //	)
-//	shiftapi.Handle(v1, "GET /users", listUsers,
+//	v1.Handle("GET /users", listUsers,
 //	    shiftapi.WithResponseHeader("Cache-Control", "max-age=3600"),
 //	)
 func WithResponseHeader(name, value string) Option {

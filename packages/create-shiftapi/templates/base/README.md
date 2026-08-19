@@ -4,6 +4,8 @@ Built with [ShiftAPI](https://github.com/fcjr/shiftapi) — Go server + typed Ty
 
 ## Getting Started
 
+Requires Go 1.27 or later.
+
 ```bash
 go mod tidy
 npm install

@@ -58,7 +58,7 @@ func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig) { o.sseFn(cfg) }
 
 // WithRouteInfo sets the route's OpenAPI metadata (summary, description, tags).
 //
-//	shiftapi.Handle(api, "POST /greet", greet, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
+//	api.Handle("POST /greet", greet, shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 //	    Summary: "Greet a person",
 //	    Tags:    []string{"greetings"},
 //	}))
@@ -95,14 +95,14 @@ func ResponseSchema[T any]() ResponseSchemaOption {
 // spec. An optional [ResponseSchemaOption] produced by [ResponseSchema] can be
 // passed to include a schema under the specified media type.
 //
-// For [HandleRaw] routes, this determines how the response appears in the
-// OpenAPI spec. For [Handle] routes, this overrides the default
+// For [API.HandleRaw] routes, this determines how the response appears in the
+// OpenAPI spec. For [API.Handle] routes, this overrides the default
 // "application/json" media type key.
 //
-//	shiftapi.HandleRaw(api, "GET /events", sseHandler,
+//	api.HandleRaw("GET /events", sseHandler,
 //	    shiftapi.WithContentType("text/event-stream"),
 //	)
-//	shiftapi.HandleRaw(api, "GET /events", sseHandler,
+//	api.HandleRaw("GET /events", sseHandler,
 //	    shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[Event]()),
 //	)
 func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOptionFunc {

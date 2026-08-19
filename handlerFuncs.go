@@ -61,7 +61,7 @@ type routeSetup struct {
 // bodyType fields depend on whether the caller forces body decode for
 // POST/PUT/PATCH (Handle does, HandleRaw does not), so they are computed here
 // based on the forceMethodBody flag.
-func prepareRoute[In any](router Router, method, path string, forceMethodBody bool, options []RouteOption) routeSetup {
+func prepareRoute[In any](router routeTarget, method, path string, forceMethodBody bool, options []RouteOption) routeSetup {
 	rd := router.routerImpl()
 	api := rd.api
 	fullPath := strings.TrimRight(rd.prefix, "/") + path
@@ -167,7 +167,7 @@ func (s *routeSetup) schemaInput(method string, outType reflect.Type, hasRespHea
 }
 
 // wrapAndRegister applies middleware and registers the handler on the mux.
-func (s *routeSetup) wrapAndRegister(router Router, h http.Handler) {
+func (s *routeSetup) wrapAndRegister(router routeTarget, h http.Handler) {
 	rd := router.routerImpl()
 	for i := len(s.cfg.middleware) - 1; i >= 0; i-- {
 		h = s.cfg.middleware[i](h)
@@ -206,7 +206,7 @@ func (s *routeSetup) handlerCfg(method string, forceMethodBody bool) *handlerCon
 }
 
 func registerRoute[In, Resp any](
-	router Router,
+	router routeTarget,
 	method string,
 	path string,
 	fn HandlerFunc[In, Resp],
@@ -250,6 +250,11 @@ func registerRoute[In, Resp any](
 	s.wrapAndRegister(router, h)
 }
 
+func handle[In, Resp any](router routeTarget, pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+	method, path := parsePattern(pattern)
+	registerRoute(router, method, path, fn, options...)
+}
+
 // Handle registers a typed handler for the given pattern. The pattern follows
 // [net/http.ServeMux] conventions: "METHOD /path", e.g. "GET /users/{id}".
 //
@@ -260,18 +265,24 @@ func registerRoute[In, Resp any](
 // from JSON (or multipart/form-data if the In type has form-tagged fields).
 // Validation is applied before the handler runs.
 //
-//	shiftapi.Handle(api, "GET /users/{id}", getUser)
-//	shiftapi.Handle(api, "POST /users", createUser)
-//	shiftapi.Handle(api, "DELETE /items/{id}", deleteItem,
+//	api.Handle("GET /users/{id}", getUser)
+//	api.Handle("POST /users", createUser)
+//	api.Handle("DELETE /items/{id}", deleteItem,
 //	    shiftapi.WithStatus(http.StatusNoContent),
 //	)
-func Handle[In, Resp any](router Router, pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
-	method, path := parsePattern(pattern)
-	registerRoute(router, method, path, fn, options...)
+func (a *API) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+	handle(a, pattern, fn, options...)
+}
+
+// Handle registers a typed handler on the group. The pattern is appended to
+// the group's prefix, and error types, middleware, and response headers are
+// inherited from the group. See [API.Handle] for the full description.
+func (g *Group) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+	handle(g, pattern, fn, options...)
 }
 
 func registerRawRoute[In any](
-	router Router,
+	router routeTarget,
 	method string,
 	path string,
 	fn RawHandlerFunc[In],
@@ -289,24 +300,35 @@ func registerRawRoute[In any](
 	s.wrapAndRegister(router, h)
 }
 
-// HandleRaw registers a raw handler for the given pattern. Unlike [Handle],
-// the handler receives the [http.ResponseWriter] directly and is responsible
-// for writing the response. Input parsing, validation, and middleware work
-// identically to [Handle].
-//
-// Use HandleRaw for responses that cannot be expressed as a typed struct:
-// Server-Sent Events, file downloads, WebSocket upgrades, etc.
-//
-//	shiftapi.HandleRaw(api, "GET /events", sseHandler,
-//	    shiftapi.WithContentType("text/event-stream"),
-//	)
-func HandleRaw[In any](router Router, pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+func handleRaw[In any](router routeTarget, pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
 	method, path := parsePattern(pattern)
 	registerRawRoute(router, method, path, fn, options...)
 }
 
+// HandleRaw registers a raw handler for the given pattern. Unlike [API.Handle],
+// the handler receives the [http.ResponseWriter] directly and is responsible
+// for writing the response. Input parsing, validation, and middleware work
+// identically to [API.Handle].
+//
+// Use HandleRaw for responses that cannot be expressed as a typed struct:
+// Server-Sent Events, file downloads, WebSocket upgrades, etc.
+//
+//	api.HandleRaw("GET /events", sseHandler,
+//	    shiftapi.WithContentType("text/event-stream"),
+//	)
+func (a *API) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+	handleRaw(a, pattern, fn, options...)
+}
+
+// HandleRaw registers a raw handler on the group. The pattern is appended to
+// the group's prefix, and error types, middleware, and response headers are
+// inherited from the group. See [API.HandleRaw] for the full description.
+func (g *Group) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+	handleRaw(g, pattern, fn, options...)
+}
+
 func registerSSERoute[In any](
-	router Router,
+	router routeTarget,
 	method string,
 	path string,
 	fn SSEHandlerFunc[In],
@@ -363,15 +385,21 @@ func registerSSERoute[In any](
 	s.wrapAndRegister(router, h)
 }
 
+func handleSSE[In any](router routeTarget, pattern string, fn SSEHandlerFunc[In], options ...SSEOption) {
+	method, path := parsePattern(pattern)
+	sseOpts := applySSEOptions(options)
+	registerSSERoute(router, method, path, fn, sseOpts)
+}
+
 // HandleSSE registers a Server-Sent Events handler for the given pattern.
 // The handler receives an [SSEWriter] for sending events to the client.
-// Input parsing, validation, and middleware work identically to [Handle].
+// Input parsing, validation, and middleware work identically to [API.Handle].
 //
 // The OpenAPI spec automatically uses "text/event-stream" as the response
 // content type, with the event types declared via [SSESends] generating the
 // event schema.
 //
-//	shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in struct{}, sse *shiftapi.SSEWriter) error {
+//	api.HandleSSE("GET /events", func(r *http.Request, in struct{}, sse *shiftapi.SSEWriter) error {
 //	    for msg := range messages(r.Context()) {
 //	        if err := sse.Send(msg); err != nil {
 //	            return err
@@ -381,14 +409,20 @@ func registerSSERoute[In any](
 //	}, shiftapi.SSESends(
 //	    shiftapi.SSEEventType[Message]("message"),
 //	))
-func HandleSSE[In any](router Router, pattern string, fn SSEHandlerFunc[In], options ...SSEOption) {
-	method, path := parsePattern(pattern)
-	sseOpts := applySSEOptions(options)
-	registerSSERoute(router, method, path, fn, sseOpts)
+func (a *API) HandleSSE[In any](pattern string, fn SSEHandlerFunc[In], options ...SSEOption) {
+	handleSSE(a, pattern, fn, options...)
+}
+
+// HandleSSE registers a Server-Sent Events handler on the group. The pattern
+// is appended to the group's prefix, and error types, middleware, and response
+// headers are inherited from the group. See [API.HandleSSE] for the full
+// description.
+func (g *Group) HandleSSE[In any](pattern string, fn SSEHandlerFunc[In], options ...SSEOption) {
+	handleSSE(g, pattern, fn, options...)
 }
 
 func registerWSRoute[In any](
-	router Router,
+	router routeTarget,
 	method string,
 	path string,
 	msgs *WSMessages[In],
@@ -497,16 +531,22 @@ func registerWSRoute[In any](
 	s.wrapAndRegister(router, h)
 }
 
+func handleWS[In any](router routeTarget, pattern string, msgs *WSMessages[In], options ...WSOption) {
+	method, path := parsePattern(pattern)
+	wsOpts := applyWSOptions(options)
+	registerWSRoute(router, method, path, msgs, wsOpts)
+}
+
 // HandleWS registers a WebSocket endpoint for the given pattern. Message
 // handling is defined by [WSOn] handlers collected in a [Websocket] block.
 // The framework manages the receive loop, dispatching incoming messages
 // to the matching handler.
 //
-// Input parsing, validation, and middleware work identically to [Handle].
+// Input parsing, validation, and middleware work identically to [API.Handle].
 // WebSocket endpoints are documented in an AsyncAPI 2.4 spec served at
 // GET /asyncapi.json.
 //
-//	shiftapi.HandleWS(api, "GET /chat",
+//	api.HandleWS("GET /chat",
 //	    shiftapi.Websocket(
 //	        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
 //	        shiftapi.WSSends(shiftapi.WSMessageType[ChatMessage]("chat")),
@@ -515,10 +555,16 @@ func registerWSRoute[In any](
 //	        }),
 //	    ),
 //	)
-func HandleWS[In any](router Router, pattern string, msgs *WSMessages[In], options ...WSOption) {
-	method, path := parsePattern(pattern)
-	wsOpts := applyWSOptions(options)
-	registerWSRoute(router, method, path, msgs, wsOpts)
+func (a *API) HandleWS[In any](pattern string, msgs *WSMessages[In], options ...WSOption) {
+	handleWS(a, pattern, msgs, options...)
+}
+
+// HandleWS registers a WebSocket endpoint on the group. The pattern is
+// appended to the group's prefix, and error types, middleware, and response
+// headers are inherited from the group. See [API.HandleWS] for the full
+// description.
+func (g *Group) HandleWS[In any](pattern string, msgs *WSMessages[In], options ...WSOption) {
+	handleWS(g, pattern, msgs, options...)
 }
 
 // rawWSMessageVariant is a non-generic WSMessageVariant implementation built

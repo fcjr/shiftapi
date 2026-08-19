@@ -5,15 +5,15 @@ sidebar:
   order: 7
 ---
 
-ShiftAPI's `Handle` function owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: file downloads, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
+ShiftAPI's `Handle` method owns the response lifecycle — it JSON-encodes whatever your handler returns. But some responses can't be expressed as a typed struct: file downloads, chunked streaming, and more. `HandleRaw` gives you full control over the `http.ResponseWriter` while keeping typed input parsing, validation, and middleware.
 
 For SSE and WebSocket use cases, prefer [`HandleSSE`](/docs/core-concepts/server-sent-events/server) and [`HandleWS`](/docs/core-concepts/websockets/server) which provide typed abstractions. Use `HandleRaw` when you need custom framing or non-standard behavior.
 
 ## Registering raw handlers
 
 ```go
-shiftapi.HandleRaw(api, "GET /events", sseHandler)
-shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler)
+api.HandleRaw("GET /events", sseHandler)
+api.HandleRaw("GET /files/{id}", downloadHandler)
 ```
 
 ## Handler signature
@@ -32,7 +32,7 @@ func handler(w http.ResponseWriter, r *http.Request, in InputType) error
 Use `struct{}` when the handler takes no input:
 
 ```go
-shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+api.HandleRaw("GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
     w.Header().Set("Content-Type", "text/event-stream")
     w.WriteHeader(http.StatusOK)
     // stream events...
@@ -50,7 +50,7 @@ type DownloadInput struct {
     Format string `query:"format"`
 }
 
-shiftapi.HandleRaw(api, "GET /files/{id}", func(w http.ResponseWriter, r *http.Request, in DownloadInput) error {
+api.HandleRaw("GET /files/{id}", func(w http.ResponseWriter, r *http.Request, in DownloadInput) error {
     file, err := store.Get(in.ID)
     if err != nil {
         return err
@@ -67,7 +67,7 @@ shiftapi.HandleRaw(api, "GET /files/{id}", func(w http.ResponseWriter, r *http.R
 With `Handle`, POST/PUT/PATCH methods always decode the request body — even when the input is `struct{}`. With `HandleRaw`, the body is only decoded when the input struct has `json` or `form`-tagged fields. This lets you consume `r.Body` directly:
 
 ```go
-shiftapi.HandleRaw(api, "POST /upload", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+api.HandleRaw("POST /upload", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
     data, err := io.ReadAll(r.Body)
     if err != nil {
         return err
@@ -86,7 +86,7 @@ Error behavior depends on whether the handler has started writing the response:
 - **After writing** — if the response has already started (you called `WriteHeader` or `Write`), it's too late to send an error response. The error is logged but the response is not modified. The client receives whatever was already written.
 
 ```go
-shiftapi.HandleRaw(api, "GET /stream", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+api.HandleRaw("GET /stream", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
     // Error before writing → framework sends proper error response
     data, err := loadData()
     if err != nil {
@@ -105,7 +105,7 @@ shiftapi.HandleRaw(api, "GET /stream", func(w http.ResponseWriter, r *http.Reque
 `WithError` works the same way as with `Handle`:
 
 ```go
-shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler,
+api.HandleRaw("GET /files/{id}", downloadHandler,
     shiftapi.WithError[*NotFoundError](http.StatusNotFound),
 )
 ```
@@ -115,7 +115,7 @@ shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler,
 The `ResponseWriter` passed to your handler is wrapped to track writes. Use `http.NewResponseController` to access `Flush`, `Hijack`, `SetReadDeadline`, and other optional interfaces — it walks through wrappers automatically:
 
 ```go
-shiftapi.HandleRaw(api, "GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+api.HandleRaw("GET /events", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
     rc := http.NewResponseController(w)
 
     w.Header().Set("Content-Type", "text/event-stream")
@@ -141,7 +141,7 @@ By default, a `HandleRaw` route produces an OpenAPI response with only a descrip
 Use this for binary downloads, opaque streams, or any response where a schema isn't meaningful:
 
 ```go
-shiftapi.HandleRaw(api, "GET /files/{id}", downloadHandler,
+api.HandleRaw("GET /files/{id}", downloadHandler,
     shiftapi.WithContentType("application/octet-stream"),
 )
 ```
@@ -166,7 +166,7 @@ type SSEEvent struct {
     Data string `json:"data"`
 }
 
-shiftapi.HandleRaw(api, "GET /events", sseHandler,
+api.HandleRaw("GET /events", sseHandler,
     shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[SSEEvent]()),
 )
 ```
@@ -190,7 +190,7 @@ The schema is generated using the same reflection logic as typed handlers — st
 A `HandleRaw` route with no `WithContentType` produces a response with only a description. This is appropriate for routes where the response format isn't meaningful to document:
 
 ```go
-shiftapi.HandleRaw(api, "GET /proxy", proxyHandler)
+api.HandleRaw("GET /proxy", proxyHandler)
 ```
 
 Produces:
@@ -206,7 +206,7 @@ responses:
 `WithContentType` also works with `Handle` to override the default `application/json` media type key. This is a niche feature but useful if your handler returns a non-JSON content type while still using the typed response:
 
 ```go
-shiftapi.Handle(api, "GET /config", getConfig,
+api.Handle("GET /config", getConfig,
     shiftapi.WithContentType("application/yaml"),
 )
 ```
@@ -216,7 +216,7 @@ shiftapi.Handle(api, "GET /config", getConfig,
 All standard route options work with `HandleRaw`:
 
 ```go
-shiftapi.HandleRaw(api, "GET /events", sseHandler,
+api.HandleRaw("GET /events", sseHandler,
     shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[SSEEvent]()),
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary: "Subscribe to events",

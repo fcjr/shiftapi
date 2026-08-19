@@ -130,7 +130,7 @@ func main() {
 		Title: "Greeter Demo API",
 	}))
 
-	shiftapi.Handle(api, "POST /greet", greet,
+	api.Handle("POST /greet", greet,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Greet a person",
 			Description: "Greet a person with a friendly greeting",
@@ -139,7 +139,7 @@ func main() {
 		shiftapi.WithError[*WrongNameError](http.StatusBadRequest),
 	)
 
-	shiftapi.Handle(api, "GET /search", search,
+	api.Handle("GET /search", search,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Search for things",
 			Description: "Search with typed query parameters",
@@ -147,14 +147,14 @@ func main() {
 		}),
 	)
 
-	shiftapi.Handle(api, "GET /health", health,
+	api.Handle("GET /health", health,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary: "Health check",
 			Tags:    []string{"health"},
 		}),
 	)
 
-	shiftapi.Handle(api, "POST /upload", upload,
+	api.Handle("POST /upload", upload,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Upload a file",
 			Description: "Upload a single file",
@@ -162,7 +162,7 @@ func main() {
 		}),
 	)
 
-	shiftapi.Handle(api, "POST /upload-image", uploadImage,
+	api.Handle("POST /upload-image", uploadImage,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Upload an image",
 			Description: "Upload a single image (PNG or JPEG only)",
@@ -170,7 +170,7 @@ func main() {
 		}),
 	)
 
-	shiftapi.Handle(api, "POST /upload-multi", uploadMulti,
+	api.Handle("POST /upload-multi", uploadMulti,
 		shiftapi.WithRouteInfo(shiftapi.RouteInfo{
 			Summary:     "Upload multiple files",
 			Description: "Upload multiple files at once",
@@ -186,7 +186,7 @@ func main() {
 		ID string
 	}
 
-	shiftapi.HandleWS(api, "GET /join/{id}",
+	api.HandleWS("GET /join/{id}",
 		shiftapi.Websocket(
 			func(r *http.Request, s *shiftapi.WSSender, req JoinReq) (*State, error) {
 				return &State{ID: req.ID}, nil

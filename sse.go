@@ -18,7 +18,7 @@ import (
 type SSEHandlerFunc[In any] func(r *http.Request, in In, sse *SSEWriter) error
 
 // SSEWriter writes Server-Sent Events to the client. It is created
-// internally by [HandleSSE] and should not be constructed directly.
+// internally by [API.HandleSSE] and should not be constructed directly.
 //
 // [SSEWriter.Send] automatically determines the event name from the concrete
 // Go type registered via [SSESends]. On the first call, SSEWriter sets the
@@ -79,11 +79,11 @@ func (e sseEventVariant[T]) eventName() string              { return e.name }
 func (e sseEventVariant[T]) eventPayloadType() reflect.Type { return reflect.TypeFor[T]() }
 
 // SSEEventType creates an [SSEEventVariant] that maps an SSE event name to a
-// payload type T. Use with [SSESends] to register event types for a [HandleSSE]
+// payload type T. Use with [SSESends] to register event types for a [API.HandleSSE]
 // endpoint. The OpenAPI spec will contain a oneOf schema with a discriminator,
 // and the generated TypeScript client will yield a discriminated union type.
 //
-//	shiftapi.HandleSSE(api, "GET /chat", chatHandler,
+//	api.HandleSSE("GET /chat", chatHandler,
 //	    shiftapi.SSESends(
 //	        shiftapi.SSEEventType[MessageData]("message"),
 //	        shiftapi.SSEEventType[JoinData]("join"),
@@ -96,7 +96,7 @@ func SSEEventType[T any](name string) SSEEventVariant {
 	return sseEventVariant[T]{name: name}
 }
 
-// SSEOption configures a [HandleSSE] route. General options like
+// SSEOption configures a [API.HandleSSE] route. General options like
 // [WithRouteInfo], [WithError], and [WithMiddleware] implement both
 // [RouteOption] and [SSEOption]. SSE-specific options like [SSESends]
 // implement only [SSEOption].
@@ -143,12 +143,12 @@ func (f sseOptionFunc) applyToSSE(cfg *sseRouteConfig) { f(cfg) }
 // generation. Each [SSEEventVariant] maps an event name to a payload type,
 // producing a oneOf schema with a discriminator in the OpenAPI spec. The
 // generated TypeScript client yields a discriminated union type. SSESends
-// is required for [HandleSSE].
+// is required for [API.HandleSSE].
 //
 // When SSESends is used, [SSEWriter.Send] automatically determines the event
 // name from the concrete Go type.
 //
-//	shiftapi.HandleSSE(api, "GET /chat", chatHandler,
+//	api.HandleSSE("GET /chat", chatHandler,
 //	    shiftapi.SSESends(
 //	        shiftapi.SSEEventType[MessageData]("message"),
 //	        shiftapi.SSEEventType[JoinData]("join"),

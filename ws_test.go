@@ -59,7 +59,7 @@ type wsNoJsonTags struct {
 func TestHandleWS_OpenAPISchemaNoJsonTags(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -91,7 +91,7 @@ func TestHandleWS_OpenAPISchemaNoJsonTags(t *testing.T) {
 func TestHandleWS_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -220,7 +220,7 @@ func TestHandleWS_AsyncAPISpec(t *testing.T) {
 func TestHandleWS_OpenAPISchemaProperties(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -262,7 +262,7 @@ func TestHandleWS_OpenAPISchemaProperties(t *testing.T) {
 func TestHandleWS_AsyncAPISpec_XErrors(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
 				return struct{}{}, nil
@@ -326,7 +326,7 @@ func TestHandleWS_InputParsing(t *testing.T) {
 		Channel string
 	}
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in Input) (*inputState, error) {
 				return &inputState{Channel: in.Channel}, nil
@@ -369,7 +369,7 @@ func TestHandleWS_InputParsing(t *testing.T) {
 func TestHandleWS_OnDispatch(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /echo",
+	api.HandleWS("GET /echo",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -414,7 +414,7 @@ func TestHandleWS_OnDispatch(t *testing.T) {
 func TestHandleWS_AutoWrapSend(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -463,7 +463,7 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 		Token string `query:"token" validate:"required"`
 	}
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in Input) (struct{}, error) {
 				return struct{}{}, nil
@@ -506,7 +506,7 @@ func TestHandleWS_ErrorBeforeUpgrade(t *testing.T) {
 func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -545,7 +545,7 @@ func TestHandleWS_ErrorAfterUpgrade(t *testing.T) {
 func TestHandleWS_ErrorAfterUpgrade_Registered(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -602,7 +602,7 @@ func (e *wsAuthError) Error() string { return e.Message }
 func TestHandleWS_SetupErrorRegistered(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
 				return struct{}{}, &wsAuthError{Message: "bad token", Realm: "api"}
@@ -648,7 +648,7 @@ func TestHandleWS_SetupErrorRegistered(t *testing.T) {
 func TestHandleWS_SetupErrorUnregistered(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, _ struct{}) (struct{}, error) {
 				return struct{}{}, fmt.Errorf("unexpected failure")
@@ -687,7 +687,7 @@ func TestHandleWS_SetupValidationError(t *testing.T) {
 		Code string `query:"code"`
 	}
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in SetupInput) (struct{}, error) {
 				if in.Code != "secret" {
@@ -738,7 +738,7 @@ func TestHandleWS_WSOnUnknownMessage(t *testing.T) {
 	api := shiftapi.New()
 
 	var gotType string
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -787,7 +787,7 @@ func TestHandleWS_WSOnUnknownMessage(t *testing.T) {
 func TestHandleWS_WithWSAcceptOptions(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -846,7 +846,7 @@ func TestHandleWS_PathParams(t *testing.T) {
 		ID string
 	}
 
-	shiftapi.HandleWS(api, "GET /rooms/{id}",
+	api.HandleWS("GET /rooms/{id}",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in Input) (*pathState, error) {
 				return &pathState{ID: in.ID}, nil
@@ -908,7 +908,7 @@ type wsUserCmd struct {
 func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(
@@ -978,7 +978,7 @@ func TestHandleWS_MultiTypeDispatch(t *testing.T) {
 func TestHandleWS_WithMessages_AsyncAPISpec(t *testing.T) {
 	api := shiftapi.New()
 
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(
@@ -1081,7 +1081,7 @@ func TestHandleWS_DuplicateSendNamePanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleWS(api, "GET /dup",
+	api.HandleWS("GET /dup",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(
@@ -1107,7 +1107,7 @@ func TestHandleWS_DuplicateOnNamePanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleWS(api, "GET /dup",
+	api.HandleWS("GET /dup",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
@@ -1132,7 +1132,7 @@ func TestHandleWS_Setup(t *testing.T) {
 		Room string
 	}
 
-	shiftapi.HandleWS(api, "GET /chat",
+	api.HandleWS("GET /chat",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in joinInput) (*roomState, error) {
 				if in.Room == "" {
@@ -1184,7 +1184,7 @@ func TestHandleWS_Setup_Error(t *testing.T) {
 		Room string `query:"room"`
 	}
 
-	shiftapi.HandleWS(api, "GET /chat",
+	api.HandleWS("GET /chat",
 		shiftapi.Websocket(
 			func(r *http.Request, sender *shiftapi.WSSender, in joinInput) (struct{}, error) {
 				return struct{}{}, fmt.Errorf("setup failed")
@@ -1245,7 +1245,7 @@ func TestWebsocket_NoHandlersPanics(t *testing.T) {
 		}
 	}()
 	api := shiftapi.New()
-	shiftapi.HandleWS(api, "GET /ws",
+	api.HandleWS("GET /ws",
 		shiftapi.Websocket(
 			noSetup,
 			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),

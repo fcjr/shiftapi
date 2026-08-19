@@ -9,7 +9,7 @@ const steps = [
         <code>header</code> struct tags — ShiftAPI routes them automatically.
       </>
     ),
-    code: `shiftapi.Handle(api, "POST /greet", greet)`,
+    code: `api.Handle("POST /greet", greet)`,
   },
   {
     num: "2",

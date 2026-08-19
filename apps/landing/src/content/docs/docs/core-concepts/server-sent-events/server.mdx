@@ -14,7 +14,7 @@ sidebar:
 ## Registering SSE handlers
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     for msg := range messages(r.Context()) {
         if err := sse.Send(msg); err != nil {
             return err
@@ -42,7 +42,7 @@ func handler(r *http.Request, in InputType, sse *shiftapi.SSEWriter) error
 Use `struct{}` when the handler takes no input:
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     // ...
 }, shiftapi.SSESends(
     shiftapi.SSEEventType[Event]("event"),
@@ -85,7 +85,7 @@ type EventInput struct {
     After   int    `query:"after"`
 }
 
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, in EventInput, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /events", func(r *http.Request, in EventInput, sse *shiftapi.SSEWriter) error {
     for event := range subscribe(r.Context(), in.Channel, in.After) {
         if err := sse.Send(event); err != nil {
             return err
@@ -104,7 +104,7 @@ type StreamInput struct {
     RoomID string `path:"room_id" validate:"required"`
 }
 
-shiftapi.HandleSSE(api, "GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /rooms/{room_id}/events", func(r *http.Request, in StreamInput, sse *shiftapi.SSEWriter) error {
     // in.RoomID is parsed and validated
 }, shiftapi.SSESends(
     shiftapi.SSEEventType[Event]("event"),
@@ -119,7 +119,7 @@ Error behavior depends on whether the handler has started sending events:
 - **After sending** — if events have already been sent, it's too late to send an error response. The error is logged and the stream ends.
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     data, err := loadInitialData()
     if err != nil {
         return err // 500 (no events sent yet)
@@ -145,7 +145,7 @@ type ChatEvent struct {
     Message string `json:"message"`
 }
 
-shiftapi.HandleSSE(api, "GET /chat", chatHandler,
+api.HandleSSE("GET /chat", chatHandler,
     shiftapi.SSESends(shiftapi.SSEEventType[ChatEvent]("chat")),
 )
 ```
@@ -189,7 +189,7 @@ type JoinData struct {
     User string `json:"user"`
 }
 
-shiftapi.HandleSSE(api, "GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+api.HandleSSE("GET /chat", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
     if err := sse.Send(MessageData{User: "alice", Text: "hi"}); err != nil {
         return err
     }
@@ -239,7 +239,7 @@ paths:
 All standard route options work with `HandleSSE`:
 
 ```go
-shiftapi.HandleSSE(api, "GET /events", handler,
+api.HandleSSE("GET /events", handler,
     shiftapi.SSESends(shiftapi.SSEEventType[Event]("event")),
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary: "Subscribe to events",

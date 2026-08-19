@@ -18,7 +18,7 @@ func greet(r *http.Request, in Input) (*Output, error) {
 
 func main() {
     api := shiftapi.New()
-    shiftapi.Handle(api, "POST /greet", greet)
+    api.Handle("POST /greet", greet)
     shiftapi.ListenAndServe(":8080", api)
 }`;
 

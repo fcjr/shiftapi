@@ -144,7 +144,7 @@ func (e *WSDecodeError) Unwrap() error { return e.err }
 
 // WSMessages holds the WebSocket endpoint configuration. Create one with
 // [Websocket], passing a setup function, [WSSends], and [WSOn] handlers.
-// Pass it to [HandleWS] to register the route.
+// Pass it to [API.HandleWS] to register the route.
 type WSMessages[In any] struct {
 	cfg *websocketConfig
 }
@@ -180,7 +180,7 @@ func WSSends(variants ...WSMessageVariant) []WSMessageVariant {
 //
 // Use struct{} for both In and State when no input or state is needed.
 //
-//	shiftapi.HandleWS(api, "GET /echo",
+//	api.HandleWS("GET /echo",
 //	    shiftapi.Websocket(
 //	        func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
 //	            return struct{}{}, nil
@@ -323,7 +323,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 	}
 }
 
-// WSOption configures a [HandleWS] route. General options like
+// WSOption configures a [API.HandleWS] route. General options like
 // [WithRouteInfo], [WithError], and [WithMiddleware] implement both
 // [RouteOption] and [WSOption]. WebSocket-specific options like
 // [WithWSAcceptOptions] implement only [WSOption].
@@ -361,7 +361,7 @@ func applyWSOptions(opts []WSOption) wsRouteConfig {
 	return cfg
 }
 
-// WSAcceptOptions configures the WebSocket upgrade for [HandleWS] routes.
+// WSAcceptOptions configures the WebSocket upgrade for [API.HandleWS] routes.
 type WSAcceptOptions struct {
 	// Subprotocols lists the WebSocket subprotocols to negotiate with the
 	// client. The empty subprotocol is always negotiated per RFC 6455.
@@ -376,10 +376,10 @@ type WSAcceptOptions struct {
 	OriginPatterns []string
 }
 
-// WithWSAcceptOptions sets the WebSocket upgrade options for [HandleWS] routes.
+// WithWSAcceptOptions sets the WebSocket upgrade options for [API.HandleWS] routes.
 // Use this to configure subprotocols, allowed origins, etc.
 //
-//	shiftapi.HandleWS(api, "GET /ws", ws,
+//	api.HandleWS("GET /ws", ws,
 //	    shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
 //	        Subprotocols:   []string{"graphql-ws"},
 //	        OriginPatterns: []string{"example.com"},

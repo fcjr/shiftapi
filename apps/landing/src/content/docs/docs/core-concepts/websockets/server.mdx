@@ -22,7 +22,7 @@ type EchoRequest struct {
     Text string `json:"text"`
 }
 
-shiftapi.HandleWS(api, "GET /ws",
+api.HandleWS("GET /ws",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
             return struct{}{}, nil
@@ -103,7 +103,7 @@ type ChatState struct {
     Token string
 }
 
-shiftapi.HandleWS(api, "GET /rooms/{room}",
+api.HandleWS("GET /rooms/{room}",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, in ChatInput) (*ChatState, error) {
             // in.Room and in.Token are parsed and validated before upgrade.
@@ -133,7 +133,7 @@ type RoomState struct {
     User *User
 }
 
-shiftapi.HandleWS(api, "GET /rooms/{room}",
+api.HandleWS("GET /rooms/{room}",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, in JoinInput) (*RoomState, error) {
             user, err := authenticate(r)
@@ -196,7 +196,7 @@ type AuthError struct {
 
 func (e *AuthError) Error() string { return e.Message }
 
-shiftapi.HandleWS(api, "GET /ws",
+api.HandleWS("GET /ws",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, in ChatInput) (*ChatState, error) {
             user, err := authenticate(r, in.Token)
@@ -261,7 +261,7 @@ shiftapi.Websocket(
 WebSocket endpoints are documented in an [AsyncAPI 2.4](https://www.asyncapi.com/) spec served at `GET /asyncapi.json`. Each `HandleWS` call creates a channel with `subscribe` (server→client) and `publish` (client→server) operations derived from `WSSends` and `WSOn` registrations:
 
 ```go
-shiftapi.HandleWS(api, "GET /ws",
+api.HandleWS("GET /ws",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
             return struct{}{}, nil
@@ -308,7 +308,7 @@ For endpoints that send multiple message types, use `WSSends` to register each v
 Pass `WSMessageType[T]` descriptors to declare each named send type. `WSSender.Send` automatically wraps the value in a `{"type": name, "data": value}` envelope based on its concrete Go type:
 
 ```go
-shiftapi.HandleWS(api, "GET /chat",
+api.HandleWS("GET /chat",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
         shiftapi.WSSends(
@@ -347,7 +347,7 @@ Error frames use a distinct `{error, code, data}` envelope so the client can alw
 You can register multiple `WSOn` handlers for different client message types:
 
 ```go
-shiftapi.HandleWS(api, "GET /chat",
+api.HandleWS("GET /chat",
     shiftapi.Websocket(
         func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) { return struct{}{}, nil },
         shiftapi.WSSends(
@@ -373,7 +373,7 @@ By default, `HandleWS` rejects WebSocket connections from different origins. In 
 In production, you must either serve the frontend and API from the same origin or allow specific origins with `WithWSAcceptOptions`:
 
 ```go
-shiftapi.HandleWS(api, "GET /ws", ws,
+api.HandleWS("GET /ws", ws,
     shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{
         OriginPatterns: []string{"example.com"},
     }),
@@ -385,7 +385,7 @@ shiftapi.HandleWS(api, "GET /ws", ws,
 Standard route options and WS-specific options are passed to `HandleWS` (not to `Websocket`):
 
 ```go
-shiftapi.HandleWS(api, "GET /ws", ws,
+api.HandleWS("GET /ws", ws,
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary: "WebSocket chat",
         Tags:    []string{"chat"},

@@ -1,5 +1,5 @@
 module {{modulePath}}
 
-go 1.24.0
+go 1.27.0
 
 require github.com/fcjr/shiftapi v{{version}}

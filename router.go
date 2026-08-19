@@ -2,9 +2,10 @@ package shiftapi
 
 import "net/http"
 
-// Router is the common interface for registering routes. Both [*API] and
-// [*Group] implement Router, so [Get], [Post], [Put], etc. accept either.
-type Router interface {
+// routeTarget is the common interface for route registration. Both [*API] and
+// [*Group] implement it, letting the internal registration helpers accept
+// either.
+type routeTarget interface {
 	routerImpl() routerData
 }
 

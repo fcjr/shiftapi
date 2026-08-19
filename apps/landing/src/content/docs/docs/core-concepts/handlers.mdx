@@ -9,13 +9,13 @@ ShiftAPI uses Go generics to capture request and response types at compile time.
 
 ## Registering handlers
 
-Use `Handle` to register handlers:
+`Handle` is a method on `*API` and on `*Group`. Call it on whichever one the route belongs to:
 
 ```go
-shiftapi.Handle(api, "GET /users", listUsers)
-shiftapi.Handle(api, "POST /users", createUser)
-shiftapi.Handle(api, "PUT /users/{id}", updateUser)
-shiftapi.Handle(api, "DELETE /users/{id}", deleteUser)
+api.Handle("GET /users", listUsers)
+api.Handle("POST /users", createUser)
+api.Handle("PUT /users/{id}", updateUser)
+api.Handle("DELETE /users/{id}", deleteUser)
 ```
 
 ## Handler signature
@@ -36,7 +36,7 @@ func handler(r *http.Request, in InputType) (OutputType, error) {
 Use `struct{}` as the input type when a handler takes no input:
 
 ```go
-shiftapi.Handle(api, "GET /health", func(r *http.Request, _ struct{}) (*Status, error) {
+api.Handle("GET /health", func(r *http.Request, _ struct{}) (*Status, error) {
     return &Status{OK: true}, nil
 })
 ```
@@ -74,7 +74,7 @@ type GetUserInput struct {
     ID int `path:"id" validate:"required,gt=0"`
 }
 
-shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
+api.Handle("GET /users/{id}", func(r *http.Request, in GetUserInput) (*User, error) {
     return findUser(in.ID) // in.ID is already an int, validated
 })
 ```
@@ -86,7 +86,7 @@ If a `path`-tagged field name doesn't match any `{param}` in the route, registra
 You can also access path parameters directly via `r.PathValue()` — this still works for routes that don't need typed parsing:
 
 ```go
-shiftapi.Handle(api, "GET /users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
+api.Handle("GET /users/{id}", func(r *http.Request, _ struct{}) (*User, error) {
     id := r.PathValue("id") // string
     return findUser(id)
 })
@@ -103,7 +103,7 @@ type CachedResponse struct {
     Items        []Item  `json:"items"`
 }
 
-shiftapi.Handle(api, "GET /items", func(r *http.Request, _ struct{}) (*CachedResponse, error) {
+api.Handle("GET /items", func(r *http.Request, _ struct{}) (*CachedResponse, error) {
     etag := `"v1"`
     return &CachedResponse{
         CacheControl: "max-age=3600",
@@ -148,7 +148,7 @@ api := shiftapi.New(
 v1 := api.Group("/api/v1",
     shiftapi.WithResponseHeader("X-API-Version", "1"),                 // group routes
 )
-shiftapi.Handle(v1, "GET /items", listItems,
+v1.Handle("GET /items", listItems,
     shiftapi.WithResponseHeader("Cache-Control", "max-age=3600"),      // single route
 )
 ```
@@ -170,7 +170,7 @@ This means the most specific source always wins: handler struct tags override `W
 For status codes that forbid a response body (204 No Content, 304 Not Modified), use `WithStatus` with `struct{}` or a header-only response type. No JSON body or `Content-Type` header is written. Response headers (both static and dynamic) are still sent.
 
 ```go
-shiftapi.Handle(api, "DELETE /items/{id}", func(r *http.Request, in DeleteInput) (struct{}, error) {
+api.Handle("DELETE /items/{id}", func(r *http.Request, in DeleteInput) (struct{}, error) {
     deleteItem(in.ID)
     return struct{}{}, nil
 }, shiftapi.WithStatus(http.StatusNoContent))
@@ -183,7 +183,7 @@ type DeleteResponse struct {
     Location string `header:"Location"`
 }
 
-shiftapi.Handle(api, "DELETE /items/{id}", func(r *http.Request, in DeleteInput) (DeleteResponse, error) {
+api.Handle("DELETE /items/{id}", func(r *http.Request, in DeleteInput) (DeleteResponse, error) {
     deleteItem(in.ID)
     return DeleteResponse{Location: "/items"}, nil
 }, shiftapi.WithStatus(http.StatusNoContent))
@@ -196,7 +196,7 @@ The OpenAPI spec correctly reflects no response content for these routes. Regist
 Customize routes with options:
 
 ```go
-shiftapi.Handle(api, "POST /users", createUser,
+api.Handle("POST /users", createUser,
     shiftapi.WithStatus(http.StatusCreated),
     shiftapi.WithRouteInfo(shiftapi.RouteInfo{
         Summary:     "Create a user",
@@ -218,11 +218,50 @@ shiftapi.Handle(api, "POST /users", createUser,
 
 `WithError`, `WithMiddleware`, and `WithResponseHeader` are `Option` values — they work at all levels (API, group, and route). `WithStatus` and `WithRouteInfo` are route-only options. See [Options](/docs/core-concepts/options) for the full option system and composition.
 
+## Splitting routes across files
+
+Once an API outgrows one file, register each set of routes from its own
+function. Take a `*shiftapi.Group` and let the caller decide the prefix:
+
+```go
+// users.go
+func UserRoutes(g *shiftapi.Group) {
+    g.Handle("GET /users", listUsers)
+    g.Handle("POST /users", createUser)
+}
+
+// billing.go
+func BillingRoutes(g *shiftapi.Group) {
+    g.Handle("GET /invoices", listInvoices)
+}
+
+// main.go
+func main() {
+    api := shiftapi.New()
+
+    v1 := api.Group("/api/v1")
+    UserRoutes(v1)
+    BillingRoutes(v1)
+
+    log.Fatal(shiftapi.ListenAndServe(":8080", api))
+}
+```
+
+Each function inherits the group's prefix, error types, middleware, and static
+response headers, so `UserRoutes` above registers `GET /api/v1/users`. To mount
+a set of routes at the root, pass `api.Group("")`.
+
+Take `*shiftapi.Group` in these functions rather than `*shiftapi.API`. Go does
+not allow generic methods on interfaces, so no single interface covers both
+types, and a group works everywhere an API does. See
+[Route groups](/docs/core-concepts/options#route-groups) for prefixes, nesting,
+and inherited options.
+
 ## Other handler types
 
-ShiftAPI provides specialized handler functions for different use cases:
+ShiftAPI provides specialized handler methods for different use cases. Each one is available on both `*API` and `*Group`:
 
-| Function | Use case |
+| Method | Use case |
 |----------|----------|
 | `Handle` | JSON API endpoints (this page) |
 | [`HandleSSE`](/docs/core-concepts/server-sent-events/server) | Server-Sent Events with a typed writer and auto-generated TypeScript `sse` helper |
