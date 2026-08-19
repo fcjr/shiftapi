@@ -4,7 +4,6 @@ package shiftapi
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 )
@@ -23,7 +22,7 @@ const devMode = true
 //   - SHIFTAPI_PORT=<port>: override the port in addr, allowing the Vite
 //     plugin to automatically assign a free port.
 func ListenAndServe(addr string, api *API) error {
-	log.Println("shiftapi: running in dev mode (shiftapidev build tag)")
+	api.logger.Info("shiftapi: running in dev mode (shiftapidev build tag)")
 	if specPath := os.Getenv("SHIFTAPI_EXPORT_SPEC"); specPath != "" {
 		if err := exportSpec(api, specPath); err != nil {
 			return err
@@ -37,7 +36,7 @@ func ListenAndServe(addr string, api *API) error {
 	}
 	if port := os.Getenv("SHIFTAPI_PORT"); port != "" {
 		addr = ":" + port
-		log.Printf("shiftapi: listening on %s (via SHIFTAPI_PORT)", addr)
+		api.logger.Info("shiftapi: listening via SHIFTAPI_PORT", "addr", addr)
 	}
 	return http.ListenAndServe(addr, api)
 }

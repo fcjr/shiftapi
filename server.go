@@ -3,6 +3,7 @@ package shiftapi
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"reflect"
 
@@ -26,6 +27,7 @@ type API struct {
 	mux               *http.ServeMux
 	validate          *validator.Validate
 	maxUploadSize     int64
+	logger            *slog.Logger                      // internal diagnostics; defaults to slog.Default()
 	badRequestFn      func(error) any                   // builds the 400 response body from a parse error
 	internalServerFn  func(error) any                   // builds the 500 response body from an unmatched error
 	enumRegistry      map[reflect.Type][]any            // enum values registered via WithEnum
@@ -51,6 +53,7 @@ func New(options ...APIOption) *API {
 			DefaultContentType: "application/json",
 		},
 		mux:           http.NewServeMux(),
+		logger:        slog.Default(),
 		validate:      validator.New(),
 		maxUploadSize: 32 << 20, // 32 MB
 		enumRegistry:  make(map[reflect.Type][]any),

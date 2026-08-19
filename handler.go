@@ -3,7 +3,7 @@ package shiftapi
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"reflect"
 
@@ -93,6 +93,7 @@ type handlerConfig struct {
 	validate         func(any) error
 	badRequestFn     func(error) any
 	internalServerFn func(error) any
+	logger           *slog.Logger
 }
 
 // parseInput decodes and validates the typed input from the request. It returns
@@ -101,7 +102,7 @@ type handlerConfig struct {
 func parseInput[In any](w http.ResponseWriter, r *http.Request, hc *handlerConfig) (In, bool) {
 	in, inputErr := parseInputForWS[In](r, hc)
 	if inputErr != nil {
-		writeJSON(w, inputErr.status, inputErr.body)
+		writeJSON(w, inputErr.status, inputErr.body, hc.logger)
 		return in, false
 	}
 	return in, true
@@ -127,7 +128,7 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int
 
 		resp, err := fn(r, in)
 		if err != nil {
-			handleError(w, hc.internalServerFn, err, hc.errLookup)
+			handleError(w, hc, err)
 			return
 		}
 		if respEnc != nil {
@@ -138,10 +139,10 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int
 			return
 		}
 		if respEnc != nil {
-			writeJSON(w, status, respEnc.encode(resp))
+			writeJSON(w, status, respEnc.encode(resp), hc.logger)
 			return
 		}
-		writeJSON(w, status, resp)
+		writeJSON(w, status, resp, hc.logger)
 	}
 }
 
@@ -157,9 +158,9 @@ func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc
 		wt := &writeTracker{ResponseWriter: w}
 		if err := fn(wt, r, in); err != nil {
 			if !wt.written {
-				handleError(wt, hc.internalServerFn, err, hc.errLookup)
+				handleError(wt, hc, err)
 			} else {
-				log.Printf("shiftapi: raw handler error after response started: %v", err)
+				hc.logger.Error("shiftapi: raw handler error after response started", "error", err)
 			}
 		}
 	}
@@ -182,9 +183,9 @@ func adaptSSE[In any](fn SSEHandlerFunc[In], hc *handlerConfig, sendVariants map
 		}
 		if err := fn(r, in, sse); err != nil {
 			if !wt.written {
-				handleError(wt, hc.internalServerFn, err, hc.errLookup)
+				handleError(wt, hc, err)
 			} else {
-				log.Printf("shiftapi: SSE handler error after response started: %v", err)
+				hc.logger.Error("shiftapi: SSE handler error after response started", "error", err)
 			}
 		}
 	}
@@ -305,7 +306,7 @@ func adaptWSMessages[In any](
 			if status != http.StatusInternalServerError {
 				writeWSError(r.Context(), conn, 4000+status%1000, body)
 			} else {
-				log.Printf("shiftapi: WS setup error: %v", err)
+				hc.logger.Error("shiftapi: WS setup error", "error", err)
 				_ = conn.Close(websocket.StatusInternalError, "setup error")
 			}
 			return
@@ -315,11 +316,11 @@ func adaptWSMessages[In any](
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeJSON(w http.ResponseWriter, status int, v any, logger *slog.Logger) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("shiftapi: error encoding response: %v", err)
+		logger.Error("shiftapi: error encoding response", "error", err)
 	}
 }
 
@@ -342,9 +343,9 @@ func resolveError(internalServerFn func(error) any, err error, lookup errorLooku
 
 // handleError matches the returned error against registered error types and
 // writes the appropriate HTTP response.
-func handleError(w http.ResponseWriter, internalServerFn func(error) any, err error, lookup errorLookup) {
-	status, body := resolveError(internalServerFn, err, lookup)
-	writeJSON(w, status, body)
+func handleError(w http.ResponseWriter, hc *handlerConfig, err error) {
+	status, body := resolveError(hc.internalServerFn, err, hc.errLookup)
+	writeJSON(w, status, body, hc.logger)
 }
 
 // matchError walks the error chain (including multi-errors) and returns the

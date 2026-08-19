@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"reflect"
 
@@ -279,7 +278,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			if websocket.CloseStatus(err) != -1 {
 				return // clean close
 			}
-			log.Printf("shiftapi: WS read error: %v", err)
+			hc.logger.Error("shiftapi: WS read error", "error", err)
 			_ = conn.Close(websocket.StatusInternalError, "internal error")
 			return
 		}
@@ -289,7 +288,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			if cb.onUnknownMsg != nil {
 				cb.onUnknownMsg(ws, state, envelope.Type, envelope.Data)
 			} else {
-				log.Printf("shiftapi: unknown WS message type: %q", envelope.Type)
+				hc.logger.Warn("shiftapi: unknown WS message type", "type", envelope.Type)
 			}
 			continue
 		}
@@ -304,7 +303,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 				if cb.onDecodeError != nil {
 					cb.onDecodeError(ws, state, decErr)
 				} else {
-					log.Printf("shiftapi: %v", err)
+					hc.logger.Warn("shiftapi: WS decode error", "error", err)
 				}
 				continue
 			}
@@ -315,7 +314,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 			if status != http.StatusInternalServerError {
 				writeWSError(ctx, conn, 4000+status%1000, body)
 			} else {
-				log.Printf("shiftapi: WS handler error: %v", err)
+				hc.logger.Error("shiftapi: WS handler error", "error", err)
 				_ = conn.Close(websocket.StatusInternalError, "internal error")
 			}
 			return

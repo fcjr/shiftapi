@@ -202,6 +202,7 @@ func (s *routeSetup) handlerCfg(method string, forceMethodBody bool) *handlerCon
 		validate:         s.api.validateBody,
 		badRequestFn:     s.api.badRequestFn,
 		internalServerFn: s.api.internalServerFn,
+		logger:           s.api.logger,
 	}
 }
 

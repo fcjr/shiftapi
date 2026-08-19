@@ -1,6 +1,7 @@
 package shiftapi
 
 import (
+	"log/slog"
 	"reflect"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -34,6 +35,20 @@ type License struct {
 type ExternalDocs struct {
 	Description string
 	URL         string
+}
+
+// WithLogger sets the logger used for shiftapi's own diagnostics: handler
+// errors that arrive after a response has already started, WebSocket read and
+// dispatch failures, and response encoding failures. Defaults to
+// [slog.Default]. A nil logger is ignored.
+//
+//	api := shiftapi.New(shiftapi.WithLogger(slog.New(handler)))
+func WithLogger(l *slog.Logger) apiOptionFunc {
+	return func(api *API) {
+		if l != nil {
+			api.logger = l
+		}
+	}
 }
 
 // WithInfo configures the API metadata that appears in the OpenAPI spec

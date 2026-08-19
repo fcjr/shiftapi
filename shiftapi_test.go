@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -5909,5 +5910,40 @@ func TestGroupHandleRaw(t *testing.T) {
 	// GETs fall through to the catch-all /docs redirect, so assert on not-OK.
 	if resp := doRequest(t, api, "GET", "/download", ""); resp.StatusCode == http.StatusOK {
 		t.Error("route should not be registered at the unprefixed path")
+	}
+}
+
+func TestWithLoggerCapturesHandlerErrors(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	api := shiftapi.New(shiftapi.WithLogger(logger))
+	api.HandleRaw("GET /stream", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		_, _ = w.Write([]byte("partial"))
+		return errors.New("late failure")
+	})
+
+	resp := doRequest(t, api, "GET", "/stream", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 (response already started), got %d", resp.StatusCode)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "raw handler error after response started") {
+		t.Errorf("expected the error on the configured logger, got %q", out)
+	}
+	if !strings.Contains(out, "late failure") {
+		t.Errorf("expected the underlying error in the log line, got %q", out)
+	}
+}
+
+func TestWithLoggerNilIsIgnored(t *testing.T) {
+	api := shiftapi.New(shiftapi.WithLogger(nil))
+	api.Handle("GET /ok", func(r *http.Request, _ struct{}) (*Greeting, error) {
+		return &Greeting{Hello: "hi"}, nil
+	})
+
+	if resp := doRequest(t, api, "GET", "/ok", ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 }
