@@ -107,8 +107,19 @@ func parseInput[In any](w http.ResponseWriter, r *http.Request, hc *handlerConfi
 	return in, true
 }
 
+// setStaticHeaders applies the route's static response headers. Adapters call
+// it before parsing input so that the headers are present on parse, validation,
+// and handler error responses too, not just successful ones.
+func setStaticHeaders(w http.ResponseWriter, headers []staticResponseHeader) {
+	for _, h := range headers {
+		w.Header().Set(h.name, h.value)
+	}
+}
+
 func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int, noBody bool, respEnc *respEncoder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setStaticHeaders(w, hc.staticHeaders)
+
 		in, ok := parseInput[In](w, r, hc)
 		if !ok {
 			return
@@ -118,9 +129,6 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int
 		if err != nil {
 			handleError(w, hc.internalServerFn, err, hc.errLookup)
 			return
-		}
-		for _, h := range hc.staticHeaders {
-			w.Header().Set(h.name, h.value)
 		}
 		if respEnc != nil {
 			writeResponseHeaders(w, resp)
@@ -139,13 +147,11 @@ func adapt[In, Resp any](fn HandlerFunc[In, Resp], hc *handlerConfig, status int
 
 func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setStaticHeaders(w, hc.staticHeaders)
+
 		in, ok := parseInput[In](w, r, hc)
 		if !ok {
 			return
-		}
-
-		for _, h := range hc.staticHeaders {
-			w.Header().Set(h.name, h.value)
 		}
 
 		wt := &writeTracker{ResponseWriter: w}
@@ -161,13 +167,11 @@ func adaptRaw[In any](fn RawHandlerFunc[In], hc *handlerConfig) http.HandlerFunc
 
 func adaptSSE[In any](fn SSEHandlerFunc[In], hc *handlerConfig, sendVariants map[reflect.Type]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setStaticHeaders(w, hc.staticHeaders)
+
 		in, ok := parseInput[In](w, r, hc)
 		if !ok {
 			return
-		}
-
-		for _, h := range hc.staticHeaders {
-			w.Header().Set(h.name, h.value)
 		}
 
 		wt := &writeTracker{ResponseWriter: w}

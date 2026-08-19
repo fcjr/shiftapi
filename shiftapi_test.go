@@ -5170,6 +5170,78 @@ func TestWithResponseHeaderNestedGroups(t *testing.T) {
 	}
 }
 
+func TestStaticResponseHeaderOnRegisteredError(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+		shiftapi.WithError[*NotFoundError](http.StatusNotFound),
+	)
+	api.Handle("GET /missing", func(r *http.Request, _ struct{}) (*Greeting, error) {
+		return nil, &NotFoundError{Message: "nope"}
+	})
+
+	resp := doRequest(t, api, "GET", "/missing", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected static header on error response, got %q", got)
+	}
+}
+
+func TestStaticResponseHeaderOnValidationError(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+	)
+	type In struct {
+		Name string `json:"name" validate:"required"`
+	}
+	api.Handle("POST /people", func(r *http.Request, in In) (*Greeting, error) {
+		return &Greeting{Hello: in.Name}, nil
+	})
+
+	resp := doRequest(t, api, "POST", "/people", `{}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected static header on validation error, got %q", got)
+	}
+}
+
+func TestStaticResponseHeaderOnUnregisteredError(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+	)
+	api.Handle("GET /boom", func(r *http.Request, _ struct{}) (*Greeting, error) {
+		return nil, errors.New("boom")
+	})
+
+	resp := doRequest(t, api, "GET", "/boom", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected static header on 500 response, got %q", got)
+	}
+}
+
+func TestStaticResponseHeaderOnRawHandlerError(t *testing.T) {
+	api := shiftapi.New(
+		shiftapi.WithResponseHeader("X-Content-Type-Options", "nosniff"),
+	)
+	api.HandleRaw("GET /raw", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		return errors.New("boom")
+	})
+
+	resp := doRequest(t, api, "GET", "/raw", "")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected static header on raw error response, got %q", got)
+	}
+}
+
 // --- No-body response tests ---
 
 func TestNoBody_StructEmpty_204(t *testing.T) {
