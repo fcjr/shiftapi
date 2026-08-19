@@ -21,8 +21,9 @@ type staticResponseHeader struct {
 }
 
 // Option is the primary option type. It works at all levels: [New],
-// [API.Group]/[Group.Group], and route registration functions ([Get], [Post],
-// etc.). Options are composable via [ComposeOptions].
+// [API.Group]/[Group.Group], and route registration ([API.Handle],
+// [API.HandleRaw], [API.HandleSSE], [API.HandleWS] and their [Group]
+// equivalents). Options are composable via [ComposeOptions].
 type Option func(sharedConfig)
 
 func (f Option) applyToAPI(api *API)           { f(api) }
@@ -41,9 +42,9 @@ type GroupOption interface {
 	applyToGroup(*groupConfig)
 }
 
-// RouteOption configures a route registered with [Get], [Post], [Put], etc.
-// Both [Option] and route-specific options (like [WithStatus]) implement
-// this interface.
+// RouteOption configures a route registered with [API.Handle] or
+// [API.HandleRaw] (or their [Group] equivalents). Both [Option] and
+// route-specific options (like [WithStatus]) implement this interface.
 type RouteOption interface {
 	applyToRoute(*routeConfig)
 }

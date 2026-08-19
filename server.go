@@ -14,7 +14,8 @@ import (
 
 // API is the central type that collects typed handler registrations, generates
 // an OpenAPI 3.1 schema, and implements [http.Handler]. Create one with [New]
-// and register routes with [Get], [Post], [Put], [Patch], [Delete], etc.
+// and register routes with [API.Handle], [API.HandleRaw], [API.HandleSSE],
+// and [API.HandleWS].
 //
 // API automatically serves the OpenAPI spec at GET /openapi.json and
 // interactive documentation at GET /docs.
