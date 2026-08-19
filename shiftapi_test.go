@@ -5881,3 +5881,33 @@ func TestHandleRawStaticHeaders(t *testing.T) {
 		t.Errorf("expected X-Custom header 'test-value', got %q", got)
 	}
 }
+
+func TestGroupHandleRaw(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api/v1",
+		shiftapi.WithResponseHeader("X-Group", "v1"),
+	)
+	g.HandleRaw("GET /download", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("payload"))
+		return err
+	})
+
+	resp := doRequest(t, api, "GET", "/api/v1/download", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 at the group-prefixed path, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Group"); got != "v1" {
+		t.Errorf("expected inherited group header %q, got %q", "v1", got)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "payload" {
+		t.Errorf("body = %q, want %q", body, "payload")
+	}
+
+	// The route must not also be reachable without the group prefix. Unmatched
+	// GETs fall through to the catch-all /docs redirect, so assert on not-OK.
+	if resp := doRequest(t, api, "GET", "/download", ""); resp.StatusCode == http.StatusOK {
+		t.Error("route should not be registered at the unprefixed path")
+	}
+}

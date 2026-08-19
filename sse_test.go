@@ -422,3 +422,40 @@ func parseSSEEvents(t *testing.T, body string) []sseEvent {
 	}
 	return events
 }
+
+func TestGroupHandleSSE(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api/v1",
+		shiftapi.WithResponseHeader("X-Group", "v1"),
+	)
+	g.HandleSSE("GET /events", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+		return sse.Send(sseMessage{Text: "hello"})
+	}, shiftapi.SSESends(
+		shiftapi.SSEEventType[sseMessage]("message"),
+	))
+
+	w := httptest.NewRecorder()
+	api.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/events", nil))
+
+	if w.Header().Get("Content-Type") != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want %q", w.Header().Get("Content-Type"), "text/event-stream")
+	}
+	if got := w.Header().Get("X-Group"); got != "v1" {
+		t.Errorf("expected inherited group header %q, got %q", "v1", got)
+	}
+	events := parseSSEEvents(t, w.Body.String())
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].Data != `{"text":"hello"}` {
+		t.Errorf("event data = %q, want %q", events[0].Data, `{"text":"hello"}`)
+	}
+
+	// The route must not also be reachable without the group prefix. Unmatched
+	// GETs fall through to the catch-all /docs redirect, so assert on not-OK.
+	w2 := httptest.NewRecorder()
+	api.ServeHTTP(w2, httptest.NewRequest("GET", "/events", nil))
+	if w2.Code == http.StatusOK {
+		t.Error("route should not be registered at the unprefixed path")
+	}
+}

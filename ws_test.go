@@ -1252,3 +1252,43 @@ func TestWebsocket_NoHandlersPanics(t *testing.T) {
 		),
 	)
 }
+
+func TestGroupHandleWS(t *testing.T) {
+	api := shiftapi.New()
+	g := api.Group("/api/v1")
+	g.HandleWS("GET /echo",
+		shiftapi.Websocket(
+			noSetup,
+			shiftapi.WSSends(shiftapi.WSMessageType[wsServerMsg]("server")),
+			shiftapi.WSOn("echo", func(sender *shiftapi.WSSender, _ struct{}, msg wsClientMsg) error {
+				return sender.Send(wsServerMsg{Text: "echo: " + msg.Text})
+			}),
+		),
+	)
+
+	srv := httptest.NewServer(api)
+	defer srv.Close()
+
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, srv.URL+"/api/v1/echo", nil)
+	if err != nil {
+		t.Fatalf("dial group-prefixed path: %v", err)
+	}
+	defer conn.CloseNow() //nolint:errcheck
+
+	envelope := map[string]any{"type": "echo", "data": map[string]any{"text": "hello"}}
+	if err := wsjson.Write(ctx, conn, envelope); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var resp struct {
+		Type string      `json:"type"`
+		Data wsServerMsg `json:"data"`
+	}
+	if err := wsjson.Read(ctx, conn, &resp); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if resp.Data.Text != "echo: hello" {
+		t.Errorf("got %q, want %q", resp.Data.Text, "echo: hello")
+	}
+	conn.Close(websocket.StatusNormalClosure, "") //nolint:errcheck
+}
