@@ -9,13 +9,19 @@ ShiftAPI uses a layered option system. Options configure the API, groups, and in
 
 ## Option types
 
+Each option type is named for the method it can be passed to.
+
 | Type | Where it works | Examples |
 |------|---------------|----------|
-| `Option` | API, Group, and Route | `WithError`, `WithMiddleware`, `WithResponseHeader` |
-| `APIOption` | API only (`New`) | `WithInfo`, `WithLogger`, `WithBadRequestError`, `WithInternalServerError` |
-| `RouteOption` | Route only (`Handle`) | `WithStatus`, `WithRouteInfo` |
+| `Option` | `New`, `Group`, and every route method | `WithError`, `WithMiddleware`, `WithResponseHeader` |
+| `APIOption` | `New` | `WithInfo`, `WithLogger`, `WithBadRequestError`, `WithInternalServerError` |
+| `GroupOption` | `Group` | (all `Option` values) |
+| `RouteOption` | `Handle`, `HandleRaw`, `HandleSSE`, `HandleWS` | `WithRouteInfo` |
+| `HandleOption` | `Handle`, `HandleRaw` | `WithStatus`, `WithContentType` |
+| `SSEOption` | `HandleSSE` | `SSESends` |
+| `WSOption` | `HandleWS` | `WithWSAcceptOptions` |
 
-`Option` implements all three level interfaces, so `WithError` and `WithMiddleware` work everywhere. Level-specific options like `WithStatus` are restricted to their level at compile time.
+`Option` is the widest: it satisfies every other interface, so `WithError` and `WithMiddleware` work everywhere. `RouteOption` sits one level down, covering all four route methods but not `New` or `Group`. The narrow types are restricted at compile time, so passing `SSESends` to `Handle` fails to build.
 
 ## Composing options
 
@@ -44,14 +50,14 @@ To mix shared options with level-specific options, use the corresponding compose
 | `ComposeOptions` | `...Option` | `Option` |
 | `ComposeAPIOptions` | `...APIOption` | `APIOption` |
 | `ComposeGroupOptions` | `...GroupOption` | `GroupOption` |
-| `ComposeRouteOptions` | `...RouteOption` | `RouteOption` |
+| `ComposeHandleOptions` | `...HandleOption` | `HandleOption` |
 
 Since `Option` implements all level interfaces, you can pass it to any of the level-specific compose functions alongside level-specific options:
 
 ```go
-createOpts := shiftapi.ComposeRouteOptions(
-    shiftapi.WithStatus(http.StatusCreated),                   // RouteOption
-    shiftapi.WithError[*ConflictError](http.StatusConflict),   // Option (also a RouteOption)
+createOpts := shiftapi.ComposeHandleOptions(
+    shiftapi.WithStatus(http.StatusCreated),                   // HandleOption
+    shiftapi.WithError[*ConflictError](http.StatusConflict),   // Option (also a HandleOption)
 )
 
 api.Handle("POST /users", createUser, createOpts)

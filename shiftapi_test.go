@@ -5947,3 +5947,69 @@ func TestWithLoggerNilIsIgnored(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 }
+
+// Compile-time assertions that each option constructor returns the exported
+// interface named for the method it belongs to.
+var (
+	_ shiftapi.APIOption    = shiftapi.WithInfo(shiftapi.Info{})
+	_ shiftapi.APIOption    = shiftapi.WithLogger(nil)
+	_ shiftapi.APIOption    = shiftapi.WithMaxUploadSize(1)
+	_ shiftapi.APIOption    = shiftapi.WithEnum[string]()
+	_ shiftapi.HandleOption = shiftapi.WithStatus(http.StatusOK)
+	_ shiftapi.HandleOption = shiftapi.WithContentType("text/plain")
+	_ shiftapi.SSEOption    = shiftapi.SSESends()
+	_ shiftapi.WSOption     = shiftapi.WithWSAcceptOptions(shiftapi.WSAcceptOptions{})
+
+	// RouteOption reaches every route method.
+	_ shiftapi.RouteOption  = shiftapi.WithRouteInfo(shiftapi.RouteInfo{})
+	_ shiftapi.HandleOption = shiftapi.WithRouteInfo(shiftapi.RouteInfo{})
+	_ shiftapi.SSEOption    = shiftapi.WithRouteInfo(shiftapi.RouteInfo{})
+	_ shiftapi.WSOption     = shiftapi.WithRouteInfo(shiftapi.RouteInfo{})
+
+	// Option is the widest: it satisfies every other option interface.
+	_ shiftapi.APIOption    = shiftapi.WithMiddleware()
+	_ shiftapi.GroupOption  = shiftapi.WithMiddleware()
+	_ shiftapi.RouteOption  = shiftapi.WithMiddleware()
+	_ shiftapi.HandleOption = shiftapi.WithMiddleware()
+	_ shiftapi.SSEOption    = shiftapi.WithMiddleware()
+	_ shiftapi.WSOption     = shiftapi.WithMiddleware()
+)
+
+func TestRouteOptionAcceptedByEveryRouteMethod(t *testing.T) {
+	info := shiftapi.WithRouteInfo(shiftapi.RouteInfo{Summary: "shared"})
+
+	api := newTestAPI(t)
+	api.Handle("GET /a", func(r *http.Request, _ struct{}) (*Greeting, error) {
+		return &Greeting{Hello: "a"}, nil
+	}, info)
+	api.HandleRaw("GET /b", func(w http.ResponseWriter, r *http.Request, _ struct{}) error {
+		_, err := w.Write([]byte("b"))
+		return err
+	}, info)
+	api.HandleSSE("GET /c", func(r *http.Request, _ struct{}, sse *shiftapi.SSEWriter) error {
+		return nil
+	}, info, shiftapi.SSESends(shiftapi.SSEEventType[Greeting]("greeting")))
+	api.HandleWS("GET /d",
+		shiftapi.Websocket(
+			func(r *http.Request, s *shiftapi.WSSender, _ struct{}) (struct{}, error) {
+				return struct{}{}, nil
+			},
+			shiftapi.WSSends(shiftapi.WSMessageType[Greeting]("greeting")),
+			shiftapi.WSOn("ping", func(s *shiftapi.WSSender, _ struct{}, m Greeting) error {
+				return nil
+			}),
+		),
+		info,
+	)
+
+	spec := api.Spec()
+	for _, path := range []string{"/a", "/b", "/c"} {
+		item := spec.Paths.Find(path)
+		if item == nil || item.Get == nil {
+			t.Fatalf("expected GET %s in the spec", path)
+		}
+		if item.Get.Summary != "shared" {
+			t.Errorf("%s: summary = %q, want %q", path, item.Get.Summary, "shared")
+		}
+	}
+}

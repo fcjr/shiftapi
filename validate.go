@@ -33,10 +33,10 @@ type FieldError struct {
 
 // WithValidator sets a custom [github.com/go-playground/validator/v10] instance
 // on the API. Use this to register custom validations or override default behavior.
-func WithValidator(v *validator.Validate) apiOptionFunc {
-	return func(api *API) {
+func WithValidator(v *validator.Validate) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.validate = v
-	}
+	})
 }
 
 // validateStruct validates a struct value using the provided validator.

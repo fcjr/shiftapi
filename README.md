@@ -371,10 +371,10 @@ func WithAuth() shiftapi.Option {
 }
 ```
 
-For level-specific composition (mixing shared and level-specific options), use `ComposeAPIOptions`, `ComposeGroupOptions`, or `ComposeRouteOptions`:
+For level-specific composition (mixing shared and level-specific options), use `ComposeAPIOptions`, `ComposeGroupOptions`, or `ComposeHandleOptions`:
 
 ```go
-createOpts := shiftapi.ComposeRouteOptions(
+createOpts := shiftapi.ComposeHandleOptions(
     shiftapi.WithStatus(http.StatusCreated),
     shiftapi.WithError[*ConflictError](http.StatusConflict),
 )

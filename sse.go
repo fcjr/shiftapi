@@ -98,7 +98,7 @@ func SSEEventType[T any](name string) SSEEventVariant {
 
 // SSEOption configures a [API.HandleSSE] route. General options like
 // [WithRouteInfo], [WithError], and [WithMiddleware] implement both
-// [RouteOption] and [SSEOption]. SSE-specific options like [SSESends]
+// [HandleOption] and [SSEOption]. SSE-specific options like [SSESends]
 // implement only [SSEOption].
 type SSEOption interface {
 	applyToSSE(*sseRouteConfig)
@@ -154,10 +154,10 @@ func (f sseOptionFunc) applyToSSE(cfg *sseRouteConfig) { f(cfg) }
 //	        shiftapi.SSEEventType[JoinData]("join"),
 //	    ),
 //	)
-func SSESends(variants ...SSEEventVariant) sseOptionFunc {
-	return func(cfg *sseRouteConfig) {
+func SSESends(variants ...SSEEventVariant) SSEOption {
+	return sseOptionFunc(func(cfg *sseRouteConfig) {
 		cfg.eventVariants = append(cfg.eventVariants, variants...)
-	}
+	})
 }
 
 // Ensure that the shared Option type also implements SSEOption.

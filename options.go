@@ -42,11 +42,24 @@ type GroupOption interface {
 	applyToGroup(*groupConfig)
 }
 
-// RouteOption configures a route registered with [API.Handle] or
+// HandleOption configures a route registered with [API.Handle] or
 // [API.HandleRaw] (or their [Group] equivalents). Both [Option] and
-// route-specific options (like [WithStatus]) implement this interface.
-type RouteOption interface {
+// Handle-specific options (like [WithStatus]) implement this interface.
+type HandleOption interface {
 	applyToRoute(*routeConfig)
+}
+
+// RouteOption configures any route registration: [API.Handle], [API.HandleRaw],
+// [API.HandleSSE], and [API.HandleWS], plus their [Group] equivalents. It is
+// the union of [HandleOption], [SSEOption], and [WSOption], so a RouteOption
+// can be passed to all four methods.
+//
+// Use [Option] instead for options that also apply at the [New] and
+// [API.Group] levels.
+type RouteOption interface {
+	HandleOption
+	SSEOption
+	WSOption
 }
 
 // apiOptionFunc is a function that implements [APIOption].
@@ -59,10 +72,10 @@ type groupOptionFunc func(*groupConfig)
 
 func (f groupOptionFunc) applyToGroup(cfg *groupConfig) { f(cfg) }
 
-// routeOptionFunc is a function that implements [RouteOption].
-type routeOptionFunc func(*routeConfig)
+// handleOptionFunc is a function that implements [HandleOption].
+type handleOptionFunc func(*routeConfig)
 
-func (f routeOptionFunc) applyToRoute(cfg *routeConfig) { f(cfg) }
+func (f handleOptionFunc) applyToRoute(cfg *routeConfig) { f(cfg) }
 
 // errorEntry maps an error type to an HTTP status code.
 type errorEntry struct {
@@ -212,16 +225,16 @@ func ComposeGroupOptions(opts ...GroupOption) GroupOption {
 	})
 }
 
-// ComposeRouteOptions combines multiple [RouteOption] values into a single
-// [RouteOption]. Since [Option] implements [RouteOption], both shared and
+// ComposeHandleOptions combines multiple [HandleOption] values into a single
+// [HandleOption]. Since [Option] implements [HandleOption], both shared and
 // route-specific options can be mixed.
 //
-//	createOpts := shiftapi.ComposeRouteOptions(
+//	createOpts := shiftapi.ComposeHandleOptions(
 //	    shiftapi.WithStatus(http.StatusCreated),
 //	    shiftapi.WithError[*ConflictError](http.StatusConflict),
 //	)
-func ComposeRouteOptions(opts ...RouteOption) RouteOption {
-	return routeOptionFunc(func(cfg *routeConfig) {
+func ComposeHandleOptions(opts ...HandleOption) HandleOption {
+	return handleOptionFunc(func(cfg *routeConfig) {
 		for _, opt := range opts {
 			opt.applyToRoute(cfg)
 		}

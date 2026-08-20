@@ -28,7 +28,7 @@ func (c *routeConfig) addStaticResponseHeader(h staticResponseHeader) {
 	c.staticRespHeaders = append(c.staticRespHeaders, h)
 }
 
-func applyRouteOptions(opts []RouteOption) routeConfig {
+func applyHandleOptions(opts []HandleOption) routeConfig {
 	cfg := routeConfig{status: http.StatusOK}
 	for _, opt := range opts {
 		opt.applyToRoute(&cfg)
@@ -44,17 +44,18 @@ type RouteInfo struct {
 	Tags        []string
 }
 
-// routeAndWSAndSSEOption implements RouteOption, WSOption, and SSEOption for
-// options that need to work on Handle, HandleSSE, and HandleWS routes.
-type routeAndWSAndSSEOption struct {
+// routeOption implements [RouteOption]: it carries one apply function per
+// route kind so a single option value works on Handle, HandleSSE, and
+// HandleWS routes.
+type routeOption struct {
 	routeFn func(*routeConfig)
 	wsFn    func(*wsRouteConfig)
 	sseFn   func(*sseRouteConfig)
 }
 
-func (o routeAndWSAndSSEOption) applyToRoute(cfg *routeConfig)  { o.routeFn(cfg) }
-func (o routeAndWSAndSSEOption) applyToWS(cfg *wsRouteConfig)   { o.wsFn(cfg) }
-func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig) { o.sseFn(cfg) }
+func (o routeOption) applyToRoute(cfg *routeConfig)  { o.routeFn(cfg) }
+func (o routeOption) applyToWS(cfg *wsRouteConfig)   { o.wsFn(cfg) }
+func (o routeOption) applyToSSE(cfg *sseRouteConfig) { o.sseFn(cfg) }
 
 // WithRouteInfo sets the route's OpenAPI metadata (summary, description, tags).
 //
@@ -62,8 +63,8 @@ func (o routeAndWSAndSSEOption) applyToSSE(cfg *sseRouteConfig) { o.sseFn(cfg) }
 //	    Summary: "Greet a person",
 //	    Tags:    []string{"greetings"},
 //	}))
-func WithRouteInfo(info RouteInfo) routeAndWSAndSSEOption {
-	return routeAndWSAndSSEOption{
+func WithRouteInfo(info RouteInfo) RouteOption {
+	return routeOption{
 		routeFn: func(cfg *routeConfig) { cfg.info = &info },
 		wsFn:    func(cfg *wsRouteConfig) { cfg.info = &info },
 		sseFn:   func(cfg *sseRouteConfig) { cfg.info = &info },
@@ -72,10 +73,10 @@ func WithRouteInfo(info RouteInfo) routeAndWSAndSSEOption {
 
 // WithStatus sets the success HTTP status code for the route (default: 200).
 // Use this for routes that should return 201 Created, 204 No Content, etc.
-func WithStatus(status int) routeOptionFunc {
-	return func(cfg *routeConfig) {
+func WithStatus(status int) HandleOption {
+	return handleOptionFunc(func(cfg *routeConfig) {
 		cfg.status = status
-	}
+	})
 }
 
 // ResponseSchemaOption carries a type for deferred OpenAPI schema generation
@@ -105,11 +106,11 @@ func ResponseSchema[T any]() ResponseSchemaOption {
 //	api.HandleRaw("GET /events", sseHandler,
 //	    shiftapi.WithContentType("text/event-stream", shiftapi.ResponseSchema[Event]()),
 //	)
-func WithContentType(contentType string, opts ...ResponseSchemaOption) routeOptionFunc {
-	return func(cfg *routeConfig) {
+func WithContentType(contentType string, opts ...ResponseSchemaOption) HandleOption {
+	return handleOptionFunc(func(cfg *routeConfig) {
 		cfg.contentType = contentType
 		if len(opts) > 0 {
 			cfg.responseSchemaType = opts[0].typ
 		}
-	}
+	})
 }

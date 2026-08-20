@@ -61,12 +61,12 @@ type routeSetup struct {
 // bodyType fields depend on whether the caller forces body decode for
 // POST/PUT/PATCH (Handle does, HandleRaw does not), so they are computed here
 // based on the forceMethodBody flag.
-func prepareRoute[In any](router routeTarget, method, path string, forceMethodBody bool, options []RouteOption) routeSetup {
+func prepareRoute[In any](router routeTarget, method, path string, forceMethodBody bool, options []HandleOption) routeSetup {
 	rd := router.routerImpl()
 	api := rd.api
 	fullPath := strings.TrimRight(rd.prefix, "/") + path
 
-	cfg := applyRouteOptions(options)
+	cfg := applyHandleOptions(options)
 
 	var in In
 	inType := reflect.TypeOf(in)
@@ -211,7 +211,7 @@ func registerRoute[In, Resp any](
 	method string,
 	path string,
 	fn HandlerFunc[In, Resp],
-	options ...RouteOption,
+	options ...HandleOption,
 ) {
 	s := prepareRoute[In](router, method, path, true, options)
 
@@ -251,7 +251,7 @@ func registerRoute[In, Resp any](
 	s.wrapAndRegister(router, h)
 }
 
-func handle[In, Resp any](router routeTarget, pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+func handle[In, Resp any](router routeTarget, pattern string, fn HandlerFunc[In, Resp], options ...HandleOption) {
 	method, path := parsePattern(pattern)
 	registerRoute(router, method, path, fn, options...)
 }
@@ -271,14 +271,14 @@ func handle[In, Resp any](router routeTarget, pattern string, fn HandlerFunc[In,
 //	api.Handle("DELETE /items/{id}", deleteItem,
 //	    shiftapi.WithStatus(http.StatusNoContent),
 //	)
-func (a *API) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+func (a *API) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...HandleOption) {
 	handle(a, pattern, fn, options...)
 }
 
 // Handle registers a typed handler on the group. The pattern is appended to
 // the group's prefix, and error types, middleware, and response headers are
 // inherited from the group. See [API.Handle] for the full description.
-func (g *Group) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...RouteOption) {
+func (g *Group) Handle[In, Resp any](pattern string, fn HandlerFunc[In, Resp], options ...HandleOption) {
 	handle(g, pattern, fn, options...)
 }
 
@@ -287,7 +287,7 @@ func registerRawRoute[In any](
 	method string,
 	path string,
 	fn RawHandlerFunc[In],
-	options ...RouteOption,
+	options ...HandleOption,
 ) {
 	s := prepareRoute[In](router, method, path, false, options)
 
@@ -301,7 +301,7 @@ func registerRawRoute[In any](
 	s.wrapAndRegister(router, h)
 }
 
-func handleRaw[In any](router routeTarget, pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+func handleRaw[In any](router routeTarget, pattern string, fn RawHandlerFunc[In], options ...HandleOption) {
 	method, path := parsePattern(pattern)
 	registerRawRoute(router, method, path, fn, options...)
 }
@@ -317,14 +317,14 @@ func handleRaw[In any](router routeTarget, pattern string, fn RawHandlerFunc[In]
 //	api.HandleRaw("GET /events", sseHandler,
 //	    shiftapi.WithContentType("text/event-stream"),
 //	)
-func (a *API) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+func (a *API) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...HandleOption) {
 	handleRaw(a, pattern, fn, options...)
 }
 
 // HandleRaw registers a raw handler on the group. The pattern is appended to
 // the group's prefix, and error types, middleware, and response headers are
 // inherited from the group. See [API.HandleRaw] for the full description.
-func (g *Group) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...RouteOption) {
+func (g *Group) HandleRaw[In any](pattern string, fn RawHandlerFunc[In], options ...HandleOption) {
 	handleRaw(g, pattern, fn, options...)
 }
 
@@ -352,22 +352,22 @@ func registerSSERoute[In any](
 	}
 
 	// Build a routeConfig from the sseRouteConfig so we can reuse prepareRoute.
-	routeOpts := []RouteOption{}
+	routeOpts := []HandleOption{}
 	if sseOpts.info != nil {
 		routeOpts = append(routeOpts, WithRouteInfo(*sseOpts.info))
 	}
 	for _, e := range sseOpts.errors {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addError(e)
 		}))
 	}
 	if len(sseOpts.middleware) > 0 {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addMiddleware(sseOpts.middleware)
 		}))
 	}
 	for _, h := range sseOpts.staticRespHeaders {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addStaticResponseHeader(h)
 		}))
 	}
@@ -436,22 +436,22 @@ func registerWSRoute[In any](
 		panic(fmt.Sprintf("shiftapi: HandleWS requires WSSends to define server-to-client message types for %s %s", method, path))
 	}
 	// Build a routeConfig from the wsRouteConfig so we can reuse prepareRoute.
-	routeOpts := []RouteOption{}
+	routeOpts := []HandleOption{}
 	if wsOpts.info != nil {
 		routeOpts = append(routeOpts, WithRouteInfo(*wsOpts.info))
 	}
 	for _, e := range wsOpts.errors {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addError(e)
 		}))
 	}
 	if len(wsOpts.middleware) > 0 {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addMiddleware(wsOpts.middleware)
 		}))
 	}
 	for _, h := range wsOpts.staticRespHeaders {
-		routeOpts = append(routeOpts, routeOptionFunc(func(cfg *routeConfig) {
+		routeOpts = append(routeOpts, handleOptionFunc(func(cfg *routeConfig) {
 			cfg.addStaticResponseHeader(h)
 		}))
 	}

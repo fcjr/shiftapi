@@ -270,13 +270,16 @@
 //
 // # Options
 //
-// [Option] is the primary option type. It works at all three levels: [New],
-// [API.Group]/[Group.Group], and [API.Handle].
+// [Option] is the primary option type. It works everywhere: [New],
+// [API.Group]/[Group.Group], and every route method.
 // [WithError], [WithMiddleware], and [WithResponseHeader] all return [Option].
 //
-// Some options are level-specific: [WithInfo] and [WithBadRequestError] only work
-// with [New] ([APIOption]), while [WithStatus] and [WithRouteInfo] only work with
-// [API.Handle] ([RouteOption]).
+// Narrower option types are named for the method they can be passed to.
+// [WithInfo] and [WithBadRequestError] only work with [New] ([APIOption]).
+// [WithStatus] and [WithContentType] only work with [API.Handle] and
+// [API.HandleRaw] ([HandleOption]). [SSESends] is an [SSEOption] and
+// [WithWSAcceptOptions] a [WSOption]. [WithRouteInfo] returns a [RouteOption],
+// which every route method accepts.
 //
 // Use [ComposeOptions] to bundle multiple [Option] values into a reusable option:
 //
@@ -287,7 +290,7 @@
 //	    )
 //	}
 //
-// [ComposeAPIOptions], [ComposeGroupOptions], and [ComposeRouteOptions] can mix shared and
+// [ComposeAPIOptions], [ComposeGroupOptions], and [ComposeHandleOptions] can mix shared and
 // level-specific options at their respective levels.
 //
 // # Built-in endpoints

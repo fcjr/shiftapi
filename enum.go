@@ -32,15 +32,15 @@ type Scalar interface {
 //	api := shiftapi.New(
 //		shiftapi.WithEnum[Status](StatusActive, StatusInactive, StatusPending),
 //	)
-func WithEnum[T Scalar](values ...T) apiOptionFunc {
-	return func(api *API) {
+func WithEnum[T Scalar](values ...T) APIOption {
+	return apiOptionFunc(func(api *API) {
 		t := reflect.TypeFor[T]()
 		enums := make([]any, len(values))
 		for i, v := range values {
 			enums[i] = v
 		}
 		api.enumRegistry[t] = enums
-	}
+	})
 }
 
 // lookupEnum returns the registered enum values for the given type, or nil if

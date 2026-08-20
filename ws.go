@@ -324,7 +324,7 @@ func runWSDispatchLoop(r *http.Request, conn *websocket.Conn, ws *WSSender, stat
 
 // WSOption configures a [API.HandleWS] route. General options like
 // [WithRouteInfo], [WithError], and [WithMiddleware] implement both
-// [RouteOption] and [WSOption]. WebSocket-specific options like
+// [HandleOption] and [WSOption]. WebSocket-specific options like
 // [WithWSAcceptOptions] implement only [WSOption].
 type WSOption interface {
 	applyToWS(*wsRouteConfig)
@@ -384,10 +384,10 @@ type WSAcceptOptions struct {
 //	        OriginPatterns: []string{"example.com"},
 //	    }),
 //	)
-func WithWSAcceptOptions(opts WSAcceptOptions) wsOptionFunc {
-	return func(cfg *wsRouteConfig) {
+func WithWSAcceptOptions(opts WSAcceptOptions) WSOption {
+	return wsOptionFunc(func(cfg *wsRouteConfig) {
 		cfg.wsAcceptOptions = &opts
-	}
+	})
 }
 
 // WSOnDecodeError creates a handler that is called when a message payload

@@ -43,12 +43,12 @@ type ExternalDocs struct {
 // [slog.Default]. A nil logger is ignored.
 //
 //	api := shiftapi.New(shiftapi.WithLogger(slog.New(handler)))
-func WithLogger(l *slog.Logger) apiOptionFunc {
-	return func(api *API) {
+func WithLogger(l *slog.Logger) APIOption {
+	return apiOptionFunc(func(api *API) {
 		if l != nil {
 			api.logger = l
 		}
-	}
+	})
 }
 
 // WithInfo configures the API metadata that appears in the OpenAPI spec
@@ -58,8 +58,8 @@ func WithLogger(l *slog.Logger) apiOptionFunc {
 //	    Title:   "My API",
 //	    Version: "1.0.0",
 //	}))
-func WithInfo(info Info) apiOptionFunc {
-	return func(api *API) {
+func WithInfo(info Info) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.spec.Info = &openapi3.Info{
 			Title:          info.Title,
 			Description:    info.Description,
@@ -79,15 +79,15 @@ func WithInfo(info Info) apiOptionFunc {
 				URL:  info.License.URL,
 			}
 		}
-	}
+	})
 }
 
 // WithMaxUploadSize sets the maximum memory used for parsing multipart form data.
 // The default is 32 MB.
-func WithMaxUploadSize(size int64) apiOptionFunc {
-	return func(api *API) {
+func WithMaxUploadSize(size int64) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.maxUploadSize = size
-	}
+	})
 }
 
 // WithBadRequestError customizes the 400 Bad Request response returned when
@@ -101,11 +101,11 @@ func WithMaxUploadSize(size int64) apiOptionFunc {
 //	        return &MyBadRequest{Code: "BAD_REQUEST", Message: err.Error()}
 //	    }),
 //	)
-func WithBadRequestError[T any](fn func(error) T) apiOptionFunc {
-	return func(api *API) {
+func WithBadRequestError[T any](fn func(error) T) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.badRequestFn = func(err error) any { return fn(err) }
 		registerErrorSchema[T](api, "BadRequestError")
-	}
+	})
 }
 
 // WithInternalServerError customizes the 500 Internal Server Error response
@@ -120,11 +120,11 @@ func WithBadRequestError[T any](fn func(error) T) apiOptionFunc {
 //	        return &MyServerError{Code: "INTERNAL_ERROR", Message: "internal server error"}
 //	    }),
 //	)
-func WithInternalServerError[T any](fn func(error) T) apiOptionFunc {
-	return func(api *API) {
+func WithInternalServerError[T any](fn func(error) T) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.internalServerFn = func(err error) any { return fn(err) }
 		registerErrorSchema[T](api, "InternalServerError")
-	}
+	})
 }
 
 // registerErrorSchema generates and registers a component schema for the given type.
@@ -146,11 +146,11 @@ func registerErrorSchema[T any](api *API, name string) {
 }
 
 // WithExternalDocs links to external documentation.
-func WithExternalDocs(docs ExternalDocs) apiOptionFunc {
-	return func(api *API) {
+func WithExternalDocs(docs ExternalDocs) APIOption {
+	return apiOptionFunc(func(api *API) {
 		api.spec.ExternalDocs = &openapi3.ExternalDocs{
 			Description: docs.Description,
 			URL:         docs.URL,
 		}
-	}
+	})
 }
