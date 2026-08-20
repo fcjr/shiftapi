@@ -4,21 +4,21 @@ const steps = [
     title: "Define typed handlers",
     desc: (
       <>
-        Write standard Go functions with struct input/output types. Use{" "}
-        <code>json</code>, <code>query</code>, <code>path</code>, and{" "}
-        <code>header</code> struct tags — ShiftAPI routes them automatically.
+        Write standard Go functions with struct input and output types. Tag
+        fields with <code>json</code>, <code>query</code>, <code>path</code>, or{" "}
+        <code>header</code>, and ShiftAPI binds each part of the request for you.
       </>
     ),
     code: `api.Handle("POST /greet", greet)`,
   },
   {
     num: "2",
-    title: "OpenAPI 3.1 spec generated at runtime",
+    title: "ShiftAPI generates the OpenAPI 3.1 spec at runtime",
     desc: (
       <>
-        ShiftAPI reflects your Go types into a complete OpenAPI 3.1 schema.
-        Served at <code>/openapi.json</code> — always matches your code, never
-        maintained by hand.
+        ShiftAPI reflects your Go types into a complete OpenAPI 3.1 schema and
+        serves it at <code>/openapi.json</code>. The spec comes from the code, so
+        it cannot drift from it.
       </>
     ),
     code: `GET /openapi.json  →  { "openapi": "3.1", ... }`,
@@ -29,8 +29,8 @@ const steps = [
     desc: (
       <>
         A Vite or Next.js plugin fetches the spec from your running Go server
-        and generates a fully-typed client. Save a Go file, types update
-        instantly.
+        and generates the client. Save a Go file and the types update in the
+        browser without a reload.
       </>
     ),
     code: `const { data } = await client.POST("/greet", ...)
@@ -45,7 +45,7 @@ export function Contrast() {
         How it works
       </h2>
       <p className="text-center text-[17px] text-text-secondary max-w-[520px] mx-auto mb-14">
-        Three layers, one source of truth. No manual steps between them.
+        Go types in, TypeScript types out. Nothing in between is written by hand.
       </p>
       <div className="max-w-[720px] mx-auto flex flex-col gap-0">
         {steps.map((step, i) => (

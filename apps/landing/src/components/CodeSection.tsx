@@ -24,7 +24,7 @@ func main() {
 
 const tsCode = `import { client } from "@shiftapi/client";
 
-// Fully typed — inferred from your Go structs
+// Types inferred from your Go structs
 const { data } = await client.POST("/greet", {
     body: { name: "frank" },
 });
@@ -79,10 +79,10 @@ export function CodeSection() {
     <section className="px-6 pb-[120px]">
       <div className="text-center mb-12">
         <h2 className="text-[clamp(28px,4vw,40px)] font-extrabold tracking-[-0.03em] mb-3">
-          Write Go. Get TypeScript. Done.
+          The Go struct is the TypeScript type.
         </h2>
         <p className="text-[17px] text-text-secondary max-w-[520px] mx-auto">
-          Your Go struct becomes the TypeScript type. Change a field in Go, your frontend knows instantly.
+          Rename a field in Go and the frontend stops compiling at the call site, before anyone hits the endpoint.
         </p>
       </div>
       <div className="max-w-[1060px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center max-md:grid-cols-1">

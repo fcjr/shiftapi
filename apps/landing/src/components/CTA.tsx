@@ -21,10 +21,10 @@ export function CTA() {
           style={{ background: "linear-gradient(90deg, transparent, var(--color-accent), var(--color-go), var(--color-ts), transparent)" }}
         />
         <h2 className="text-[clamp(24px,4vw,36px)] font-extrabold tracking-[-0.03em] mb-3">
-          Start building in 30 seconds
+          Start with a working app
         </h2>
         <p className="text-base text-text-secondary mb-8 max-w-[440px] mx-auto">
-          One command scaffolds a full-stack Go + React, Svelte, or Next.js app with end-to-end types.
+          One command scaffolds a Go backend with a React, Svelte, or Next.js frontend, types wired end to end.
         </p>
         <div className="inline-flex items-center gap-2.5 py-3.5 pl-6 pr-3 bg-elevated border border-border rounded-[10px] text-[15px] mb-8">
           <span className="text-accent-bright font-mono font-medium select-none">$</span>

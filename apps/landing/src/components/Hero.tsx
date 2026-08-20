@@ -19,9 +19,10 @@ export function Hero() {
         Write <span className="text-go">Go</span>.<br /><span className="text-ts">TypeScript</span> keeps up.
       </h1>
       <p className="text-[19px] text-text-secondary max-w-[600px] mx-auto mb-11 leading-[1.7]">
-        Define typed handler functions in Go. ShiftAPI generates an OpenAPI 3.1 spec
-        at runtime and a fully-typed TypeScript client via Vite/Next.js HMR — no
-        codegen CLI, no manual spec, no drift.
+        Write handlers as ordinary Go functions with struct inputs and outputs.
+        ShiftAPI turns those types into an OpenAPI 3.1 spec at runtime, and the
+        Vite or Next.js plugin turns the spec into a typed TypeScript client on
+        every save. No codegen CLI, no hand-written spec.
       </p>
       <div className="flex items-center justify-center gap-3.5 flex-wrap max-md:flex-col">
         <div className="flex items-center gap-2.5 py-2.5 pl-[18px] pr-3 bg-surface border border-border rounded-[10px] text-sm transition-[border-color] duration-200 hover:border-border-hover">
