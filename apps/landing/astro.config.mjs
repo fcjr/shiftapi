@@ -18,6 +18,17 @@ export default defineConfig({
         themes: ["starlight-dark"],
       },
       customCss: ["./src/docs.css"],
+      head: [
+        { tag: "link", attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" } },
+        { tag: "link", attrs: { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: true } },
+        {
+          tag: "link",
+          attrs: {
+            rel: "stylesheet",
+            href: "https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,100..900;1,50..150,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap",
+          },
+        },
+      ],
       components: {
         PageTitle: "./src/components/DocsPageTitle.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",

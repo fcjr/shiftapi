@@ -2,33 +2,33 @@
 :root[data-theme="light"],
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --sl-font: "Inter", var(--sl-font-system);
-  --sl-font-mono: "JetBrains Mono", var(--sl-font-system-mono);
+  --sl-font: "Anybody", var(--sl-font-system);
+  --sl-font-mono: "Martian Mono", var(--sl-font-system-mono);
 
-  --sl-color-bg: #07080a;
-  --sl-color-bg-nav: #07080a;
-  --sl-color-bg-sidebar: #07080a;
-  --sl-color-bg-inline-code: #161920;
+  --sl-color-bg: #1e1a16;
+  --sl-color-bg-nav: #1e1a16;
+  --sl-color-bg-sidebar: #1e1a16;
+  --sl-color-bg-inline-code: #2f2925;
 
-  --sl-color-text: #eef0f5;
-  --sl-color-text-accent: #c4f042;
-  --sl-color-text-invert: #07080a;
+  --sl-color-text: #f0e9db;
+  --sl-color-text-accent: #33c4ea;
+  --sl-color-text-invert: #1e1a16;
 
-  --sl-color-accent-low: #1a1e10;
-  --sl-color-accent: #c4f042;
-  --sl-color-accent-high: #e2ff7a;
+  --sl-color-accent-low: #123038;
+  --sl-color-accent: #00add8;
+  --sl-color-accent-high: #8fdcf0;
 
-  --sl-color-hairline: #222630;
-  --sl-color-hairline-light: #161920;
+  --sl-color-hairline: #3d3730;
+  --sl-color-hairline-light: #2f2925;
 
-  --sl-color-white: #eef0f5;
-  --sl-color-gray-1: #c0c4d0;
-  --sl-color-gray-2: #8b90a0;
-  --sl-color-gray-3: #52566a;
-  --sl-color-gray-4: #222630;
-  --sl-color-gray-5: #161920;
-  --sl-color-gray-6: #0f1115;
-  --sl-color-black: #07080a;
+  --sl-color-white: #f0e9db;
+  --sl-color-gray-1: #d2cabb;
+  --sl-color-gray-2: #b3aa9b;
+  --sl-color-gray-3: #7d7466;
+  --sl-color-gray-4: #3d3730;
+  --sl-color-gray-5: #2f2925;
+  --sl-color-gray-6: #272220;
+  --sl-color-black: #1e1a16;
 
   /* Force dark-mode aside colors so light-mode preference doesn't override */
   --sl-color-orange-low: hsl(41, 39%, 22%);
@@ -57,7 +57,28 @@
   gap: 0.625rem !important;
 }
 
+code, pre, kbd {
+  font-variation-settings: "wdth" 87.5;
+  font-size: 0.92em;
+}
+
 .site-title img {
   height: 1.5rem;
   width: auto;
+}
+
+/* Badges: the site is always dark, so never use the light-theme pale backgrounds. */
+.sl-badge {
+  --sl-badge-default-bg: var(--sl-color-accent-low);
+  --sl-badge-default-text: var(--sl-color-accent-high);
+  --sl-badge-note-bg: var(--sl-color-blue-low);
+  --sl-badge-note-text: var(--sl-color-blue-high);
+  --sl-badge-danger-bg: var(--sl-color-red-low);
+  --sl-badge-danger-text: var(--sl-color-red-high);
+  --sl-badge-success-bg: var(--sl-color-green-low);
+  --sl-badge-success-text: var(--sl-color-green-high);
+  --sl-badge-caution-bg: var(--sl-color-orange-low);
+  --sl-badge-caution-text: var(--sl-color-orange-high);
+  --sl-badge-tip-bg: var(--sl-color-purple-low);
+  --sl-badge-tip-text: var(--sl-color-purple-high);
 }
